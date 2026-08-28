@@ -1,0 +1,84 @@
+[project]
+name = "buildathon-backend"
+version = "0.1.0"
+description = "Revenue recovery agent — detects at-risk revenue, diagnoses cause, runs bounded interventions, proves recovery."
+authors = [{ name = "Aditya Bavadekar", email = "bvkraditya@gmail.com" }]
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi[standard-no-fastapi-cloud-cli]>=0.141.1",
+    "pydantic-settings>=2.15.0",
+    "structlog>=26.1.0",
+    "litellm>=1.98.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "httpx2>=2.12.0",
+    "ruff>=0.16.5",
+    "mypy>=2.3.1",
+]
+
+[build-system]
+requires = ["uv_build>=0.12.5,<0.13.0"]
+build-backend = "uv_build"
+
+# The distribution is `buildathon-backend` but the importable package is `app`,
+# so imports read `from app.core.config import ...`. uv_build infers the module
+# name from the project name by default, so it must be stated explicitly.
+[tool.uv.build-backend]
+module-name = "app"
+
+[tool.fastapi]
+entrypoint = "app.main:app"
+
+# ---------------------------------------------------------------------------
+# Ruff. NOTE: `extend-select`, never `select` — as of ruff 0.16 the default rule
+# set is 413 rules, and `select` REPLACES that baseline instead of adding to it.
+# ---------------------------------------------------------------------------
+[tool.ruff]
+line-length = 88
+target-version = "py313"
+
+[tool.ruff.lint]
+extend-select = [
+    "ANN",  # flake8-annotations
+    "PL",   # pylint
+    "TC",   # flake8-type-checking
+    "PTH",  # flake8-use-pathlib
+    "TID",  # flake8-tidy-imports
+    "FAST", # FastAPI-specific
+    "S",    # flake8-bandit
+]
+# ANN401: allow `Any` where it is genuinely unavoidable (litellm boundaries).
+# PLR0913: FastAPI handlers legitimately take many injected dependencies.
+ignore = ["ANN401", "PLR0913"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["S101", "ANN", "PLR2004"]
+"src/**/__init__.py" = ["F401"]
+
+# ---------------------------------------------------------------------------
+# mypy. `strict` is practical here — FastAPI and pydantic are fully typed.
+# ---------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.13"
+strict = true
+mypy_path = "src"
+packages = ["app", "tests"]
+plugins = ["pydantic.mypy"]
+enable_error_code = ["redundant-expr", "truthy-bool", "ignore-without-code"]
+
+[[tool.mypy.overrides]]
+# litellm ships py.typed but returns Any from completion(); we cast at the edge.
+module = ["litellm.*"]
+follow_untyped_imports = true
+
+[tool.pydantic-mypy]
+init_typed = true
+# Without this the plugin *loses* the extra-kwarg error that bare mypy catches.
+init_forbid_extra = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers --strict-config"
