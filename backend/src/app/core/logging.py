@@ -1,7 +1,7 @@
 """Structured logging.
 
 Uses structlog with ``contextvars`` so that a request ID bound once in middleware
-appears on every log line emitted during that request — including lines from
+appears on every log line emitted during that request - including lines from
 uvicorn and third-party libraries, which are routed through the same formatter.
 
 That correlation is why structlog is here rather than a plain JSON formatter: the
@@ -25,7 +25,8 @@ _THIRD_PARTY_LOGGERS = ("uvicorn", "uvicorn.error", "uvicorn.access", "litellm")
 def configure_logging(settings: Settings) -> None:
     """Configure structlog and route stdlib logging through it.
 
-    Idempotent: safe to call more than once (tests, reload).
+    Idempotent, because uvicorn's reloader can trigger startup more than once in
+    a single process.
     """
     shared_processors: list[structlog.typing.Processor] = [
         # Must come first, or context bound in middleware is missing from lines
@@ -58,9 +59,9 @@ def configure_logging(settings: Settings) -> None:
         cache_logger_on_first_use=True,
     )
 
-    # Route stdlib logging (uvicorn, litellm) through the same renderer.
-    # add_logger_name is applied only here: it reads the stdlib LogRecord, which
-    # exists for foreign records but not for structlog's own WriteLogger.
+    # add_logger_name is applied only to this chain: it reads a stdlib LogRecord,
+    # which foreign records have and structlog's own WriteLogger does not. Putting
+    # it in the shared processors crashes every call with AttributeError.
     formatter = structlog.stdlib.ProcessorFormatter(
         foreign_pre_chain=[
             *shared_processors,

@@ -65,7 +65,7 @@ export default function App() {
 
         <dl className="divide-y divide-border text-sm">
           {state.kind === 'loading' && (
-            <Row label="Connecting" value="…" aria-busy="true" />
+            <Row label="Connecting" value="..." aria-busy="true" />
           )}
 
           {state.kind === 'error' && (
@@ -103,7 +103,7 @@ export default function App() {
       </section>
 
       <p className="mt-4 text-xs text-ink-subtle">
-        Scaffold only — no detection, intervention, or recovery logic yet.
+        Scaffold only - no detection, intervention, or recovery logic yet.
       </p>
     </main>
   )

@@ -13,7 +13,7 @@ export default defineConfig([
     files: ['**/*.{ts,tsx}'],
     extends: [
       js.configs.recommended,
-      // Type-aware linting. Requires TypeScript < 6.1 — TS 7 ships no compiler
+      // Type-aware linting. Requires TypeScript < 6.1 - TS 7 ships no compiler
       // API until 7.1, so typescript-eslint cannot support it yet.
       tseslint.configs.strictTypeChecked,
       reactHooks.configs.flat.recommended,

@@ -1,7 +1,7 @@
 """Single entry point for LLM calls, via litellm.
 
 Every model call in this service goes through here. Nothing else should import a
-provider SDK directly — that rule is what makes model choice, cost accounting,
+provider SDK directly - that rule is what makes model choice, cost accounting,
 retries, and audit logging changeable in one place.
 
 Not wired into any behaviour yet; this is the seam, not the agent.
@@ -59,7 +59,7 @@ async def complete(
     Args:
         messages: Chat messages in OpenAI format; litellm translates per provider.
         model: A litellm model string, e.g. ``anthropic/claude-sonnet-5``. Always
-            include the provider prefix — it resolves without one, but explicit
+            include the provider prefix - it resolves without one, but explicit
             is clearer and avoids ambiguity between providers.
         max_tokens: Upper bound on response length.
         temperature: Defaults to 0.0; this service wants reproducible decisions.

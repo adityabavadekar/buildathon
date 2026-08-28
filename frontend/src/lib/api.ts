@@ -2,7 +2,7 @@
  * Typed client for the backend.
  *
  * All backend calls go through here rather than scattering `fetch` across
- * components — one place to add auth headers, request IDs, and error handling.
+ * components - one place to add auth headers, request IDs, and error handling.
  */
 
 /**

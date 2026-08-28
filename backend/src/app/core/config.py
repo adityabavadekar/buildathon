@@ -1,6 +1,6 @@
 """Application configuration, read from the environment.
 
-Never hardcode config values or read ``os.environ`` directly elsewhere — add a
+Never hardcode config values or read ``os.environ`` directly elsewhere - add a
 field here instead, so every knob is discoverable in one place and validated at
 startup rather than at first use.
 """
@@ -32,7 +32,6 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # -- Service ------------------------------------------------------------
     env: Literal["local", "ci", "production"] = "local"
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
     log_json: bool = Field(
@@ -40,15 +39,13 @@ class Settings(BaseSettings):
         description="Emit JSON logs. Off locally for readability, on in deployment.",
     )
 
-    # -- CORS ---------------------------------------------------------------
     cors_origins: list[str] = Field(
         default=["http://localhost:5173", "http://127.0.0.1:5173"],
         description="Allowed browser origins. The defaults are the Vite dev server.",
     )
 
-    # -- LLM providers ------------------------------------------------------
-    # These deliberately keep their conventional names rather than taking the
-    # APP_ prefix, so provider SDKs and other tooling find them unchanged.
+    # These keep their conventional names rather than taking the APP_ prefix, so
+    # provider SDKs and other tooling find them unchanged.
     anthropic_api_key: SecretStr | None = Field(
         default=None, validation_alias="ANTHROPIC_API_KEY"
     )

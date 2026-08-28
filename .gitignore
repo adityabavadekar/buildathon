@@ -14,7 +14,7 @@ node_modules/
 frontend/dist/
 .vite/
 
-# Environment — never commit real credentials
+# Environment - never commit real credentials
 .env
 .env.*
 !.env.example

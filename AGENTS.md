@@ -73,6 +73,30 @@ wrong is the failure mode that matters most in a payments tool.
 - Interventions are **bounded**: explicit caps, stopping rules, and an escalation
   path. An unbounded retry loop is not a recovery strategy.
 
+## Style
+
+**No emojis, em-dashes, en-dashes, smart quotes, arrows, or other non-ASCII
+characters in code, comments, config, or commit messages.** Use `-` for a dash,
+`...` for an ellipsis, `->` for an arrow, straight quotes, and `INR` rather than
+the rupee sign. ASCII only outside Markdown prose, so that terminals, diffs, and
+log pipelines render identically everywhere.
+
+**Comments explain why, never what.** If a comment restates the line below it,
+delete it. Write a comment when the reason is not visible in the code: a
+non-obvious constraint, a library behaviour that surprises, a decision that looks
+wrong until explained. Section-divider banners are noise; group with blank lines
+instead.
+
+```python
+# Bad, restates the code:
+# Set the request ID header
+headers.append((REQUEST_ID_HEADER, request_id))
+
+# Good, explains a constraint you cannot see:
+# Incoming IDs are untrusted input: keep only characters safe to put in a log
+# line and echo back in a header.
+```
+
 ## Always
 
 - Read `docs/DECISIONS.md` before changing architecture; append to it when you
@@ -83,9 +107,16 @@ wrong is the failure mode that matters most in a payments tool.
   `intervention.attempted` and structured key-values.
 - Type everything. `mypy --strict` and `eslint strictTypeChecked` both gate CI.
 - Keep the frontend's backend calls in `frontend/src/lib/api.ts`.
+- Comprehensive Audit Trails: Persist timestamped LLM outputs.
+- Every action taken by system, should be logged in the database and should be visilble in audit trail
+- Strong Typing: Use strict typing and typed catch blocks (e.g., in TypeScript or Python) consistently.
+- Utils: Move cross-cutting helpers into a shared utils or helpers module.
+- Use strict enums
 
 ## Never
 
+- Hardcoding random values, spread accross files. Use a constants file for such cases.
+- Add code boundaries like "----". Keep code clean and compactly documented ONLY where needed.
 - **Never commit `.env`.** Only `.env.example`, with dummy values.
 - **Never call a provider SDK directly outside `backend/src/app/llm/client.py`.**
   That module is the single seam for model calls, cost accounting, and audit.
@@ -100,6 +131,34 @@ wrong is the failure mode that matters most in a payments tool.
 - Never use `httpx` in tests; use `httpx2`. Starlette 1.6 deprecated the former.
 - Never commit real merchant data, real payment IDs, or real customer records.
   Synthetic fixtures only.
+- NEVER use emojis, em-dashes (—), or non-standard special characters in technical responses, comments, or documentation.
+- Avoid subjective qualifiers (e.g., “high-impact”, “professional”, “optimized”, “refined”, “clean”, “solid”).
+- Do not use markdown backticks in Git commit subject lines.
+
+### 6. LOGGING
+
+- **Bash Scripts Standard**: Bash automation scripts must implement and use this exact logging block:
+  ```bash
+  log() {
+    printf '[ INFO ] %s\n' "$*"
+  }
+  ok() {
+    printf '[  OK  ] %s\n' "$*"
+  }
+  warn() {
+    printf '[ WARN ] %s\n' "$*"
+  }
+  err() {
+    printf '[ ERR  ] %s\n' "$*"
+  }
+  ```
+  _Constraint_: Timestamps (ISO format) should only be used in long-running background daemon logs, not general automation.
+- **App/API Logging Standards**:
+  - **Node.js/TypeScript**: Use `pino` with `pino-pretty` for highly readable structured output across environments.
+  - **Python**: Use `loguru` or a custom logging utility (e.g., `source/assistant_logging/logger.py`). Never import the built-in `logging` module directly.
+  - **Go/Rust**: Use lightweight color-coded internal terminal writers.
+  - **Kotlin**: Use `Timber` or standard JVM logging.
+- **Log Structure**: Log messages must include structured, rich metadata (e.g., target, timeTaken, model, query, response) rather than plain strings.
 
 ## Conventions
 

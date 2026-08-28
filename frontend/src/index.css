@@ -8,39 +8,42 @@
  *
  * Direction: precision over friendliness. A near-neutral slate surface, a single
  * confident accent (deep teal), and semantic status colours that map to the
- * recovery lifecycle. Deliberately not the default AI-tool look — no purple/blue
+ * recovery lifecycle. Deliberately not the default AI-tool look - no purple/blue
  * gradients, no uniformly rounded cards.
  *
  * Money alignment: `--font-*--font-feature-settings` enables `tnum` at the token
- * level. This matters — the `tabular-nums` utility compiles to a @property with
+ * level. This matters - the `tabular-nums` utility compiles to a @property with
  * `inherits: false`, so setting it on a <table> or <tr> does NOT reach the cells.
  * Putting it on the font token makes aligned figures structural instead.
  */
 @theme {
-  /* -- Type ------------------------------------------------------------- */
+  /* Type. tnum on the font tokens is what makes money columns line up; see the
+     header comment for why it cannot live on the table element. */
   --font-sans: 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
   --font-sans--font-feature-settings: 'tnum', 'cv11', 'ss01';
   --font-mono: 'JetBrains Mono Variable', ui-monospace, monospace;
   --font-mono--font-feature-settings: 'tnum', 'zero';
 
-  /* -- Surfaces (cool neutral, not pure grey) --------------------------- */
+  /* Surfaces carry a slight blue cast rather than pure grey, which reads as
+     deliberate under the warm-white of most office displays. */
   --color-canvas: oklch(0.985 0.002 250);
   --color-surface: oklch(1 0 0);
   --color-surface-sunken: oklch(0.968 0.003 250);
   --color-border: oklch(0.915 0.005 250);
   --color-border-strong: oklch(0.845 0.008 250);
 
-  /* -- Text ------------------------------------------------------------- */
   --color-ink: oklch(0.22 0.012 258);
   --color-ink-muted: oklch(0.53 0.011 258);
   --color-ink-subtle: oklch(0.66 0.009 258);
 
-  /* -- Accent: one confident colour, used sparingly --------------------- */
+  /* One accent only. In an ops tool, colour has to mean something, so it is
+     reserved for interaction and status rather than decoration. */
   --color-accent: oklch(0.52 0.098 197);
   --color-accent-hover: oklch(0.45 0.098 197);
   --color-accent-subtle: oklch(0.955 0.021 197);
 
-  /* -- Status: the recovery lifecycle ----------------------------------- */
+  /* Status names track the recovery lifecycle, not the palette, so a rename of
+     the colour does not require touching call sites. */
   --color-recovered: oklch(0.55 0.114 158);
   --color-recovered-subtle: oklch(0.962 0.028 158);
   --color-pending: oklch(0.64 0.124 76);
@@ -50,7 +53,7 @@
   --color-escalated: oklch(0.52 0.138 300);
   --color-escalated-subtle: oklch(0.963 0.024 300);
 
-  /* -- Radius: restrained. Tables and panels stay crisp. ---------------- */
+  /* Small radii keep dense tables reading as data rather than as cards. */
   --radius-panel: 0.375rem;
   --radius-control: 0.25rem;
 }
@@ -99,7 +102,7 @@
     -webkit-font-smoothing: antialiased;
   }
 
-  /* Visible, consistent focus ring — keyboard navigation is a requirement,
+  /* Visible, consistent focus ring - keyboard navigation is a requirement,
      not an enhancement. */
   :focus-visible {
     outline: 2px solid var(--color-accent);

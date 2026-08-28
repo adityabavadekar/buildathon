@@ -1,7 +1,7 @@
 [project]
 name = "buildathon-backend"
 version = "0.1.0"
-description = "Revenue recovery agent — detects at-risk revenue, diagnoses cause, runs bounded interventions, proves recovery."
+description = "Revenue recovery agent - detects at-risk revenue, diagnoses cause, runs bounded interventions, proves recovery."
 authors = [{ name = "Aditya Bavadekar", email = "bvkraditya@gmail.com" }]
 requires-python = ">=3.13"
 dependencies = [
@@ -32,10 +32,8 @@ module-name = "app"
 [tool.fastapi]
 entrypoint = "app.main:app"
 
-# ---------------------------------------------------------------------------
-# Ruff. NOTE: `extend-select`, never `select` — as of ruff 0.16 the default rule
-# set is 413 rules, and `select` REPLACES that baseline instead of adding to it.
-# ---------------------------------------------------------------------------
+# Ruff. `extend-select`, never `select`: as of ruff 0.16 the default rule set is
+# 413 rules, and `select` REPLACES that baseline instead of adding to it.
 [tool.ruff]
 line-length = 88
 target-version = "py313"
@@ -58,9 +56,7 @@ ignore = ["ANN401", "PLR0913"]
 "tests/**/*.py" = ["S101", "ANN", "PLR2004"]
 "src/**/__init__.py" = ["F401"]
 
-# ---------------------------------------------------------------------------
-# mypy. `strict` is practical here — FastAPI and pydantic are fully typed.
-# ---------------------------------------------------------------------------
+# mypy strict is practical here because FastAPI and pydantic are both fully typed.
 [tool.mypy]
 python_version = "3.13"
 strict = true
