@@ -25,13 +25,42 @@ FRONTEND_PORT=5173
 # Detect primary laptop/host IP address
 LAPTOP_IP="$(hostname -I 2>/dev/null | awk '{print $1}' || ip route get 1.1.1.1 2>/dev/null | awk '{print $7}' || echo '127.0.0.1')"
 
+BACKEND_PID=""
+FRONTEND_PID=""
+
 cleanup() {
-  warn "Shutting down background services..."
+  warn "Received stop signal. Terminating development servers..."
+
+  # Disable trap so we don't loop on exit
   trap - INT TERM EXIT
-  kill 0 2>/dev/null || true
+
+  if [ -n "${BACKEND_PID}" ] && kill -0 "${BACKEND_PID}" 2>/dev/null; then
+    log "Stopping backend service (PID: ${BACKEND_PID})..."
+    kill -TERM "${BACKEND_PID}" 2>/dev/null || true
+  fi
+
+  if [ -n "${FRONTEND_PID}" ] && kill -0 "${FRONTEND_PID}" 2>/dev/null; then
+    log "Stopping frontend service (PID: ${FRONTEND_PID})..."
+    kill -TERM "${FRONTEND_PID}" 2>/dev/null || true
+  fi
+
+  # Wait for both processes to terminate
+  if [ -n "${BACKEND_PID}" ]; then
+    wait "${BACKEND_PID}" 2>/dev/null || true
+  fi
+  if [ -n "${FRONTEND_PID}" ]; then
+    wait "${FRONTEND_PID}" 2>/dev/null || true
+  fi
+
+  # Force kill any lingering processes on the ports if still listening
+  fuser -k "${BACKEND_PORT}/tcp" 2>/dev/null || true
+  fuser -k "${FRONTEND_PORT}/tcp" 2>/dev/null || true
+
+  ok "All development services terminated cleanly."
+  exit 0
 }
 
-trap cleanup INT TERM EXIT
+trap cleanup INT TERM
 
 log "Starting Revenue Recovery Development Environment..."
 log "Detected Laptop Host IP: ${LAPTOP_IP}"
@@ -63,4 +92,5 @@ ok "Frontend UI running on http://${LAPTOP_IP}:${FRONTEND_PORT}"
 ok "Base URL configured: http://${LAPTOP_IP}:${FRONTEND_PORT} -> http://${LAPTOP_IP}:${BACKEND_PORT}/api"
 log "Press Ctrl+C to stop both services."
 
+# Wait for both servers
 wait "${BACKEND_PID}" "${FRONTEND_PID}"

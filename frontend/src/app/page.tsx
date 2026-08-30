@@ -1,159 +1,233 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { ApiError, getHealth, type HealthResponse } from '@/lib/api'
+import React, { useCallback, useEffect, useState } from 'react'
+import {
+  getAnalytics,
+  getHealth,
+  getPolicies,
+  getSettings,
+  getSystemStatus,
+  listCases,
+  resetSimulation,
+  seedSimulation,
+  type AnalyticsSummaryResponse,
+  type HealthResponse,
+  type PolicyResponse,
+  type RecoveryCase,
+  type SystemSettingsResponse,
+  type SystemStatusResponse,
+} from '@/lib/api'
+import { Sidebar, type NavSection } from '@/components/layout/Sidebar'
+import { TopNav } from '@/components/layout/TopNav'
+import { AgentView } from '@/components/views/AgentView'
+import { AnalyticsView } from '@/components/views/AnalyticsView'
+import { AuditView } from '@/components/views/AuditView'
+import { OverviewView } from '@/components/views/OverviewView'
+import { PoliciesView } from '@/components/views/PoliciesView'
+import { RecoveryView } from '@/components/views/RecoveryView'
+import { SettingsView } from '@/components/views/SettingsView'
+import { StatusView } from '@/components/views/StatusView'
+import { CaseDetailDrawer } from '@/components/cases/CaseDetailDrawer'
+import { CommandPalette } from '@/components/command/CommandPalette'
 
-type State =
-  | { kind: 'loading' }
-  | { kind: 'ready'; health: HealthResponse }
-  | { kind: 'error'; message: string; requestId: string | null }
+export default function DashboardPage() {
+  const [activeSection, setActiveSection] = useState<NavSection>('overview')
+  const [health, setHealth] = useState<HealthResponse | null>(null)
+  const [healthLoading, setHealthLoading] = useState<boolean>(true)
+  const [cases, setCases] = useState<RecoveryCase[]>([])
+  const [casesLoading, setCasesLoading] = useState<boolean>(true)
+  const [analytics, setAnalytics] = useState<AnalyticsSummaryResponse | null>(null)
+  const [policies, setPolicies] = useState<PolicyResponse | null>(null)
+  const [settings, setSettings] = useState<SystemSettingsResponse | null>(null)
+  const [systemStatus, setSystemStatus] = useState<SystemStatusResponse | null>(null)
+  const [selectedCase, setSelectedCase] = useState<RecoveryCase | null>(null)
+  const [commandOpen, setCommandOpen] = useState<boolean>(false)
 
-export default function Home() {
-  const [state, setState] = useState<State>({ kind: 'loading' })
-
-  useEffect(() => {
-    let cancelled = false
-
-    getHealth()
-      .then((health) => {
-        if (!cancelled) setState({ kind: 'ready', health })
-      })
-      .catch((error: unknown) => {
-        if (cancelled) return
-        setState({
-          kind: 'error',
-          message: error instanceof Error ? error.message : 'Unknown error',
-          requestId: error instanceof ApiError ? error.requestId : null,
-        })
-      })
-
-    return () => {
-      cancelled = true
+  const fetchData = useCallback(async () => {
+    try {
+      const [hRes, cRes, aRes, pRes, sRes, statusRes] = await Promise.all([
+        getHealth().catch(() => null),
+        listCases().catch(() => ({
+          total: 0,
+          offset: 0,
+          limit: 100,
+          items: [],
+        })),
+        getAnalytics().catch(() => null),
+        getPolicies().catch(() => null),
+        getSettings().catch(() => null),
+        getSystemStatus().catch(() => null),
+      ])
+      setHealth(hRes)
+      setCases(cRes.items)
+      setAnalytics(aRes)
+      setPolicies(pRes)
+      setSettings(sRes)
+      setSystemStatus(statusRes)
+    } finally {
+      setHealthLoading(false)
+      setCasesLoading(false)
     }
   }, [])
 
-  return (
-    <main className="mx-auto flex min-h-dvh max-w-2xl flex-col justify-center px-4 py-10 sm:px-6">
-      <header className="mb-6">
-        <h1 className="text-xl font-semibold tracking-tight text-ink">
-          Revenue Recovery
-        </h1>
-        <p className="mt-1 text-sm text-ink-muted">
-          Detects at-risk revenue, runs bounded interventions, proves what it
-          recovered.
-        </p>
-      </header>
+  useEffect(() => {
+    void fetchData()
+    const interval = setInterval(() => {
+      void fetchData()
+    }, 10000)
+    return () => {
+      clearInterval(interval)
+    }
+  }, [fetchData])
 
-      <section
-        aria-labelledby="backend-status"
-        className="rounded-panel border border-border bg-surface shadow-xs"
-      >
-        <div className="flex items-center justify-between border-b border-border px-4 py-3">
-          <h2
-            id="backend-status"
-            className="text-xs font-medium tracking-wider text-ink-muted uppercase"
-          >
-            Backend status
-          </h2>
-          <StatusIndicator state={state} />
-        </div>
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault()
+        setCommandOpen((prev) => !prev)
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [])
 
-        <dl className="divide-y divide-border text-sm">
-          {state.kind === 'loading' && (
-            <Row label="Connecting" value="..." aria-busy="true" />
-          )}
+  const handleSeedBatch = async () => {
+    await seedSimulation(50, true)
+    void fetchData()
+  }
 
-          {state.kind === 'error' && (
-            <>
-              <Row label="Error" value={state.message} tone="failed" />
-              {state.requestId !== null && (
-                <Row label="Request ID" value={state.requestId} mono />
-              )}
-            </>
-          )}
+  const handleResetData = async () => {
+    await resetSimulation()
+    void fetchData()
+  }
 
-          {state.kind === 'ready' && (
-            <>
-              <Row
-                label="Status"
-                value={state.health.status}
-                tone="recovered"
-              />
-              <Row label="Version" value={state.health.version} mono />
-              <Row label="Environment" value={state.health.env} mono />
-              <Row
-                label="LLM providers"
-                value={
-                  state.health.llm_providers.length > 0
-                    ? state.health.llm_providers.join(', ')
-                    : 'none configured'
-                }
-                tone={
-                  state.health.llm_providers.length > 0 ? undefined : 'pending'
-                }
-              />
-            </>
-          )}
-        </dl>
-      </section>
-
-      <p className="mt-4 text-xs text-ink-subtle">
-        Phase 1 Domain Models active - Detection, Policies, and Invariant gates
-        ready.
-      </p>
-    </main>
-  )
-}
-
-function StatusIndicator({ state }: { state: State }) {
-  const config = {
-    loading: { color: 'bg-pending', label: 'Checking' },
-    ready: { color: 'bg-recovered', label: 'Online' },
-    error: { color: 'bg-failed', label: 'Unreachable' },
-  }[state.kind]
+  const escalatedCount = cases.filter((c) => c.state === 'ESCALATED').length
 
   return (
-    <span className="flex items-center gap-2">
-      <span
-        className={`size-2 rounded-full ${config.color}`}
-        aria-hidden="true"
+    <div className="flex min-h-screen bg-canvas text-ink font-sans antialiased">
+      {/* 1. Left Sidebar Navigation */}
+      <Sidebar
+        activeSection={activeSection}
+        onSelectSection={(section) => {
+          setActiveSection(section)
+        }}
+        casesCount={cases.length}
+        escalatedCount={escalatedCount}
       />
-      <span className="text-xs font-medium text-ink">{config.label}</span>
-    </span>
-  )
-}
 
-function Row({
-  label,
-  value,
-  mono = false,
-  tone,
-  ...rest
-}: {
-  label: string
-  value: string
-  mono?: boolean
-  tone?: 'recovered' | 'pending' | 'failed'
-} & React.HTMLAttributes<HTMLDivElement>) {
-  const toneClass = tone
-    ? {
-        recovered: 'text-recovered',
-        pending: 'text-pending',
-        failed: 'text-failed',
-      }[tone]
-    : 'text-ink'
+      {/* 2. Main Content Area */}
+      <div className="flex flex-1 flex-col overflow-hidden">
+        <TopNav
+          title={activeSection === 'status' ? 'System Status' : activeSection}
+          health={health}
+          analytics={analytics}
+          healthLoading={healthLoading}
+          onRefresh={() => {
+            void fetchData()
+          }}
+          onOpenCommand={() => {
+            setCommandOpen(true)
+          }}
+        />
 
-  return (
-    <div
-      className="flex items-baseline justify-between gap-4 px-4 py-2.5"
-      {...rest}
-    >
-      <dt className="shrink-0 text-ink-muted">{label}</dt>
-      <dd
-        className={`${toneClass} ${mono ? 'font-mono text-xs' : ''} text-right break-all`}
-      >
-        {value}
-      </dd>
+        <main className="flex-1 overflow-y-auto p-6 lg:p-8">
+          <div className="mx-auto max-w-6xl">
+            {activeSection === 'overview' && (
+              <OverviewView
+                cases={cases}
+                analytics={analytics}
+                loading={casesLoading}
+                onSelectCase={(c) => {
+                  setSelectedCase(c)
+                }}
+                onNavigateToRecovery={() => {
+                  setActiveSection('recovery')
+                }}
+                onRefresh={() => {
+                  void fetchData()
+                }}
+              />
+            )}
+
+            {activeSection === 'recovery' && (
+              <RecoveryView
+                cases={cases}
+                loading={casesLoading}
+                onSelectCase={(c) => {
+                  setSelectedCase(c)
+                }}
+                onRefresh={() => {
+                  void fetchData()
+                }}
+              />
+            )}
+
+            {activeSection === 'analytics' && (
+              <AnalyticsView
+                analytics={analytics}
+                policies={policies}
+                loading={casesLoading}
+              />
+            )}
+
+            {activeSection === 'agent' && <AgentView cases={cases} />}
+
+            {activeSection === 'policies' && (
+              <PoliciesView policies={policies} loading={casesLoading} />
+            )}
+
+            {activeSection === 'audit' && <AuditView cases={cases} />}
+
+            {activeSection === 'status' && (
+              <StatusView
+                status={systemStatus}
+                loading={casesLoading}
+                onRefresh={() => {
+                  void fetchData()
+                }}
+              />
+            )}
+
+            {activeSection === 'settings' && (
+              <SettingsView settings={settings} loading={casesLoading} />
+            )}
+          </div>
+        </main>
+      </div>
+
+      {/* 3. Global Slide-Over Case Detail Drawer */}
+      <CaseDetailDrawer
+        caseItem={selectedCase}
+        onClose={() => {
+          setSelectedCase(null)
+        }}
+        onActionComplete={() => {
+          void fetchData()
+        }}
+      />
+
+      {/* 4. Global Command Palette (⌘K) */}
+      <CommandPalette
+        open={commandOpen}
+        onClose={() => {
+          setCommandOpen(false)
+        }}
+        cases={cases}
+        onSelectCase={(c) => {
+          setSelectedCase(c)
+        }}
+        onNavigate={(sec) => {
+          setActiveSection(sec)
+        }}
+        onSeed={() => {
+          void handleSeedBatch()
+        }}
+        onReset={() => {
+          void handleResetData()
+        }}
+      />
     </div>
   )
 }

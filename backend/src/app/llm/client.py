@@ -3,9 +3,9 @@
 Every model call in this service goes through here. Nothing else should import a
 provider SDK directly - that rule is what makes model choice, cost accounting,
 retries, and audit logging changeable in one place.
-
-Not wired into any behaviour yet; this is the seam, not the agent.
 """
+
+from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, cast
@@ -45,42 +45,61 @@ class LLMResponse:
     call_id: str | None
 
 
+def _get_clean_secret(secret_obj: Any) -> str | None:
+    """Return non-empty secret value string if present, else None."""
+    if secret_obj is None:
+        return None
+    val = secret_obj.get_secret_value() if hasattr(secret_obj, "get_secret_value") else str(secret_obj)
+    val = val.strip()
+    return val if val else None
+
+
 async def complete(
-    messages: "Sequence[dict[str, str]]",
+    messages: Sequence[dict[str, str]],
     *,
-    model: str = DEFAULT_MODEL,
+    model: str | None = None,
+    temperature: float = 0.2,
     max_tokens: int = 1024,
-    temperature: float = 0.0,
-    timeout: int = DEFAULT_TIMEOUT_SECONDS,
-    num_retries: int = DEFAULT_MAX_RETRIES,
+    timeout: float = DEFAULT_TIMEOUT_SECONDS,
+    num_retries: int = 0,
 ) -> LLMResponse:
-    """Call a model and return its text with cost and token metadata.
+    """Call a model and return its text with cost and token metadata."""
+    settings = get_settings()
 
-    Args:
-        messages: Chat messages in OpenAI format; litellm translates per provider.
-        model: A litellm model string, e.g. ``anthropic/claude-sonnet-5``. Always
-            include the provider prefix - it resolves without one, but explicit
-            is clearer and avoids ambiguity between providers.
-        max_tokens: Upper bound on response length.
-        temperature: Defaults to 0.0; this service wants reproducible decisions.
-        timeout: Per-attempt timeout in seconds.
-        num_retries: Retries on transient provider errors.
+    target_model = model
+    api_key: str | None = None
 
-    Raises:
-        litellm.exceptions.APIError: Provider failures. litellm's exceptions
-            subclass the ``openai`` types, so existing handling applies.
-    """
+    openrouter_key = _get_clean_secret(settings.openrouter_api_key)
+    anthropic_key = _get_clean_secret(settings.anthropic_api_key)
+    openai_key = _get_clean_secret(settings.openai_api_key)
+
+    if target_model is None or target_model == DEFAULT_MODEL:
+        if openrouter_key:
+            target_model = settings.openrouter_model
+            api_key = openrouter_key
+        elif anthropic_key:
+            target_model = "anthropic/claude-sonnet-5"
+            api_key = anthropic_key
+        elif openai_key:
+            target_model = "openai/gpt-4o"
+            api_key = openai_key
+        else:
+            target_model = DEFAULT_MODEL
+
+    kwargs: dict[str, Any] = {}
+    if api_key:
+        kwargs["api_key"] = api_key
+
     response = await litellm.acompletion(
-        model=model,
+        model=target_model,
         messages=list(messages),
         max_tokens=max_tokens,
         temperature=temperature,
         timeout=timeout,
         num_retries=num_retries,
+        **kwargs,
     )
 
-    # litellm is typed but returns Any from acompletion(), so the boundary is cast
-    # here rather than letting Any leak into callers.
     raw = cast("Any", response)
     hidden: dict[str, Any] = getattr(raw, "_hidden_params", None) or {}
     usage = getattr(raw, "usage", None)
@@ -106,16 +125,14 @@ async def complete(
 
 
 def configured_providers() -> list[str]:
-    """Return providers that currently have an API key set.
-
-    Used by ``/health`` to report capability without revealing key values.
-    """
+    """Return providers that currently have a valid, non-empty API key set."""
     settings = get_settings()
-    return sorted(
-        name
-        for name, key in (
-            ("anthropic", settings.anthropic_api_key),
-            ("openai", settings.openai_api_key),
-        )
-        if key is not None
-    )
+    providers: list[str] = []
+    for name, key_obj in (
+        ("openrouter", settings.openrouter_api_key),
+        ("anthropic", settings.anthropic_api_key),
+        ("openai", settings.openai_api_key),
+    ):
+        if _get_clean_secret(key_obj) is not None:
+            providers.append(name)
+    return sorted(providers)

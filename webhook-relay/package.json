@@ -1,0 +1,18 @@
+{
+  "name": "webhook-relay",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Razorpay webhook fanout relay - forwards incoming events to all registered tunnels",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+  "dependencies": {
+    "express": "^4.21.0",
+    "undici": "^7.0.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

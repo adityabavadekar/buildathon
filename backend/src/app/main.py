@@ -11,7 +11,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app import __version__
-from app.api.routes import health
+from app.api.routes import analytics, cases, health, policies, simulation, webhooks
+from app.api.routes import settings as settings_router
 from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging, get_logger
 from app.core.middleware import RequestIDMiddleware
@@ -67,6 +68,14 @@ def create_app() -> FastAPI:
     # Health check is available at both /health and /api/health
     app.include_router(health.router)
     app.include_router(health.router, prefix="/api")
+
+    # Domain API routes
+    app.include_router(webhooks.router, prefix="/api")
+    app.include_router(cases.router, prefix="/api")
+    app.include_router(analytics.router, prefix="/api")
+    app.include_router(policies.router, prefix="/api")
+    app.include_router(simulation.router, prefix="/api")
+    app.include_router(settings_router.router, prefix="/api")
     return app
 
 

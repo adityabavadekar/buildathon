@@ -115,6 +115,7 @@ headers.append((REQUEST_ID_HEADER, request_id))
 
 ## Never
 
+- **NEVER EVER HARDCODE ANYTHING IN FRONTEND.** All metrics, statuses, URLs, policy rules, breakdown percentages, failure category distributions, models, and configuration MUST be fetched dynamically from the backend API or loaded from explicit environment configuration. Hardcoding dummy values, static percentages, static URLs, or static policy tables in UI components is strictly prohibited.
 - Hardcoding random values, spread accross files. Use a constants file for such cases.
 - Add code boundaries like "----". Keep code clean and compactly documented ONLY where needed.
 - **Never commit `.env`.** Only `.env.example`, with dummy values.

@@ -51,13 +51,30 @@ class Settings(BaseSettings):
         description="Allowed browser origins for local development and network access.",
     )
 
-    # These keep their conventional names rather than taking the APP_ prefix, so
-    # provider SDKs and other tooling find them unchanged.
+    # LLM Providers (OpenRouter is primary; Anthropic and OpenAI optional)
+    openrouter_api_key: SecretStr | None = Field(
+        default=None, validation_alias="OPENROUTER_API_KEY"
+    )
+    openrouter_model: str = Field(
+        default="openrouter/anthropic/claude-3.5-sonnet",
+        validation_alias="OPENROUTER_MODEL",
+    )
     anthropic_api_key: SecretStr | None = Field(
         default=None, validation_alias="ANTHROPIC_API_KEY"
     )
     openai_api_key: SecretStr | None = Field(
         default=None, validation_alias="OPENAI_API_KEY"
+    )
+
+    # Razorpay Gateway & Webhook Credentials
+    razorpay_key_id: str | None = Field(
+        default=None, validation_alias="RAZORPAY_KEY_ID"
+    )
+    razorpay_key_secret: SecretStr | None = Field(
+        default=None, validation_alias="RAZORPAY_KEY_SECRET"
+    )
+    razorpay_webhook_secret: SecretStr | None = Field(
+        default=None, validation_alias="RAZORPAY_WEBHOOK_SECRET"
     )
 
     @property
