@@ -40,6 +40,10 @@ class RawFailureEvent(BaseModel):
     occurred_at: datetime = Field(description="Timezone-aware UTC timestamp of failure")
     invoice_id: str | None = None
     subscription_id: str | None = None
+    contact_email: str | None = None
+    contact_phone: str | None = None
+    experiment_tag: str | None = None
+    model_override: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 

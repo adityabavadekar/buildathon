@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import time
-from typing import Any
 
 from fastapi import APIRouter, Request
 from pydantic import BaseModel
@@ -51,10 +50,15 @@ class ModelStatItem(BaseModel):
     model: str
     provider: str
     call_count: int
+    success_count: int = 0
+    fallback_count: int = 0
     total_input_tokens: int
     total_output_tokens: int
     total_cost_usd: float
     avg_latency_ms: float
+    p50_latency_ms: float = 0.0
+    p95_latency_ms: float = 0.0
+    last_call_at: str | None = None
 
 
 class LLMReportResponse(BaseModel):
@@ -141,91 +145,46 @@ async def update_llm_config(new_state: LLMSettingsState) -> LLMSettingsState:
     summary="Get LLM Cost & Token Report",
 )
 async def get_llm_report() -> LLMReportResponse:
-    """Aggregate token usage, latency, and cost accounting across case audit trails."""
+    """Aggregate token usage, latency, and cost accounting directly from model_telemetry table."""
     repo = get_case_repository()
     store = get_llm_settings_store()
     state = store.get_state()
 
-    cases = list(repo.list_cases(limit=10000))
-    model_stats: dict[str, dict[str, Any]] = {}
-
-    total_calls = 0
-    total_in = 0
-    total_out = 0
-    total_cost = 0.0
-    total_latency = 0.0
-    latency_count = 0
-
-    for case in cases:
-        for entry in case.audit_trail:
-            meta = entry.model_metadata
-            if not meta:
-                continue
-
-            model_name = meta.get("model") or "unknown"
-            inp = meta.get("input_tokens") or 0
-            out = meta.get("output_tokens") or 0
-            cost = meta.get("cost_usd") or 0.0
-            lat = meta.get("latency_ms")
-
-            total_calls += 1
-            total_in += inp
-            total_out += out
-            total_cost += cost
-
-            if lat is not None:
-                total_latency += lat
-                latency_count += 1
-
-            if model_name not in model_stats:
-                provider_guess = (
-                    "openrouter"
-                    if "openrouter" in model_name or "/" in model_name
-                    else "direct"
-                )
-                model_stats[model_name] = {
-                    "model": model_name,
-                    "provider": provider_guess,
-                    "call_count": 0,
-                    "total_input_tokens": 0,
-                    "total_output_tokens": 0,
-                    "total_cost_usd": 0.0,
-                    "latencies": [],
-                }
-
-            stat = model_stats[model_name]
-            stat["call_count"] += 1
-            stat["total_input_tokens"] += inp
-            stat["total_output_tokens"] += out
-            stat["total_cost_usd"] += cost
-            if lat is not None:
-                stat["latencies"].append(lat)
-
+    telemetry_data = repo.get_model_telemetry_report()
     breakdown: list[ModelStatItem] = []
-    for m, s in model_stats.items():
-        lats = s["latencies"]
-        avg_lat = round(sum(lats) / len(lats), 1) if lats else 0.0
+    for m in telemetry_data.get("models", []):
         breakdown.append(
             ModelStatItem(
-                model=m,
-                provider=s["provider"],
-                call_count=s["call_count"],
-                total_input_tokens=s["total_input_tokens"],
-                total_output_tokens=s["total_output_tokens"],
-                total_cost_usd=round(s["total_cost_usd"], 5),
-                avg_latency_ms=avg_lat,
+                model=m["model"],
+                provider=m["provider"],
+                call_count=m["call_count"],
+                success_count=m.get("success_count", 0),
+                fallback_count=m.get("fallback_count", 0),
+                total_input_tokens=m["total_input_tokens"],
+                total_output_tokens=m["total_output_tokens"],
+                total_cost_usd=m["total_cost_usd"],
+                avg_latency_ms=m["avg_latency_ms"],
+                p50_latency_ms=m.get("p50_latency_ms", 0.0),
+                p95_latency_ms=m.get("p95_latency_ms", 0.0),
+                last_call_at=m.get("last_call_at"),
             )
         )
 
-    avg_overall_latency = (
-        round(total_latency / latency_count, 1) if latency_count > 0 else 0.0
-    )
+    avg_overall_latency = 0.0
+    if breakdown:
+        total_calls = telemetry_data["total_calls"]
+        if total_calls > 0:
+            avg_overall_latency = round(
+                sum(item.avg_latency_ms * item.call_count for item in breakdown)
+                / total_calls,
+                1,
+            )
 
     return LLMReportResponse(
-        total_calls=total_calls,
-        total_input_tokens=total_in,
-        total_output_tokens=total_out,
-        total_cost_usd=round(total_cost, 5),
+        total_calls=telemetry_data["total_calls"],
+        total_input_tokens=telemetry_data["total_input_tokens"],
+        total_output_tokens=telemetry_data["total_output_tokens"],
+        total_cost_usd=telemetry_data["total_cost_usd"],
         average_latency_ms=avg_overall_latency,
         model_breakdown=breakdown,
         providers=state.providers,

@@ -16,9 +16,14 @@ logger = get_logger(__name__)
 
 DEFAULT_MODELS: dict[str, list[str]] = {
     "openrouter": [
+        "nvidia/nemotron-3.5-lightning:free",
+        "google/gemma-4-26b-a4b-it:free",
+        "liquid/lfm-2.5-2.6b:free",
+        "nvidia/nemotron-nano-9b-v2:free",
+        "nvidia/nemotron-3-super-120b-a12b:free",
+        "poolside/laguna-s-2.1:free",
         "anthropic/claude-3.7-sonnet",
         "openai/gpt-4o",
-        "google/gemini-2.5-flash",
         "deepseek/deepseek-r1",
         "meta-llama/llama-3.3-70b-instruct",
     ],
@@ -31,6 +36,14 @@ DEFAULT_MODELS: dict[str, list[str]] = {
         "openai/gpt-4o",
         "openai/gpt-4o-mini",
         "openai/o3-mini",
+    ],
+    "groq": [
+        "openai/gpt-oss-120b",
+        "openai/gpt-oss-20b",
+        "groq/compound",
+        "groq/compound-mini",
+        "qwen/qwen3.6-27b",
+        "qwen/qwen3.8-27b",
     ],
     "deterministic_rules": [
         "NPCI & Razorpay Rule Classifier",
@@ -79,6 +92,9 @@ class LLMSettingsStore:
             settings.openai_api_key
             and settings.openai_api_key.get_secret_value().strip()
         )
+        has_groq = bool(
+            settings.groq_api_key and settings.groq_api_key.get_secret_value().strip()
+        )
 
         return LLMSettingsState(
             providers=[
@@ -102,10 +118,19 @@ class LLMSettingsStore:
                     has_api_key=has_anthropic,
                 ),
                 ProviderSetting(
+                    name="groq",
+                    label="Groq (Fast OpenAI-Compat, Free Models)",
+                    enabled=True,
+                    priority=3,
+                    active_model="openai/gpt-oss-120b",
+                    available_models=DEFAULT_MODELS["groq"],
+                    has_api_key=has_groq,
+                ),
+                ProviderSetting(
                     name="openai",
                     label="OpenAI GPT API",
                     enabled=True,
-                    priority=3,
+                    priority=4,
                     active_model="openai/gpt-4o",
                     available_models=DEFAULT_MODELS["openai"],
                     has_api_key=has_openai,
@@ -114,7 +139,7 @@ class LLMSettingsStore:
                     name="deterministic_rules",
                     label="Deterministic Taxonomy Rule Fallback (Offline)",
                     enabled=True,
-                    priority=4,
+                    priority=5,
                     active_model="NPCI & Razorpay Rule Classifier",
                     available_models=DEFAULT_MODELS["deterministic_rules"],
                     has_api_key=True,
@@ -147,11 +172,24 @@ class LLMSettingsStore:
                     settings.openai_api_key
                     and settings.openai_api_key.get_secret_value().strip()
                 ),
+                "groq": bool(
+                    settings.groq_api_key
+                    and settings.groq_api_key.get_secret_value().strip()
+                ),
                 "deterministic_rules": True,
             }
             for p in state.providers:
                 if p.name in key_map:
                     p.has_api_key = key_map[p.name]
+                if p.name == "openrouter" and settings.openrouter_model:
+                    clean_env_model = settings.openrouter_model.removeprefix(
+                        "openrouter/"
+                    )
+                    if clean_env_model not in p.available_models:
+                        p.available_models.insert(0, clean_env_model)
+                    if settings.openrouter_model not in p.available_models:
+                        p.available_models.insert(0, settings.openrouter_model)
+                    p.active_model = clean_env_model
             return state
         except Exception as exc:  # noqa: BLE001
             logger.warning("llm.settings_store.load_error", error=str(exc))

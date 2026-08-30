@@ -2,7 +2,7 @@
 
 Uses litellm to formulate structured recovery recommendations with personalized
 messaging. Falls back to deterministic rule classification if providers are
-unavailable or confidence is low.
+unavailable or confidence is low, while preserving full per-decision audit snapshots.
 """
 
 from __future__ import annotations
@@ -14,6 +14,8 @@ from typing import Any, cast
 
 from pydantic import BaseModel, Field
 
+from app.audit.models import ModelTelemetryEntry
+from app.audit.repository import get_case_repository
 from app.core.constants import MIN_CONFIDENCE_THRESHOLD
 from app.core.enums import (  # noqa: TC001
     FailureCategory,
@@ -23,7 +25,8 @@ from app.core.enums import (  # noqa: TC001
 from app.core.logging import get_logger
 from app.detection.classifier import FailureClassifier
 from app.detection.models import DiagnosisResult, RawFailureEvent
-from app.llm.client import complete, configured_providers
+from app.llm.client import complete, configured_providers, sanitize_llm_error_message
+from app.llm.settings_store import get_llm_settings_store
 
 logger = get_logger(__name__)
 
@@ -47,9 +50,9 @@ Analyze the payment failure and output a single, compact JSON object matching th
 
 Schema:
 {
-  "category": "TRANSIENT_BANK_WINDOW" | "LIQUIDITY_CONSTRAINT" | "STRUCTURAL_MANDATE_FAILURE" | "CHECKOUT_DROP_OFF",
+  "category": "TRANSIENT_BANK_WINDOW" | "LIQUIDITY_CONSTRAINT" | "STRUCTURAL_MANDATE_FAILURE" | "CHECKOUT_DROP_OFF" | "B2B_RECEIVABLES_OVERDUE" | "PROMISE_TO_PAY_DELAY",
   "confidence": 0.95,
-  "intervention_type": "PASSIVE_RETRY" | "SMART_RETRY" | "SMART_PAYMENT_LINK" | "CUSTOMER_NUDGE" | "INCENTIVIZED_LINK" | "MANUAL_ESCALATION",
+  "intervention_type": "PASSIVE_RETRY" | "SMART_RETRY" | "SMART_PAYMENT_LINK" | "CUSTOMER_NUDGE" | "INCENTIVIZED_LINK" | "MANUAL_ESCALATION" | "ACCOUNT_MANAGER_OUTREACH" | "P2P_PROMISE_TRACKER",
   "delay_hours": 0,
   "discount_bps": 0,
   "channel": "WHATSAPP" | "SMS" | "EMAIL",
@@ -63,13 +66,16 @@ Taxonomy Rules:
 - Structural mandate/account issues (VA, FL, AP09, AP10): category=STRUCTURAL_MANDATE_FAILURE, intervention_type=SMART_PAYMENT_LINK, delay_hours=0, discount_bps=0.
 - Insufficient balance (AP15, insufficient_funds): category=LIQUIDITY_CONSTRAINT, intervention_type=SMART_RETRY, delay_hours=48, discount_bps=0, channel=WHATSAPP.
 - 3DS / OTP timeout drop-offs: category=CHECKOUT_DROP_OFF, intervention_type=INCENTIVIZED_LINK, delay_hours=0, discount_bps=500, channel=WHATSAPP.
+- B2B overdue receivables: category=B2B_RECEIVABLES_OVERDUE, intervention_type=ACCOUNT_MANAGER_OUTREACH, delay_hours=0, discount_bps=0, channel=EMAIL.
+- Promise to pay salary delay: category=PROMISE_TO_PAY_DELAY, intervention_type=P2P_PROMISE_TRACKER, delay_hours=72, discount_bps=0, channel=WHATSAPP.
 Output JSON ONLY. No preamble or markdown commentary.
 """
 
 
 def _extract_json_block(text: str) -> dict[str, Any]:
-    """Extract and parse first valid JSON object from LLM text response."""
-    clean = text.strip()
+    """Extract and parse first valid JSON object from LLM text response, stripping reasoning tags."""
+    # Strip <think>...</think> reasoning blocks from thinking models
+    clean = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
     clean = (
         clean.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
     )
@@ -80,8 +86,8 @@ def _extract_json_block(text: str) -> dict[str, Any]:
             return cast("dict[str, Any]", parsed)
         msg = "LLM response is not a JSON object"
         raise ValueError(msg)
-    except json.JSONDecodeError:
-        match = re.search(r"\{.*\}", clean, re.DOTALL)
+    except (json.JSONDecodeError, ValueError):
+        match = re.search(r"\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}", clean, re.DOTALL)
         if match:
             fallback_parsed: Any = json.loads(match.group(0))
             if isinstance(fallback_parsed, dict):
@@ -90,7 +96,7 @@ def _extract_json_block(text: str) -> dict[str, Any]:
 
 
 class RecoveryPlanner:
-    """Orchestrates LLM strategy formulation with deterministic fallback."""
+    """Orchestrates LLM strategy formulation with deterministic fallback and per-decision audit snapshots."""
 
     def __init__(self, fallback_classifier: FailureClassifier | None = None) -> None:
         self.fallback_classifier = fallback_classifier or FailureClassifier()
@@ -100,13 +106,58 @@ class RecoveryPlanner:
         event: RawFailureEvent,
         *,
         model: str | None = None,
-    ) -> tuple[DiagnosisResult, dict[str, Any] | None]:
+    ) -> tuple[DiagnosisResult, dict[str, Any]]:
         """Generate a recovery diagnosis and strategy plan using LLM or deterministic fallback."""
         providers = configured_providers()
-        if not providers or any(
-            k in str(event.metadata) for k in ("simulation", "test")
+        store = get_llm_settings_store()
+        state = store.get_state()
+        repo = get_case_repository()
+        target_model = model or event.model_override
+        experiment_tag = event.experiment_tag
+
+        config_snapshot = {
+            "fallback_order": [p.name for p in state.providers if p.enabled],
+            "active_models": {
+                p.name: p.active_model for p in state.providers if p.enabled
+            },
+        }
+
+        # If offline simulation mode or no keys, route to deterministic with explicit metadata
+        if (not providers and not target_model) or any(
+            k in str(event.metadata) for k in ("test_offline",)
         ):
-            return self.fallback_classifier.classify(event), None
+            fallback_res = self.fallback_classifier.classify(event)
+            meta = {
+                "model": "deterministic-rules-v1",
+                "provider": "deterministic",
+                "version": "1.0",
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "cost_usd": 0.0,
+                "latency_ms": 0.5,
+                "call_id": None,
+                "used_fallback": True,
+                "fallback_reason": "No live provider keys configured or offline mode",
+                "experiment_tag": experiment_tag,
+                "config_snapshot": config_snapshot,
+            }
+            repo.record_model_telemetry(
+                ModelTelemetryEntry(
+                    model="deterministic-rules-v1",
+                    provider="deterministic",
+                    version="1.0",
+                    input_tokens=0,
+                    output_tokens=0,
+                    cost_usd=0.0,
+                    latency_ms=0.5,
+                    success=True,
+                    used_fallback=True,
+                    fallback_reason="No live provider keys configured",
+                    experiment_tag=experiment_tag,
+                    config_snapshot=config_snapshot,
+                )
+            )
+            return fallback_res, meta
 
         prompt_payload = {
             "payment_id": event.payment_id,
@@ -128,21 +179,30 @@ class RecoveryPlanner:
             },
         ]
 
-        llm_metadata: dict[str, Any] | None = None
+        fallback_reason: str = "Unknown"
 
         try:
-            kwargs: dict[str, Any] = {"max_tokens": 1500}
-            if model:
-                kwargs["model"] = model
+            kwargs: dict[str, Any] = {
+                "max_tokens": 16384,
+                "experiment_tag": experiment_tag,
+            }
+            if target_model:
+                kwargs["model"] = target_model
 
             response = await complete(messages, **kwargs)
             llm_metadata = {
                 "model": response.model,
+                "provider": response.provider,
+                "version": response.version,
                 "input_tokens": response.input_tokens,
                 "output_tokens": response.output_tokens,
                 "cost_usd": response.cost_usd,
                 "call_id": response.call_id,
                 "latency_ms": response.latency_ms,
+                "used_fallback": False,
+                "fallback_reason": None,
+                "experiment_tag": experiment_tag,
+                "config_snapshot": response.config_snapshot or config_snapshot,
             }
 
             parsed_data = _extract_json_block(response.text)
@@ -159,6 +219,7 @@ class RecoveryPlanner:
                     requires_human_approval=False,
                     signals_evaluated={
                         "llm_model": response.model,
+                        "llm_provider": response.provider,
                         "dunning_message_en": plan.dunning_message_en,
                         "dunning_message_hi": plan.dunning_message_hi,
                         "suggested_channel": plan.channel.value
@@ -168,6 +229,9 @@ class RecoveryPlanner:
                 )
                 return diagnosis, llm_metadata
 
+            fallback_reason = (
+                f"Low confidence: {plan.confidence} < {MIN_CONFIDENCE_THRESHOLD}"
+            )
             logger.warning(
                 "llm.planner.low_confidence",
                 confidence=str(plan.confidence),
@@ -175,12 +239,53 @@ class RecoveryPlanner:
             )
 
         except Exception as exc:  # noqa: BLE001
-            # Any provider outage, network timeout, or parse failure triggers safe deterministic fallback
+            fallback_reason = sanitize_llm_error_message(exc)
             logger.info(
                 "llm.planner.fallback_to_rules",
                 reason=type(exc).__name__,
                 detail=str(exc),
             )
 
-        # Fallback to deterministic rule classifier
-        return self.fallback_classifier.classify(event), llm_metadata
+        attempted_model = target_model or (
+            state.providers[0].active_model
+            if state.providers
+            else "anthropic/claude-3.7-sonnet"
+        )
+        attempted_provider = state.providers[0].name if state.providers else "anthropic"
+
+        # Deterministic rule fallback with structured audit metadata and telemetry
+        fallback_res = self.fallback_classifier.classify(event)
+        meta = {
+            "model": "deterministic-rules-v1",
+            "provider": "deterministic",
+            "attempted_model": attempted_model,
+            "attempted_provider": attempted_provider,
+            "version": "1.0",
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cost_usd": 0.0,
+            "latency_ms": 0.5,
+            "call_id": None,
+            "used_fallback": True,
+            "has_error": True,
+            "fallback_reason": fallback_reason,
+            "experiment_tag": experiment_tag,
+            "config_snapshot": config_snapshot,
+        }
+        repo.record_model_telemetry(
+            ModelTelemetryEntry(
+                model="deterministic-rules-v1",
+                provider="deterministic",
+                version="1.0",
+                input_tokens=0,
+                output_tokens=0,
+                cost_usd=0.0,
+                latency_ms=0.5,
+                success=True,
+                used_fallback=True,
+                fallback_reason=fallback_reason,
+                experiment_tag=experiment_tag,
+                config_snapshot=config_snapshot,
+            )
+        )
+        return fallback_res, meta

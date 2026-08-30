@@ -19,6 +19,7 @@ import { Badge, type BadgeVariant } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { GlossaryTerm } from '@/components/ui/GlossaryTerm'
 import { STATE_READINGS } from '@/lib/glossary'
+import { RailBadge } from '@/components/ui/BrandIcons'
 import { WhatsAppPreview } from '@/components/whatsapp/WhatsAppPreview'
 
 interface CaseDetailDrawerProps {
@@ -186,9 +187,9 @@ export function CaseDetailDrawer({
                   Failure Telemetry & Ingestion
                 </span>
                 <div className="p-4 rounded-panel bg-surface-sunken/60 border border-border space-y-2 font-mono text-xs">
-                  <div className="flex justify-between">
+                  <div className="flex justify-between items-center">
                     <span className="text-ink-muted">Payment Rail:</span>
-                    <span className="text-ink font-semibold uppercase">{caseItem.failure_event.payment_rail}</span>
+                    <RailBadge rail={caseItem.failure_event.payment_rail} />
                   </div>
                   <div className="flex justify-between">
                     <span className="text-ink-muted">Error Category:</span>

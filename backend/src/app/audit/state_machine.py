@@ -29,6 +29,7 @@ VALID_TRANSITIONS: dict[RecoveryState, set[RecoveryState]] = {
         RecoveryState.FAILED,
     },
     RecoveryState.IN_DUNNING: {
+        RecoveryState.IN_DUNNING,
         RecoveryState.RETRY_SCHEDULED,
         RecoveryState.OUTREACH_PENDING,
         RecoveryState.P2P_WAITING,

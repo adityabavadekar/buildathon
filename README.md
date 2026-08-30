@@ -1,7 +1,7 @@
-# Revenue Recovery
+# FORTX - Flow Orchestration & Revenue Trust eXecution
 
 An agent that finds revenue at risk, works out why, runs a bounded recovery
-action, and proves — across a batch, with an audit trail — how much it actually
+action, and proves - across a batch, with an audit trail - how much it actually
 recovered.
 
 Built for the Razorpay AI Buildathon, Track 3 (AI Revenue Recovery).
@@ -20,7 +20,7 @@ make dev         # backend on :8000, frontend on :5173
 ```
 
 Then open <http://localhost:5173>. The page shows the live result of the
-backend's `/health` endpoint — if it says "Online", both services are talking.
+backend's `/health` endpoint - if it says "Online", both services are talking.
 
 No `.env` file is required to run the scaffold. To add LLM provider keys later:
 
@@ -63,11 +63,10 @@ docs/             architecture, decisions, research
 
 ## Docs
 
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — system design, data flow, audit trail
-- [docs/DECISIONS.md](docs/DECISIONS.md) — decision log, including what broke and why things changed
-- [docs/BUILDATHON.md](docs/BUILDATHON.md) — the brief this is built against
-- [docs/RESEARCH.md](docs/RESEARCH.md) — verified research on Razorpay's APIs, the regulatory constraints, and dataset availability
-- [AGENTS.md](AGENTS.md) — working instructions for coding agents
+- [docs/DECISIONS.md](docs/DECISIONS.md) - decision log, including what broke and why things changed
+- [docs/BUILDATHON.md](docs/BUILDATHON.md) - the brief this is built against
+- [docs/RESEARCH.md](docs/RESEARCH.md) - verified research on Razorpay's APIs, the regulatory constraints, and dataset availability
+- [AGENTS.md](AGENTS.md) - working instructions for coding agents
 
 ## Requirements
 
@@ -88,7 +87,7 @@ a surprise later.
 **System packages (via apt, needed sudo):**
 
 ```bash
-# Node 22 LTS — the system had 20.19.2, which reached end-of-life in April 2026
+# Node 22 LTS - the system had 20.19.2, which reached end-of-life in April 2026
 # and is below what current Vite 8 tooling expects.
 curl -fsSL https://deb.nodesource.com/setup_22.x | sudo bash -
 sudo apt-get install -y nodejs        # -> node 22.23.2, npm 10.9.8
@@ -101,7 +100,7 @@ sudo corepack enable pnpm             # -> pnpm 11.24.0
   (~115 MB, cached in `~/.cache/ms-playwright/`). Used once to confirm the page
   really renders live backend data in a browser rather than only in `curl`.
   Remove with `rm -rf ~/.cache/ms-playwright` if you don't want it.
-- `tesseract-ocr`, `tesseract-ocr-eng`, `tesseract-ocr-osd`, `libtesseract5` —
+- `tesseract-ocr`, `tesseract-ocr-eng`, `tesseract-ocr-osd`, `libtesseract5` -
   installed by a research subagent to OCR scanned NPCI circulars. **Not used by
   this project.** Remove with
   `sudo apt remove tesseract-ocr tesseract-ocr-eng tesseract-ocr-osd`.

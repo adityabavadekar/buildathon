@@ -13,9 +13,11 @@ import {
   RefreshCw,
   Search,
   ShieldAlert,
+  Sparkles,
   Zap,
 } from 'lucide-react'
-import type { RecoveryCase } from '@/lib/api'
+import { seedSimulation, type RecoveryCase } from '@/lib/api'
+import { Button } from '@/components/ui/button'
 
 interface AuditViewProps {
   cases: RecoveryCase[]
@@ -49,6 +51,7 @@ export function AuditView({
   const [searchQuery, setSearchQuery] = useState<string>('')
   const [expandedEntryId, setExpandedEntryId] = useState<string | null>(null)
   const [page, setPage] = useState<number>(1)
+  const [isSeeding, setIsSeeding] = useState<boolean>(false)
   const perPage = 15
 
   // Flatten all case audit trails chronologically
@@ -64,7 +67,7 @@ export function AuditView({
           timestamp: e.timestamp,
           event_name: e.event_name,
           actor: e.actor,
-          reason: e.reason,
+          reason: (e.notes ?? e.reason) || '',
           cost_incurred_paise: e.cost_incurred_paise,
           decision_inputs: e.decision_inputs,
           from_state: e.from_state,
@@ -335,7 +338,28 @@ export function AuditView({
               {paginatedEntries.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="py-12 text-center text-ink-muted">
-                    No audit records match the current filter criteria.
+                    <div className="flex flex-col items-center justify-center gap-3">
+                      <p>No audit records match the current filter criteria.</p>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={isSeeding}
+                        onClick={() => {
+                          setIsSeeding(true)
+                          void seedSimulation(30, true)
+                            .then(() => {
+                              if (onRefresh) onRefresh()
+                            })
+                            .finally(() => {
+                              setIsSeeding(false)
+                            })
+                        }}
+                        className="gap-2 text-xs font-mono cursor-pointer"
+                      >
+                        <Sparkles className="h-3.5 w-3.5 text-accent" />
+                        <span>{isSeeding ? 'Seeding Batch...' : 'Seed Recovery Batch'}</span>
+                      </Button>
+                    </div>
                   </td>
                 </tr>
               ) : (

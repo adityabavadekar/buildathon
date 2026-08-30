@@ -64,9 +64,9 @@ def test_e2e_webhook_relay_round_trip_and_resolution(
             "X-Razorpay-Signature": fail_signature,
         },
     )
-    assert response_fail.status_code == 200
+    assert response_fail.status_code == 202
     fail_data = response_fail.json()
-    assert fail_data["status"] == "processed"
+    assert fail_data["status"] == "queued"
     case_id = fail_data["case_id"]
     assert case_id is not None
 

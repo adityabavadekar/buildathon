@@ -21,6 +21,9 @@ dev-backend: ## Run the backend only
 dev-frontend: ## Run the frontend only
 	cd $(FRONTEND) && pnpm dev --port 5173
 
+worker: ## Run the recovery background worker daemon
+	cd $(BACKEND) && uv run python -m app.worker.main
+
 test: ## Run backend tests
 	cd $(BACKEND) && uv run pytest
 

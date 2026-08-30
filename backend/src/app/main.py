@@ -11,7 +11,20 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app import __version__
-from app.api.routes import analytics, cases, health, policies, simulation, webhooks
+from app.api.routes import (
+    analytics,
+    cases,
+    customers,
+    experiments,
+    health,
+    operator,
+    pipeline,
+    policies,
+    rail_health,
+    simulation,
+    webhooks,
+    workflows,
+)
 from app.api.routes import settings as settings_router
 from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging, get_logger
@@ -72,10 +85,16 @@ def create_app() -> FastAPI:
     # Domain API routes
     app.include_router(webhooks.router, prefix="/api")
     app.include_router(cases.router, prefix="/api")
+    app.include_router(customers.router, prefix="/api")
     app.include_router(analytics.router, prefix="/api")
     app.include_router(policies.router, prefix="/api")
+    app.include_router(rail_health.router, prefix="/api")
     app.include_router(simulation.router, prefix="/api")
+    app.include_router(pipeline.router, prefix="/api")
+    app.include_router(operator.router, prefix="/api")
+    app.include_router(experiments.router, prefix="/api")
     app.include_router(settings_router.router, prefix="/api")
+    app.include_router(workflows.router, prefix="/api")
     return app
 
 

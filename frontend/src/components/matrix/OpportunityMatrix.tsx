@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react'
 import type { RecoveryCase } from '@/lib/api'
+import { RailBadge } from '@/components/ui/BrandIcons'
 import {
   Card,
   CardContent,
@@ -159,9 +160,9 @@ export function OpportunityMatrix({ cases, onSelectCase }: OpportunityMatrixProp
                   {getRecoveryProbability(hoveredCase).toString()}% Probability
                 </span>
               </div>
-              <div className="mt-1 text-ink-muted text-[11px]">
-                <span>{hoveredCase.failure_event.customer_id}</span> ·{' '}
-                <span className="uppercase">{hoveredCase.failure_event.payment_rail}</span>
+              <div className="mt-1 flex items-center justify-between gap-2 text-ink-muted text-[11px]">
+                <span>{hoveredCase.failure_event.customer_id}</span>
+                <RailBadge rail={hoveredCase.failure_event.payment_rail} />
               </div>
               <div className="mt-1 font-semibold text-ink">
                 Amount: {formatINR(hoveredCase.amount_paise)}

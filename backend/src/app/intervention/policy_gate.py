@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 
 from app.audit.models import RecoveryCase
 from app.core.enums import ExperimentArm, InterventionType, PolicyCheckResult
+from app.detection.rail_health import get_rail_health_registry
 from app.intervention.models import InterventionPlan, MerchantPolicy, PolicyEvaluation
 
 
@@ -105,6 +106,28 @@ class PolicyGate:
                 ),
                 evaluated_at=now,
             )
+
+        if plan.intervention_type in (
+            InterventionType.PASSIVE_RETRY,
+            InterventionType.SMART_RETRY,
+        ):
+            rail_registry = get_rail_health_registry()
+            rail_str = (
+                case.failure_event.payment_rail.value
+                if hasattr(case.failure_event.payment_rail, "value")
+                else str(case.failure_event.payment_rail)
+            )
+            if rail_registry.is_rail_degraded(rail_str):
+                metrics = rail_registry.get_rail_metrics(rail_str)
+                return PolicyEvaluation(
+                    result=PolicyCheckResult.BLOCKED_COOLDOWN,
+                    is_allowed=False,
+                    reason=(
+                        f"Payment rail {rail_str} is currently degraded (failure rate {metrics.current_failure_rate:.1%}, "
+                        f"{metrics.ratio:.1f}x baseline). Halting automated retries until rail recovers."
+                    ),
+                    evaluated_at=now,
+                )
 
         return self._check_cooldown(case, plan, policy, now)
 

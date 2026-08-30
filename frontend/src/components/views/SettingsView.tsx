@@ -2,21 +2,23 @@
 
 import React, { useEffect, useState } from 'react'
 import {
-  ArrowDown,
-  ArrowUp,
   Check,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   Coins,
   Cpu,
-  RefreshCw,
+  FlaskConical,
+  Save,
   Server,
-  Zap,
 } from 'lucide-react'
 import {
   getLlmConfig,
   getLlmReport,
+  listExperiments,
   testGatewayConnection,
   updateLlmConfig,
+  type ExperimentMetric,
   type GatewayTestResponse,
   type LLMReportResponse,
   type LLMSettingsState,
@@ -31,7 +33,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
-import { RazorpayIcon, RazorpaySymbol, UpiIcon } from '@/components/ui/BrandIcons'
+import { RazorpaySymbol } from '@/components/ui/BrandIcons'
 import { SkeletonCard } from '@/components/ui/skeleton'
 
 interface SettingsViewProps {
@@ -45,6 +47,7 @@ export function SettingsView({ settings, loading }: SettingsViewProps) {
 
   const [llmConfig, setLlmConfig] = useState<LLMSettingsState | null>(null)
   const [llmReport, setLlmReport] = useState<LLMReportResponse | null>(null)
+  const [experiments, setExperiments] = useState<ExperimentMetric[]>([])
   const [savingConfig, setSavingConfig] = useState<boolean>(false)
   const [saveSuccess, setSaveSuccess] = useState<boolean>(false)
 
@@ -54,6 +57,9 @@ export function SettingsView({ settings, loading }: SettingsViewProps) {
       .catch(() => null)
     getLlmReport()
       .then(setLlmReport)
+      .catch(() => null)
+    listExperiments()
+      .then(setExperiments)
       .catch(() => null)
   }, [])
 
@@ -116,193 +122,121 @@ export function SettingsView({ settings, loading }: SettingsViewProps) {
       setTimeout(() => {
         setSaveSuccess(false)
       }, 3000)
+      const freshReport = await getLlmReport()
+      setLlmReport(freshReport)
     } finally {
       setSavingConfig(false)
     }
   }
 
-  if (loading || !settings) {
-    return <SkeletonCard />
-  }
-
   return (
     <div className="space-y-6">
-      {/* View Header with Plain-Language Context */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border pb-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <RazorpaySymbol className="h-6 w-6" />
-            <h1 className="text-2xl font-bold font-mono text-ink">
-              Merchant Settings & LLM Configuration
-            </h1>
-          </div>
-          <p className="text-sm text-ink-muted mt-0.5">
-            Razorpay merchant profile, dynamic AI provider fallback chain, and historical token cost reporting.
-          </p>
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => {
-            void handleTestGateway()
-          }}
-          disabled={testingGateway}
-          className="font-mono text-xs flex items-center gap-1.5"
-        >
-          <Zap className="h-3.5 w-3.5 text-accent" />
-          {testingGateway ? 'Probing Gateway...' : 'Test Razorpay Connection'}
-        </Button>
+      {/* View Header */}
+      <div className="border-b border-border pb-4">
+        <h1 className="text-2xl font-bold font-mono text-ink">
+          System & Engine Settings
+        </h1>
+        <p className="text-sm text-ink-muted mt-0.5">
+          Real-time gateway credentials, multi-provider LLM priority hierarchy, model telemetry, and A/B experiment evaluation.
+        </p>
       </div>
 
-      {/* Gateway Probe Diagnostic Card */}
-      {gatewayTestResult && (
-        <Card className="border-accent/40 bg-accent-subtle/10 animate-in fade-in-0 duration-200">
-          <CardHeader className="p-5 pb-2">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="h-5 w-5 text-recovered" />
-                <CardTitle className="text-sm font-mono font-bold text-ink">
-                  Razorpay Gateway Handshake Diagnostic: {gatewayTestResult.status}
-                </CardTitle>
-              </div>
-              <span className="font-mono text-xs text-recovered font-bold">
-                {gatewayTestResult.latency_ms.toFixed(1)}ms Latency
-              </span>
-            </div>
-            <CardDescription className="text-xs text-ink mt-0.5">
-              {gatewayTestResult.message}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="p-5 pt-2 grid grid-cols-1 sm:grid-cols-3 gap-3 font-mono text-xs border-t border-border/60">
-            <div>
-              <span className="text-ink-muted block text-[11px]">Key ID:</span>
-              <span className="text-ink font-semibold">{gatewayTestResult.key_id}</span>
-            </div>
-            <div>
-              <span className="text-ink-muted block text-[11px]">HMAC Signature Verification:</span>
-              <Badge variant={gatewayTestResult.hmac_ready ? 'recovered' : 'pending'}>
-                {gatewayTestResult.hmac_ready ? 'SHA-256 Verified' : 'Dev Simulation'}
-              </Badge>
-            </div>
-            <div>
-              <span className="text-ink-muted block text-[11px]">Supported Rails:</span>
-              <span className="text-ink font-semibold">{gatewayTestResult.supported_rails.length.toString()} Rails Configured</span>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Merchant Profile & Account Overview */}
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <RazorpayIcon className="h-6 w-6 rounded-xs" />
-            <div>
-              <CardTitle>Razorpay Merchant Profile</CardTitle>
-              <CardDescription className="text-xs">
-                Live gateway account details, settlement cycle, and webhook integration
-              </CardDescription>
-            </div>
-          </div>
-          <Badge variant="recovered">Active Merchant</Badge>
-        </CardHeader>
-        <CardContent className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 font-mono text-xs pt-2">
-          <div className="p-3 rounded-control bg-surface-sunken border border-border">
-            <span className="text-ink-muted block text-[11px]">Merchant ID</span>
-            <span className="text-ink font-bold text-sm">merch_rzp_prod_01</span>
-          </div>
-          <div className="p-3 rounded-control bg-surface-sunken border border-border">
-            <span className="text-ink-muted block text-[11px]">Default Currency</span>
-            <span className="text-ink font-bold text-sm">INR (Minor units: paise)</span>
-          </div>
-          <div className="p-3 rounded-control bg-surface-sunken border border-border">
-            <span className="text-ink-muted block text-[11px]">Settlement Schedule</span>
-            <span className="text-ink font-bold text-sm">T+1 Rolling Daily</span>
-          </div>
-          <div className="p-3 rounded-control bg-surface-sunken border border-border">
-            <span className="text-ink-muted block text-[11px]">Account Tier</span>
-            <span className="text-accent font-bold text-sm">Standard (Track 3)</span>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Webhook Ingress Configuration */}
+      {/* Gateway Ingress & Credentials Configuration */}
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Server className="h-4 w-4 text-accent" />
-              <CardTitle>Razorpay Webhook Ingress Endpoint</CardTitle>
-            </div>
-            <UpiIcon className="h-4 w-4" />
+          <div className="flex items-center gap-2">
+            <Server className="h-4 w-4 text-accent" />
+            <CardTitle>Razorpay Webhook & Payment Gateway</CardTitle>
           </div>
           <CardDescription className="text-xs">
-            Configure this target URL inside your Razorpay Merchant Dashboard under Settings &gt; Webhooks
+            Direct production connection parameters for synchronous webhook ingress and smart recovery link generation
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div>
-            <label className="text-xs font-mono text-ink-muted uppercase block mb-1">
-              Webhook Ingress URL
-            </label>
-            <div className="flex items-center gap-2">
-              <input
-                type="text"
-                readOnly
-                value={settings.webhook_ingress_url}
-                className="flex-1 rounded-control bg-surface-sunken border border-border px-3 py-2 text-xs font-mono text-ink select-all"
-              />
+          {loading ? (
+            <SkeletonCard />
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 font-mono text-xs">
+              <div className="space-y-1 p-3 rounded-control bg-surface-sunken border border-border">
+                <span className="text-ink-muted block text-[11px]">Active Environment</span>
+                <span className="text-ink font-bold uppercase">{settings?.environment || 'LIVE / PRODUCTION'}</span>
+              </div>
+
+              <div className="space-y-1 p-3 rounded-control bg-surface-sunken border border-border">
+                <span className="text-ink-muted block text-[11px]">Razorpay Key ID</span>
+                <span className="text-ink font-semibold">
+                  {settings?.razorpay_key_id ? `${settings.razorpay_key_id.slice(0, 10)}...` : 'rzp_live_buildathon'}
+                </span>
+              </div>
+
+              <div className="space-y-1 p-3 rounded-control bg-surface-sunken border border-border md:col-span-2">
+                <span className="text-ink-muted block text-[11px]">Ingress Webhook Endpoint</span>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-ink truncate select-all">{settings?.webhook_ingress_url || '/api/webhooks/razorpay'}</span>
+                  <Badge variant={settings?.webhook_secret_configured ? 'recovered' : 'outline'} className="text-[10px]">
+                    {settings?.webhook_secret_configured ? 'HMAC Verification Active' : 'Unsigned (Simulated)'}
+                  </Badge>
+                </div>
+              </div>
             </div>
-            <div className="mt-2 flex items-center gap-2">
-              <span className="text-[11px] font-mono text-ink-subtle">
-                HMAC-SHA256 Secret Verification:
+          )}
+
+          <div className="flex items-center gap-3 pt-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                void handleTestGateway()
+              }}
+              disabled={testingGateway}
+              className="gap-2 font-mono text-xs cursor-pointer"
+            >
+              <RazorpaySymbol className="h-3.5 w-3.5" />
+              <span>{testingGateway ? 'Testing Gateway...' : 'Ping Gateway & Verify HMAC'}</span>
+            </Button>
+            {gatewayTestResult && (
+              <span className="font-mono text-xs text-recovered flex items-center gap-1.5">
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                {gatewayTestResult.message} ({gatewayTestResult.latency_ms.toFixed(0)}ms)
               </span>
-              <Badge variant={settings.webhook_secret_configured ? 'recovered' : 'pending'}>
-                {settings.webhook_secret_configured ? 'Active (SHA-256)' : 'Unset (Dev Fallback)'}
-              </Badge>
-            </div>
+            )}
           </div>
         </CardContent>
       </Card>
 
-      {/* Dynamic LLM Provider Fallback Hierarchy */}
+      {/* LLM Multi-Provider Fallback Hierarchy */}
       <Card>
-        <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div>
-            <div className="flex items-center gap-2">
-              <Cpu className="h-4 w-4 text-accent" />
-              <CardTitle>AI Reasoning Engine & Provider Fallback Priority</CardTitle>
+        <CardHeader>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <Cpu className="h-4 w-4 text-accent" />
+                <CardTitle>AI Reasoning Engine & Provider Hierarchy</CardTitle>
+              </div>
+              <CardDescription className="text-xs">
+                Configure fallback priority, model models, and enable/disable LLM providers dynamically
+              </CardDescription>
             </div>
-            <CardDescription className="text-xs">
-              Reorder fallback hierarchy, toggle providers, and select active models. Persisted to disk.
-            </CardDescription>
+
+            <Button
+              variant="primary"
+              size="sm"
+              disabled={savingConfig || !llmConfig}
+              onClick={() => {
+                void handleSaveLLMConfig()
+              }}
+              className="gap-2 font-mono text-xs cursor-pointer self-start sm:self-auto"
+            >
+              {saveSuccess ? <Check className="h-3.5 w-3.5 text-recovered" /> : <Save className="h-3.5 w-3.5" />}
+              <span>{savingConfig ? 'Saving...' : saveSuccess ? 'Saved to Store' : 'Save LLM Settings'}</span>
+            </Button>
           </div>
-          <Button
-            size="sm"
-            onClick={() => {
-              void handleSaveLLMConfig()
-            }}
-            disabled={savingConfig}
-            className="font-mono text-xs flex items-center gap-1.5"
-          >
-            {saveSuccess ? (
-              <>
-                <Check className="h-3.5 w-3.5 text-white" />
-                <span>Saved to Disk!</span>
-              </>
-            ) : (
-              <>
-                <RefreshCw className={`h-3.5 w-3.5 ${savingConfig ? 'animate-spin' : ''}`} />
-                <span>{savingConfig ? 'Saving...' : 'Save LLM Settings'}</span>
-              </>
-            )}
-          </Button>
         </CardHeader>
         <CardContent className="space-y-3">
           {llmConfig?.providers.map((provider, idx) => (
             <div
               key={provider.name}
-              className={`p-4 rounded-panel border flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-colors ${
+              className={`flex flex-col sm:flex-row sm:items-center justify-between p-3.5 rounded-panel border transition-all gap-3 ${
                 provider.enabled
                   ? 'border-border bg-surface-sunken/40'
                   : 'border-border/40 bg-surface-sunken/10 opacity-60'
@@ -310,10 +244,10 @@ export function SettingsView({ settings, loading }: SettingsViewProps) {
             >
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
-                  <span className="font-mono text-xs font-bold text-accent">
-                    #{provider.priority.toString()}
-                  </span>
-                  <span className="font-mono text-xs font-semibold text-ink">
+                  <Badge variant="outline" className="font-mono text-[10px] bg-surface font-bold text-ink">
+                    Priority #{provider.priority.toString()}
+                  </Badge>
+                  <span className="font-mono text-xs font-bold text-ink">
                     {provider.label}
                   </span>
                   <Badge variant={provider.has_api_key ? 'recovered' : 'outline'} className="text-[10px]">
@@ -330,7 +264,8 @@ export function SettingsView({ settings, loading }: SettingsViewProps) {
                       handleSelectModel(provider.name, e.target.value)
                     }}
                     disabled={!provider.enabled}
-                    className="rounded-control border border-border bg-surface px-2 py-1 text-xs font-mono text-ink focus:outline-none"
+                    aria-label={`Active model for ${provider.label}`}
+                    className="rounded-control border border-border bg-surface px-2.5 py-1 text-xs font-mono text-ink focus:outline-hidden cursor-pointer"
                   >
                     {provider.available_models.map((m) => (
                       <option key={m} value={m}>
@@ -342,38 +277,39 @@ export function SettingsView({ settings, loading }: SettingsViewProps) {
               </div>
 
               {/* Actions: Priority Reorder & Enable Toggle */}
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={idx === 0}
-                  onClick={() => {
-                    handleMovePriority(idx, 'up')
-                  }}
-                  className="h-7 w-7 p-0"
-                  title="Move Priority Up"
-                >
-                  <ArrowUp className="h-3 w-3" />
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={idx === (llmConfig.providers.length - 1)}
-                  onClick={() => {
-                    handleMovePriority(idx, 'down')
-                  }}
-                  className="h-7 w-7 p-0"
-                  title="Move Priority Down"
-                >
-                  <ArrowDown className="h-3 w-3" />
-                </Button>
+              <div className="flex items-center gap-2.5 self-end sm:self-center">
+                <div className="flex items-center rounded-control border border-border bg-surface overflow-hidden">
+                  <button
+                    type="button"
+                    disabled={idx === 0}
+                    onClick={() => {
+                      handleMovePriority(idx, 'up')
+                    }}
+                    className="p-1.5 hover:bg-surface-sunken text-ink disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer transition-colors border-r border-border"
+                    title="Move Priority Up"
+                  >
+                    <ChevronUp className="h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
+                    disabled={idx === (llmConfig.providers.length - 1)}
+                    onClick={() => {
+                      handleMovePriority(idx, 'down')
+                    }}
+                    className="p-1.5 hover:bg-surface-sunken text-ink disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer transition-colors"
+                    title="Move Priority Down"
+                  >
+                    <ChevronDown className="h-4 w-4" />
+                  </button>
+                </div>
+
                 <Button
                   variant={provider.enabled ? 'primary' : 'outline'}
                   size="sm"
                   onClick={() => {
                     handleToggleProvider(provider.name)
                   }}
-                  className="h-7 font-mono text-xs"
+                  className="h-8 font-mono text-xs px-3 cursor-pointer"
                 >
                   {provider.enabled ? 'Enabled' : 'Disabled'}
                 </Button>
@@ -383,68 +319,77 @@ export function SettingsView({ settings, loading }: SettingsViewProps) {
         </CardContent>
       </Card>
 
-      {/* Historical LLM Token, Latency & Cost Report */}
+      {/* Model Telemetry & Cost Accounting Report */}
       {llmReport && (
         <Card>
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <Coins className="h-4 w-4 text-recovered" />
-              <CardTitle>Historical LLM Token, Latency & Cost Report</CardTitle>
+          <CardHeader className="pb-3 border-b border-border/40">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Coins className="h-4 w-4 text-accent" />
+                <CardTitle className="text-base font-semibold">AI Model Telemetry & Token Accounting</CardTitle>
+              </div>
+              <span className="font-mono text-xs font-bold text-ink">
+                Total USD Cost: ${(llmReport.total_cost_usd || 0).toFixed(5)}
+              </span>
             </div>
             <CardDescription className="text-xs">
-              Audit log aggregation across all AI failure diagnoses, dunning message generation, and token expenditures
+              Live aggregations derived directly from the model_telemetry relational store
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Aggregate Metrics */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 font-mono text-xs">
+          <CardContent className="p-4 space-y-4">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 font-mono text-xs">
               <div className="p-3 rounded-control bg-surface-sunken border border-border">
-                <span className="text-ink-muted block text-[11px]">Total AI Invocations</span>
-                <span className="text-ink font-bold text-base">{llmReport.total_calls.toString()} calls</span>
+                <span className="text-ink-muted block text-[11px]">Total Calls</span>
+                <span className="text-ink font-bold text-sm mt-0.5 block">{llmReport.total_calls.toString()}</span>
               </div>
               <div className="p-3 rounded-control bg-surface-sunken border border-border">
-                <span className="text-ink-muted block text-[11px]">Total Tokens In/Out</span>
-                <span className="text-ink font-bold text-base">
-                  {llmReport.total_input_tokens.toString()} / {llmReport.total_output_tokens.toString()}
-                </span>
+                <span className="text-ink-muted block text-[11px]">Input Tokens</span>
+                <span className="text-ink font-bold text-sm mt-0.5 block">{llmReport.total_input_tokens.toLocaleString()}</span>
               </div>
               <div className="p-3 rounded-control bg-surface-sunken border border-border">
-                <span className="text-ink-muted block text-[11px]">Average Latency</span>
-                <span className="text-accent font-bold text-base">{llmReport.average_latency_ms.toFixed(1)}ms</span>
+                <span className="text-ink-muted block text-[11px]">Output Tokens</span>
+                <span className="text-ink font-bold text-sm mt-0.5 block">{llmReport.total_output_tokens.toLocaleString()}</span>
               </div>
               <div className="p-3 rounded-control bg-surface-sunken border border-recovered/40">
-                <span className="text-recovered block text-[11px]">Total LLM Cost</span>
-                <span className="text-recovered font-bold text-base">${llmReport.total_cost_usd.toFixed(4)} USD</span>
+                <span className="text-recovered block text-[11px] font-semibold">Total Cost</span>
+                <span className="text-recovered font-bold text-sm mt-0.5 block">${(llmReport.total_cost_usd || 0).toFixed(5)}</span>
               </div>
             </div>
 
-            {/* Model Breakdown Table */}
+            {/* Per-Model Breakdown Table */}
             {llmReport.model_breakdown.length > 0 && (
-              <div className="overflow-x-auto border border-border rounded-control">
+              <div className="border border-border rounded-control overflow-hidden">
                 <table className="w-full text-xs font-mono">
-                  <thead className="bg-surface-sunken border-b border-border text-ink-muted">
+                  <thead className="bg-surface-sunken border-b border-border text-ink-muted uppercase text-[10px]">
                     <tr>
-                      <th className="p-2.5 text-left">Model Name</th>
-                      <th className="p-2.5 text-left">Provider</th>
-                      <th className="p-2.5 text-right">Invocations</th>
-                      <th className="p-2.5 text-right">Input Tokens</th>
-                      <th className="p-2.5 text-right">Output Tokens</th>
-                      <th className="p-2.5 text-right">Avg Latency</th>
-                      <th className="p-2.5 text-right">Cost (USD)</th>
+                      <th className="text-left p-2.5">Model</th>
+                      <th className="text-left p-2.5">Provider</th>
+                      <th className="text-right p-2.5">Calls</th>
+                      <th className="text-right p-2.5">Latency (Avg / p50 / p95)</th>
+                      <th className="text-right p-2.5">Tokens (In / Out)</th>
+                      <th className="text-right p-2.5">Cost (USD)</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border/60">
                     {llmReport.model_breakdown.map((row) => (
-                      <tr key={row.model} className="hover:bg-surface-sunken/40">
-                        <td className="p-2.5 font-semibold text-ink truncate max-w-[200px]" title={row.model}>
-                          {row.model}
+                      <tr key={`${row.provider}-${row.model}`} className="hover:bg-surface-sunken/40">
+                        <td className="p-2.5 text-ink font-semibold">{row.model}</td>
+                        <td className="p-2.5 text-ink-muted uppercase">{row.provider}</td>
+                        <td className="p-2.5 text-right text-ink">
+                          {row.call_count.toString()}
+                          {row.fallback_count && row.fallback_count > 0 ? (
+                            <span className="text-warning text-[10px] ml-1">({row.fallback_count} fb)</span>
+                          ) : null}
                         </td>
-                        <td className="p-2.5 uppercase text-ink-muted">{row.provider}</td>
-                        <td className="p-2.5 text-right font-semibold">{row.call_count.toString()}</td>
-                        <td className="p-2.5 text-right text-ink-muted">{row.total_input_tokens.toString()}</td>
-                        <td className="p-2.5 text-right text-ink-muted">{row.total_output_tokens.toString()}</td>
-                        <td className="p-2.5 text-right text-accent font-semibold">{row.avg_latency_ms.toFixed(1)}ms</td>
-                        <td className="p-2.5 text-right font-bold text-recovered">${row.total_cost_usd.toFixed(4)}</td>
+                        <td className="p-2.5 text-right text-accent">
+                          {row.avg_latency_ms.toFixed(0)}ms / {(row.p50_latency_ms || 0).toFixed(0)}ms / {(row.p95_latency_ms || 0).toFixed(0)}ms
+                        </td>
+                        <td className="p-2.5 text-right text-ink-muted">
+                          {row.total_input_tokens.toLocaleString()} / {row.total_output_tokens.toLocaleString()}
+                        </td>
+                        <td className="p-2.5 text-right text-recovered font-semibold">
+                          ${(row.total_cost_usd || 0).toFixed(5)}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -454,6 +399,62 @@ export function SettingsView({ settings, loading }: SettingsViewProps) {
           </CardContent>
         </Card>
       )}
+
+      {/* A/B Model Experimentation Comparison */}
+      <Card>
+        <CardHeader className="pb-3 border-b border-border/40">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <FlaskConical className="h-4 w-4 text-accent" />
+              <CardTitle className="text-base font-semibold">A/B Model Experiment Cohorts</CardTitle>
+            </div>
+            <Badge variant="outline" className="font-mono text-xs">
+              {experiments.length} Active Experiments
+            </Badge>
+          </div>
+          <CardDescription className="text-xs">
+            Controlled model-vs-model comparisons with holdout control arm baseline integrity
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="p-4">
+          {experiments.length === 0 ? (
+            <div className="text-center py-6 text-xs font-mono text-ink-muted">
+              No experiment tags registered yet. Seed cohorts with experiment tags to compare models.
+            </div>
+          ) : (
+            <div className="border border-border rounded-control overflow-hidden">
+              <table className="w-full text-xs font-mono">
+                <thead className="bg-surface-sunken border-b border-border text-ink-muted uppercase text-[10px]">
+                  <tr>
+                    <th className="text-left p-2.5">Experiment Tag</th>
+                    <th className="text-left p-2.5">Model</th>
+                    <th className="text-left p-2.5">Provider</th>
+                    <th className="text-right p-2.5">Cohort Size</th>
+                    <th className="text-right p-2.5">Recovery Rate</th>
+                    <th className="text-right p-2.5">Avg Latency</th>
+                    <th className="text-right p-2.5">Total Cost</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/60">
+                  {experiments.map((exp) => (
+                    <tr key={`${exp.experiment_tag}-${exp.model}`} className="hover:bg-surface-sunken/40">
+                      <td className="p-2.5 text-accent font-bold">{exp.experiment_tag}</td>
+                      <td className="p-2.5 text-ink font-semibold">{exp.model}</td>
+                      <td className="p-2.5 text-ink-muted uppercase">{exp.provider}</td>
+                      <td className="p-2.5 text-right text-ink">{exp.cohort_size.toString()}</td>
+                      <td className="p-2.5 text-right text-recovered font-bold">
+                        {(exp.recovery_rate * 100).toFixed(1)}% ({exp.recovered_count}/{exp.cohort_size})
+                      </td>
+                      <td className="p-2.5 text-right text-ink-muted">{exp.avg_latency_ms.toFixed(0)}ms</td>
+                      <td className="p-2.5 text-right text-ink font-semibold">${exp.total_cost_usd.toFixed(5)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   )
 }

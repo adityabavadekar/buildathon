@@ -1,160 +1,243 @@
-"""Durable thread-safe case repository with idempotency key tracking and JSON persistence.
+"""Durable ACID relational case repository with indexing, transactions, and audit trails.
 
-Provides transactional ACID-style lookups, state persistence, and append-only audit logging
-for revenue recovery cases.
+Provides transactional lookups, state persistence, and append-only audit logging
+for revenue recovery cases backed by an ACID relational database.
 """
 
 from __future__ import annotations
 
 import functools
-import json
-import threading
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
-from app.audit.models import RecoveryCase
+from app.audit.sqlite_store import RelationalCaseStore
 from app.core.logging import get_logger
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+    from datetime import datetime
 
+    from app.audit.models import ModelTelemetryEntry, RecoveryCase, ScheduledJob
     from app.core.enums import ExperimentArm, RecoveryState
 
 logger = get_logger(__name__)
 
 
 class CaseRepository:
-    """Thread-safe storage for recovery cases with optional file-backed durability."""
+    """Thread-safe, transaction-backed repository for recovery cases, audit trails, and scheduled jobs."""
 
     def __init__(self, storage_path: Path | str | None = None) -> None:
-        self._lock = threading.RLock()
-        self._cases: dict[str, RecoveryCase] = {}
-        self._by_payment_id: dict[str, str] = {}
-        self._by_idempotency_key: dict[str, str] = {}
-        self._storage_path = Path(storage_path) if storage_path else None
-
-        if self._storage_path and self._storage_path.exists():
-            self._load_from_disk()
-
-    def _load_from_disk(self) -> None:
-        """Load persisted cases from local storage file."""
-        if not self._storage_path or not self._storage_path.exists():
-            return
-        try:
-            with self._storage_path.open(encoding="utf-8") as f:
-                data = json.load(f)
-                for item in data:
-                    case = RecoveryCase.model_validate(item)
-                    self._cases[case.case_id] = case
-                    self._by_payment_id[case.failure_event.payment_id] = case.case_id
-            logger.info(
-                "repository.loaded_from_disk",
-                count=len(self._cases),
-                path=str(self._storage_path),
-            )
-        except (OSError, ValueError, json.JSONDecodeError) as exc:
-            logger.warning(
-                "repository.load_disk_failed",
-                error=str(exc),
-                path=str(self._storage_path),
-            )
-
-    def _flush_to_disk(self) -> None:
-        """Persist in-memory state to disk atomically."""
-        if not self._storage_path:
-            return
-        try:
-            self._storage_path.parent.mkdir(parents=True, exist_ok=True)
-            tmp_path = self._storage_path.with_suffix(".tmp")
-            cases_dump = [c.model_dump(mode="json") for c in self._cases.values()]
-            with tmp_path.open("w", encoding="utf-8") as f:
-                json.dump(cases_dump, f, indent=2, default=str)
-            tmp_path.replace(self._storage_path)
-        except (OSError, ValueError) as exc:
-            logger.warning("repository.flush_disk_failed", error=str(exc))
+        db_path = storage_path or "data/recovery_engine.db"
+        self._store = RelationalCaseStore(db_path=db_path)
 
     def save(self, case: RecoveryCase, idempotency_key: str | None = None) -> None:
         """Persist or update a recovery case and flush to durable storage."""
-        with self._lock:
-            self._cases[case.case_id] = case
-            self._by_payment_id[case.failure_event.payment_id] = case.case_id
-            if idempotency_key:
-                self._by_idempotency_key[idempotency_key] = case.case_id
-            self._flush_to_disk()
+        self._store.save_case(case, idempotency_key=idempotency_key)
 
     def get_by_id(self, case_id: str) -> RecoveryCase | None:
         """Retrieve a case by unique case ID."""
-        with self._lock:
-            return self._cases.get(case_id)
+        return self._store.get_case(case_id)
 
     def get_by_payment_id(self, payment_id: str) -> RecoveryCase | None:
         """Retrieve a case by the originating gateway payment ID."""
-        with self._lock:
-            case_id = self._by_payment_id.get(payment_id)
-            return self._cases.get(case_id) if case_id else None
+        return self._store.get_case_by_payment_id(payment_id)
 
     def get_by_idempotency_key(self, idempotency_key: str) -> RecoveryCase | None:
         """Retrieve a case by idempotency key to prevent duplicate processing."""
-        with self._lock:
-            case_id = self._by_idempotency_key.get(idempotency_key)
-            return self._cases.get(case_id) if case_id else None
+        return self._store.get_case_by_idempotency_key(idempotency_key)
 
     def list_cases(
         self,
         *,
         merchant_id: str | None = None,
         state: RecoveryState | None = None,
+        states: list[str] | None = None,
         experiment_arm: ExperimentArm | None = None,
+        experiment_arms: list[str] | None = None,
+        payment_rails: list[str] | None = None,
+        error_codes: list[str] | None = None,
+        error_sources: list[str] | None = None,
+        amount_min_paise: int | None = None,
+        amount_max_paise: int | None = None,
+        created_after: datetime | None = None,
+        created_before: datetime | None = None,
+        occurred_after: datetime | None = None,
+        occurred_before: datetime | None = None,
+        touches_min: int | None = None,
+        touches_max: int | None = None,
+        recovered: bool | None = None,
+        opted_out: bool | None = None,
+        has_escalation: bool | None = None,
+        customer_id: str | None = None,
+        payment_id: str | None = None,
+        invoice_id: str | None = None,
+        subscription_id: str | None = None,
+        q: str | None = None,
+        model_used: str | None = None,
+        sort_by: str = "created_at",
+        sort_dir: str = "desc",
         limit: int = 50,
         offset: int = 0,
     ) -> Sequence[RecoveryCase]:
-        """List cases matching query filters with pagination."""
-        with self._lock:
-            results = list(self._cases.values())
-
-            if merchant_id:
-                results = [c for c in results if c.merchant_id == merchant_id]
-            if state:
-                results = [c for c in results if c.state == state]
-            if experiment_arm:
-                results = [c for c in results if c.experiment_arm == experiment_arm]
-
-            # Sort by created_at descending (newest first)
-            results.sort(key=lambda c: c.created_at, reverse=True)
-            return results[offset : offset + limit]
+        """List cases matching query filters with server-side pagination."""
+        return self._store.list_cases(
+            merchant_id=merchant_id,
+            state=state,
+            states=states,
+            experiment_arm=experiment_arm,
+            experiment_arms=experiment_arms,
+            payment_rails=payment_rails,
+            error_codes=error_codes,
+            error_sources=error_sources,
+            amount_min_paise=amount_min_paise,
+            amount_max_paise=amount_max_paise,
+            created_after=created_after,
+            created_before=created_before,
+            occurred_after=occurred_after,
+            occurred_before=occurred_before,
+            touches_min=touches_min,
+            touches_max=touches_max,
+            recovered=recovered,
+            opted_out=opted_out,
+            has_escalation=has_escalation,
+            customer_id=customer_id,
+            payment_id=payment_id,
+            invoice_id=invoice_id,
+            subscription_id=subscription_id,
+            q=q,
+            model_used=model_used,
+            sort_by=sort_by,
+            sort_dir=sort_dir,
+            limit=limit,
+            offset=offset,
+        )
 
     def count(
         self,
         *,
         merchant_id: str | None = None,
         state: RecoveryState | None = None,
+        states: list[str] | None = None,
         experiment_arm: ExperimentArm | None = None,
+        experiment_arms: list[str] | None = None,
+        payment_rails: list[str] | None = None,
+        error_codes: list[str] | None = None,
+        error_sources: list[str] | None = None,
+        amount_min_paise: int | None = None,
+        amount_max_paise: int | None = None,
+        created_after: datetime | None = None,
+        created_before: datetime | None = None,
+        occurred_after: datetime | None = None,
+        occurred_before: datetime | None = None,
+        touches_min: int | None = None,
+        touches_max: int | None = None,
+        recovered: bool | None = None,
+        opted_out: bool | None = None,
+        has_escalation: bool | None = None,
+        customer_id: str | None = None,
+        payment_id: str | None = None,
+        invoice_id: str | None = None,
+        subscription_id: str | None = None,
+        q: str | None = None,
+        model_used: str | None = None,
     ) -> int:
         """Count total cases matching query filters."""
-        with self._lock:
-            results = list(self._cases.values())
-            if merchant_id:
-                results = [c for c in results if c.merchant_id == merchant_id]
-            if state:
-                results = [c for c in results if c.state == state]
-            if experiment_arm:
-                results = [c for c in results if c.experiment_arm == experiment_arm]
-            return len(results)
+        return self._store.count_cases(
+            merchant_id=merchant_id,
+            state=state,
+            states=states,
+            experiment_arm=experiment_arm,
+            experiment_arms=experiment_arms,
+            payment_rails=payment_rails,
+            error_codes=error_codes,
+            error_sources=error_sources,
+            amount_min_paise=amount_min_paise,
+            amount_max_paise=amount_max_paise,
+            created_after=created_after,
+            created_before=created_before,
+            occurred_after=occurred_after,
+            occurred_before=occurred_before,
+            touches_min=touches_min,
+            touches_max=touches_max,
+            recovered=recovered,
+            opted_out=opted_out,
+            has_escalation=has_escalation,
+            customer_id=customer_id,
+            payment_id=payment_id,
+            invoice_id=invoice_id,
+            subscription_id=subscription_id,
+            q=q,
+            model_used=model_used,
+        )
+
+    def schedule_job(self, job: ScheduledJob) -> None:
+        """Schedule a task for future execution."""
+        self._store.schedule_job(job)
+
+    def fetch_due_jobs(self, limit: int = 20) -> list[ScheduledJob]:
+        """Fetch pending jobs ready for execution."""
+        return self._store.fetch_due_jobs(limit=limit)
+
+    def claim_next_due_job(self, now: datetime | None = None) -> ScheduledJob | None:
+        """Atomically claim the next due job for processing."""
+        return self._store.claim_next_due_job(now=now)
+
+    def reclaim_stuck_processing_jobs(self, max_processing_seconds: int = 60) -> int:
+        """Reclaim orphaned jobs stuck in PROCESSING on boot."""
+        return self._store.reclaim_stuck_processing_jobs(
+            max_processing_seconds=max_processing_seconds
+        )
+
+    def get_pipeline_overview(self) -> dict[str, Any]:
+        """Fetch pipeline summary metrics and queue depth."""
+        return self._store.get_pipeline_overview()
+
+    def get_pipeline_timeseries(
+        self, bucket_minutes: int = 60, hours: int = 24
+    ) -> list[dict[str, Any]]:
+        """Fetch timeseries of ingested vs processed events."""
+        return self._store.get_pipeline_timeseries(
+            bucket_minutes=bucket_minutes, hours=hours
+        )
+
+    def get_pipeline_heatmap(self) -> list[dict[str, Any]]:
+        """Fetch 7x24 event distribution grid."""
+        return self._store.get_pipeline_heatmap()
+
+    def fetch_queued_jobs(
+        self, limit: int = 50, statuses: list[str] | None = None
+    ) -> list[ScheduledJob]:
+        """Fetch queue entries with optional filter."""
+        return self._store.fetch_queued_jobs(limit=limit, statuses=statuses)
+
+    def update_job_status(
+        self, job_id: str, status: str, attempts: int | None = None
+    ) -> None:
+        """Update status of a scheduled job."""
+        self._store.update_job_status(job_id, status=status, attempts=attempts)
+
+    def record_model_telemetry(self, telemetry: ModelTelemetryEntry) -> None:
+        """Record model execution telemetry."""
+        self._store.record_model_telemetry(telemetry)
+
+    def get_model_telemetry_report(self) -> dict[str, Any]:
+        """Aggregate model performance and telemetry from SQLite store."""
+        return self._store.get_model_telemetry_report()
+
+    def get_experiments_report(self) -> list[dict[str, Any]]:
+        """Fetch A/B model experiment comparison stats."""
+        return self._store.get_experiments_report()
+
+    def get_strategy_experiments_report(self) -> list[dict[str, Any]]:
+        """Fetch recovery strategy experiments report measuring incremental value."""
+        return self._store.get_strategy_experiments_report()
 
     def clear(self) -> None:
-        """Clear repository contents and remove local data file."""
-        with self._lock:
-            self._cases.clear()
-            self._by_payment_id.clear()
-            self._by_idempotency_key.clear()
-            if self._storage_path and self._storage_path.exists():
-                try:
-                    self._storage_path.unlink()
-                except OSError:
-                    pass
+        """Clear repository contents (used for test teardown)."""
+        self._store.clear()
 
 
 @functools.lru_cache(maxsize=1)
 def get_case_repository() -> CaseRepository:
-    """Return singleton instance of CaseRepository with disk persistence."""
-    return CaseRepository(storage_path=Path("data/cases_store.json"))
+    """Return singleton instance of CaseRepository with ACID database storage."""
+    return CaseRepository(storage_path=Path("data/recovery_engine.db"))

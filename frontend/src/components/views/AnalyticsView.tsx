@@ -14,6 +14,8 @@ import {
 } from '@/components/ui/card'
 import { GlossaryTerm } from '@/components/ui/GlossaryTerm'
 import { SkeletonCard } from '@/components/ui/skeleton'
+import { CategoryDistributionChart } from '@/components/charts/CategoryDistributionChart'
+import { DailyVolumeTrendsChart } from '@/components/charts/DailyVolumeTrendsChart'
 import { HealthScoreCard } from '@/components/charts/HealthScoreCard'
 import { LatencyDistributionChart } from '@/components/charts/LatencyDistributionChart'
 import { PaymentRailChart } from '@/components/charts/PaymentRailChart'
@@ -227,17 +229,28 @@ export function AnalyticsView({ analytics, loading }: AnalyticsViewProps) {
         </CardContent>
       </Card>
 
-      {/* Visual Analytics Charts Grid */}
+      {/* 1. Daily & Monthly Volume Trends Chart */}
+      <DailyVolumeTrendsChart
+        dailyMetrics={analytics.daily_metrics}
+        monthlyMetrics={analytics.monthly_metrics}
+      />
+
+      {/* 2. Visual Analytics Charts Grid */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <RecoveryVelocityChart timeSeries={analytics.time_series} />
-        <LatencyDistributionChart ttrBuckets={analytics.time_to_recovery_buckets} />
+        <CategoryDistributionChart categories={analytics.category_distribution} />
       </div>
 
-      {/* Rail & Failure Health Distribution */}
+      {/* 3. Latency & Rail Distribution */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2">
           <PaymentRailChart railPerformance={analytics.rail_performance} />
         </div>
+        <LatencyDistributionChart ttrBuckets={analytics.time_to_recovery_buckets} />
+      </div>
+
+      {/* 4. Engine Health & Efficiency */}
+      <div className="grid grid-cols-1 gap-6">
         <HealthScoreCard
           healthScore={analytics.health_score}
           returnOnSpend={analytics.return_on_recovery_spend}

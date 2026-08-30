@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useCallback, useEffect, useState } from 'react'
+import { AlertOctagon, RefreshCw } from 'lucide-react'
 import {
   getAnalytics,
   getHealth,
@@ -8,7 +9,6 @@ import {
   getSettings,
   getSystemStatus,
   listCases,
-  seedSimulation,
   type AnalyticsSummaryResponse,
   type HealthResponse,
   type PolicyResponse,
@@ -22,6 +22,7 @@ import { AgentView } from '@/components/views/AgentView'
 import { AnalyticsView } from '@/components/views/AnalyticsView'
 import { AuditView } from '@/components/views/AuditView'
 import { OverviewView } from '@/components/views/OverviewView'
+import { PipelineView } from '@/components/views/PipelineView'
 import { PoliciesView } from '@/components/views/PoliciesView'
 import { RecoveryView } from '@/components/views/RecoveryView'
 import { SettingsView } from '@/components/views/SettingsView'
@@ -43,10 +44,14 @@ export default function DashboardPage() {
   const [commandOpen, setCommandOpen] = useState<boolean>(false)
   const [lastRefreshedAt, setLastRefreshedAt] = useState<Date | null>(null)
 
+  // API Offline & Connection Failure Tracking
+  const [isOffline, setIsOffline] = useState<boolean>(false)
+  const [connectionError, setConnectionError] = useState<string | null>(null)
+
   const fetchData = useCallback(async () => {
     try {
       const [hRes, cRes, aRes, pRes, sRes, statusRes] = await Promise.all([
-        getHealth().catch(() => null),
+        getHealth(),
         listCases().catch(() => ({
           total: 0,
           offset: 0,
@@ -58,6 +63,7 @@ export default function DashboardPage() {
         getSettings().catch(() => null),
         getSystemStatus().catch(() => null),
       ])
+
       setHealth(hRes)
       setCases(cRes.items)
       setAnalytics(aRes)
@@ -65,6 +71,13 @@ export default function DashboardPage() {
       setSettings(sRes)
       setSystemStatus(statusRes)
       setLastRefreshedAt(new Date())
+      setIsOffline(false)
+      setConnectionError(null)
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      setIsOffline(true)
+      setConnectionError(msg)
+      setHealth(null)
     } finally {
       setHealthLoading(false)
       setCasesLoading(false)
@@ -72,12 +85,37 @@ export default function DashboardPage() {
   }, [])
 
   useEffect(() => {
-    void fetchData()
+    let active = true
+    const initTimer = setTimeout(() => {
+      if (active) void fetchData()
+    }, 0)
     const interval = setInterval(() => {
-      void fetchData()
+      if (active) void fetchData()
     }, 10000)
+
+    const handleOnline = () => {
+      if (active) {
+        setIsOffline(false)
+        setConnectionError(null)
+        void fetchData()
+      }
+    }
+    const handleOffline = () => {
+      if (active) {
+        setIsOffline(true)
+        setConnectionError('Browser Network Disconnected')
+      }
+    }
+
+    window.addEventListener('online', handleOnline)
+    window.addEventListener('offline', handleOffline)
+
     return () => {
+      active = false
+      clearTimeout(initTimer)
       clearInterval(interval)
+      window.removeEventListener('online', handleOnline)
+      window.removeEventListener('offline', handleOffline)
     }
   }, [fetchData])
 
@@ -94,111 +132,141 @@ export default function DashboardPage() {
     }
   }, [])
 
-  const handleSeedBatch = async () => {
-    await seedSimulation(50, true)
-    void fetchData()
-  }
-
-  const escalatedCount = cases.filter((c) => c.state === 'ESCALATED').length
+  const escalatedCount = analytics?.escalated_cases !== undefined ? analytics.escalated_cases : cases.filter((c) => c.state === 'ESCALATED').length
 
   return (
-    <div className="flex h-screen w-full bg-surface-sunken overflow-hidden">
-      {/* 1. Left Sidebar */}
-      <Sidebar
-        activeSection={activeSection}
-        onSelectSection={(section) => {
-          setActiveSection(section)
-        }}
-        casesCount={cases.length}
-        escalatedCount={escalatedCount}
-      />
+    <div className="flex h-screen w-full flex-col bg-surface-sunken overflow-hidden">
+      {/* High-Visibility Red Bold Top Banner when API Offline or Connection Issue */}
+      {isOffline && (
+        <div className="w-full bg-[#dc2626] text-white px-6 py-3 text-sm font-extrabold font-mono uppercase tracking-wide flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xl z-50 border-b-4 border-red-950 animate-pulse">
+          <div className="flex items-center gap-3">
+            <AlertOctagon className="h-5 w-5 shrink-0 animate-bounce" />
+            <span className="font-extrabold text-sm sm:text-base tracking-wide">
+              API OFFLINE: {connectionError || 'Unable to communicate with Recovery Engine'}
+            </span>
+          </div>
+          <div className="flex items-center gap-3 self-end sm:self-auto">
+            <span className="text-xs opacity-90 hidden md:inline font-mono">
+              Auto-reconnecting...
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                void fetchData()
+              }}
+              className="flex items-center gap-1.5 px-4 py-1.5 bg-white text-[#dc2626] hover:bg-white/90 rounded-control text-xs font-extrabold font-mono transition-colors cursor-pointer shadow-md"
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+              <span>Retry Connection</span>
+            </button>
+          </div>
+        </div>
+      )}
 
-      {/* 2. Main Content Area */}
-      <div className="flex flex-1 flex-col overflow-hidden">
-        <TopNav
-          title={activeSection === 'status' ? 'System Status' : activeSection}
-          health={health}
-          analytics={analytics}
-          healthLoading={healthLoading}
-          lastRefreshedAt={lastRefreshedAt}
-          onRefresh={() => {
-            void fetchData()
+      <div className="flex flex-1 overflow-hidden">
+        {/* 1. Left Sidebar */}
+        <Sidebar
+          activeSection={activeSection}
+          onSelectSection={(section) => {
+            setActiveSection(section)
           }}
-          onOpenCommand={() => {
-            setCommandOpen(true)
-          }}
+          casesCount={cases.length}
+          escalatedCount={escalatedCount}
         />
 
-        <main className="flex-1 overflow-y-auto p-6 lg:p-8">
-          <div className="mx-auto max-w-7xl">
-            {activeSection === 'overview' && (
-              <OverviewView
-                cases={cases}
-                analytics={analytics}
-                loading={casesLoading}
-                onSelectCase={(c) => {
-                  setSelectedCase(c)
-                }}
-                onNavigateToRecovery={() => {
-                  setActiveSection('recovery')
-                }}
-                onRefresh={() => {
-                  void fetchData()
-                }}
-              />
-            )}
+        {/* 2. Main Content Area */}
+        <div className="flex flex-1 flex-col overflow-hidden">
+          <TopNav
+            title={activeSection === 'status' ? 'System Status' : activeSection}
+            health={health}
+            analytics={analytics}
+            healthLoading={healthLoading}
+            lastRefreshedAt={lastRefreshedAt}
+            onRefresh={() => {
+              void fetchData()
+            }}
+            onOpenCommand={() => {
+              setCommandOpen(true)
+            }}
+          />
 
-            {activeSection === 'recovery' && (
-              <RecoveryView
-                cases={cases}
-                loading={casesLoading}
-                onSelectCase={(c) => {
-                  setSelectedCase(c)
-                }}
-                onRefresh={() => {
-                  void fetchData()
-                }}
-              />
-            )}
+          <main className="flex-1 overflow-y-auto p-6 lg:p-8">
+            <div className="mx-auto max-w-7xl">
+              {activeSection === 'overview' && (
+                <OverviewView
+                  cases={cases}
+                  analytics={analytics}
+                  loading={casesLoading}
+                  onSelectCase={(c) => {
+                    setSelectedCase(c)
+                  }}
+                  onNavigateToRecovery={() => {
+                    setActiveSection('recovery')
+                  }}
+                  onRefresh={() => {
+                    void fetchData()
+                  }}
+                />
+              )}
 
-            {activeSection === 'analytics' && (
-              <AnalyticsView
-                analytics={analytics}
-                policies={policies}
-                loading={casesLoading}
-              />
-            )}
+              {activeSection === 'pipeline' && <PipelineView />}
 
-            {activeSection === 'agent' && <AgentView cases={cases} />}
+              {activeSection === 'recovery' && (
+                <RecoveryView
+                  onSelectCase={(c) => {
+                    setSelectedCase(c)
+                  }}
+                />
+              )}
 
-            {activeSection === 'policies' && (
-              <PoliciesView policies={policies} loading={casesLoading} />
-            )}
+              {activeSection === 'analytics' && (
+                <AnalyticsView
+                  analytics={analytics}
+                  policies={policies}
+                  loading={casesLoading}
+                />
+              )}
 
-            {activeSection === 'audit' && (
-              <AuditView
-                cases={cases}
-                onRefresh={() => {
-                  void fetchData()
-                }}
-              />
-            )}
+              {activeSection === 'agent' && (
+                <AgentView
+                  cases={cases}
+                  status={systemStatus}
+                  loading={casesLoading}
+                  onRefresh={() => {
+                    void fetchData()
+                  }}
+                />
+              )}
 
-            {activeSection === 'status' && (
-              <StatusView
-                status={systemStatus}
-                loading={casesLoading}
-                onRefresh={() => {
-                  void fetchData()
-                }}
-              />
-            )}
+              {activeSection === 'policies' && (
+                <PoliciesView policies={policies} loading={casesLoading} />
+              )}
 
-            {activeSection === 'settings' && (
-              <SettingsView settings={settings} loading={casesLoading} />
-            )}
-          </div>
-        </main>
+              {activeSection === 'audit' && (
+                <AuditView
+                  cases={cases}
+                  onRefresh={() => {
+                    void fetchData()
+                  }}
+                />
+              )}
+
+              {activeSection === 'status' && (
+                <StatusView
+                  status={systemStatus}
+                  loading={casesLoading}
+                  onRefresh={() => {
+                    void fetchData()
+                  }}
+                />
+              )}
+
+              {activeSection === 'settings' && (
+                <SettingsView settings={settings} loading={casesLoading} />
+              )}
+            </div>
+          </main>
+        </div>
       </div>
 
       {/* 3. Global Slide-Over Case Detail Drawer */}
@@ -214,21 +282,17 @@ export default function DashboardPage() {
         />
       )}
 
-      {/* 4. Global Command Palette */}
+      {/* 4. Keyboard Command Palette */}
       <CommandPalette
         open={commandOpen}
         onClose={() => {
           setCommandOpen(false)
         }}
         cases={cases}
-        onSelectCase={(c) => {
-          setSelectedCase(c)
-        }}
-        onNavigate={(section) => {
-          setActiveSection(section)
-        }}
+        onNavigate={setActiveSection}
+        onSelectCase={setSelectedCase}
         onSeed={() => {
-          void handleSeedBatch()
+          void fetchData()
         }}
         onReset={() => {
           void fetchData()

@@ -3,16 +3,13 @@
 import React, { useState } from 'react'
 import {
   AlertTriangle,
+  ArrowRight,
   CheckCircle2,
+  RotateCcw,
   ShieldAlert,
   TrendingUp,
 } from 'lucide-react'
-import {
-  resetSimulation,
-  seedSimulation,
-  type AnalyticsSummaryResponse,
-  type RecoveryCase,
-} from '@/lib/api'
+import { resetSimulation, seedSimulationBatch, type AnalyticsSummaryResponse, type RecoveryCase } from '@/lib/api'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -23,6 +20,8 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { GlossaryTerm } from '@/components/ui/GlossaryTerm'
+import { RailBadge } from '@/components/ui/BrandIcons'
+import { StatCard } from '@/components/ui/StatCard'
 import { RecoveryLifecycleStrip } from '@/components/recovery/RecoveryLifecycleStrip'
 import { SkeletonCard, SkeletonRow } from '@/components/ui/skeleton'
 import {
@@ -33,14 +32,17 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { OpportunityMatrix } from '@/components/matrix/OpportunityMatrix'
+import { LatencyDistributionChart } from '@/components/charts/LatencyDistributionChart'
+import { PaymentRailChart } from '@/components/charts/PaymentRailChart'
+import { RecoveryVelocityChart } from '@/components/charts/RecoveryVelocityChart'
+import { HealthScoreCard } from '@/components/charts/HealthScoreCard'
 
 interface OverviewViewProps {
   cases: RecoveryCase[]
   analytics: AnalyticsSummaryResponse | null
   loading: boolean
   onSelectCase: (c: RecoveryCase) => void
-  onNavigateToRecovery: (substate?: string) => void
+  onNavigateToRecovery: (subTab?: string) => void
   onRefresh: () => void
 }
 
@@ -61,31 +63,41 @@ export function OverviewView({
   onNavigateToRecovery,
   onRefresh,
 }: OverviewViewProps) {
-  const [seeding, setSeeding] = useState<boolean>(false)
+  const [seeding, setSeeding] = useState(false)
 
   const totalAtRiskPaise = analytics
     ? analytics.total_at_risk_paise
     : cases.reduce((acc, c) => acc + c.amount_paise, 0)
   const totalRecoveredPaise = analytics
     ? analytics.recovered_amount_paise
-    : cases.reduce((acc, c) => acc + (c.recovered_amount_paise || 0), 0)
+    : cases
+        .filter((c) => c.state === 'RECOVERED')
+        .reduce((acc, c) => acc + (c.recovered_amount_paise || c.amount_paise), 0)
   const totalNrvPaise = analytics
     ? analytics.net_recovered_value_paise
-    : cases.reduce((acc, c) => acc + (c.net_recovered_value_paise || 0), 0)
-  const totalCasesCount = analytics ? analytics.total_cases : cases.length
+    : totalRecoveredPaise
 
-  const recoveredCount = cases.filter((c) => c.state === 'RECOVERED').length
-  const escalatedCount = cases.filter((c) => c.state === 'ESCALATED').length
-  const recoveryRate = analytics
-    ? analytics.overall_recovery_rate_pct.toFixed(1)
-    : totalCasesCount > 0
-    ? ((recoveredCount / totalCasesCount) * 100).toFixed(1)
-    : '0.0'
+  const recoveredCasesCount = cases.filter((c) => c.state === 'RECOVERED').length
+  const totalCasesCount = cases.length
+
+  const activeCount = analytics?.active_cases !== undefined ? analytics.active_cases : cases.filter((c) =>
+    ['IN_DUNNING', 'OUTREACH_PENDING', 'RETRY_SCHEDULED', 'ANALYSIS_QUEUED'].includes(c.state)
+  ).length
+  const escalatedCount = analytics?.escalated_cases !== undefined ? analytics.escalated_cases : cases.filter((c) => c.state === 'ESCALATED').length
+  const recoveredCount = analytics?.recovered_cases !== undefined ? analytics.recovered_cases : recoveredCasesCount
+  const totalCount = analytics?.total_cases !== undefined ? analytics.total_cases : totalCasesCount
+
+  let recoveryRate = 0
+  if (analytics) {
+    recoveryRate = analytics.overall_recovery_rate_pct
+  } else if (totalCasesCount > 0) {
+    recoveryRate = (recoveredCasesCount / totalCasesCount) * 100
+  }
 
   const handleSeedBatch = async (count: number = 50) => {
     try {
       setSeeding(true)
-      await seedSimulation(count, true)
+      await seedSimulationBatch(count)
       onRefresh()
     } finally {
       setSeeding(false)
@@ -104,14 +116,14 @@ export function OverviewView({
 
   return (
     <div className="space-y-6">
-      {/* View Header with Plain-Language Intro */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border pb-4">
+      {/* View Header with Plain-Language Context */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-border pb-4">
         <div>
           <h1 className="text-2xl font-bold font-mono text-ink">
             Revenue Recovery Control Center
           </h1>
           <p className="text-sm text-ink-muted mt-0.5">
-            Real-time detection, contextual diagnosis, and policy-bounded recovery execution for failed checkouts and subscriptions.
+            Autonomous intervention lifecycle for failed payments, abandoned checkouts, and overdue receivables.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -150,7 +162,7 @@ export function OverviewView({
         }}
       />
 
-      {/* 4 Primary Top Metrics with Filled Semantic Icons */}
+      {/* 4 Primary Top Metrics with High-Contrast Typography */}
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {loading ? (
           <>
@@ -161,236 +173,225 @@ export function OverviewView({
           </>
         ) : (
           <>
-            {/* Card 1: At Risk Revenue */}
-            <Card className="hover:border-failed/40 transition-colors">
-              <CardHeader className="p-5 pb-2 border-none">
-                <div className="flex items-center justify-between">
-                  <CardDescription className="text-xs font-semibold text-ink-muted">
-                    <GlossaryTerm termKey="AT_RISK_REVENUE">At Risk Revenue</GlossaryTerm>
-                  </CardDescription>
-                  <div className="p-2 rounded-control bg-failed/15 text-failed">
-                    <AlertTriangle className="h-4 w-4" />
-                  </div>
-                </div>
-                <CardTitle className="text-3xl font-mono font-bold tabular-nums text-ink mt-1">
-                  {formatINR(totalAtRiskPaise)}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-5 pt-0 text-xs text-ink-subtle">
-                {totalCasesCount.toString()} total failed transactions worked
-              </CardContent>
-            </Card>
+            <StatCard
+              title={<GlossaryTerm termKey="AT_RISK_REVENUE">At Risk Revenue</GlossaryTerm>}
+              value={formatINR(totalAtRiskPaise)}
+              subtitle={`${totalCount.toString()} total failed transactions worked`}
+              icon={<AlertTriangle className="h-4 w-4 text-failed" />}
+              variant="default"
+            />
 
-            {/* Card 2: Recovered (NRV) */}
-            <Card className="border-recovered/30 bg-recovered/5 hover:border-recovered/60 transition-colors">
-              <CardHeader className="p-5 pb-2 border-none">
-                <div className="flex items-center justify-between">
-                  <CardDescription className="text-xs font-semibold text-ink-muted">
-                    <GlossaryTerm termKey="RECOVERED_NRV">Recovered (NRV)</GlossaryTerm>
-                  </CardDescription>
-                  <div className="p-2 rounded-control bg-recovered/20 text-recovered">
-                    <CheckCircle2 className="h-4 w-4" />
-                  </div>
-                </div>
-                <CardTitle className="text-3xl font-mono font-bold tabular-nums text-recovered mt-1">
-                  {formatINR(totalNrvPaise)}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-5 pt-0 text-xs text-ink-subtle flex items-center justify-between">
-                <span>
-                  Gross:{' '}
-                  <GlossaryTerm termKey="GROSS_RECOVERED" showIcon={false}>
-                    {formatINR(totalRecoveredPaise)}
-                  </GlossaryTerm>
-                </span>
-                <span className="text-recovered font-mono text-[11px] font-semibold">Net of Costs</span>
-              </CardContent>
-            </Card>
+            <StatCard
+              title={<GlossaryTerm termKey="RECOVERED_NRV">Recovered (NRV)</GlossaryTerm>}
+              value={formatINR(totalNrvPaise)}
+              subtitle={`Gross: ${formatINR(totalRecoveredPaise)} (Net of Costs)`}
+              icon={<CheckCircle2 className="h-4 w-4 text-recovered" />}
+              variant="recovered"
+            />
 
-            {/* Card 3: Recovery Rate */}
-            <Card className="hover:border-accent/40 transition-colors">
-              <CardHeader className="p-5 pb-2 border-none">
-                <div className="flex items-center justify-between">
-                  <CardDescription className="text-xs font-semibold text-ink-muted">
-                    <GlossaryTerm termKey="RECOVERY_RATE">Recovery Rate</GlossaryTerm>
-                  </CardDescription>
-                  <div className="p-2 rounded-control bg-accent/15 text-accent">
-                    <TrendingUp className="h-4 w-4" />
-                  </div>
-                </div>
-                <CardTitle className="text-3xl font-mono font-bold tabular-nums text-accent mt-1">
-                  {recoveryRate}%
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-5 pt-0 text-xs text-ink-subtle">
-                {recoveredCount.toString()} / {totalCasesCount.toString()} cases resolved
-              </CardContent>
-            </Card>
+            <StatCard
+              title={<GlossaryTerm termKey="RECOVERY_RATE">Recovery Rate</GlossaryTerm>}
+              value={`${recoveryRate.toFixed(1)}%`}
+              subtitle={`${recoveredCount.toString()} of ${totalCount.toString()} cases resolved`}
+              icon={<TrendingUp className="h-4 w-4 text-accent" />}
+              variant="default"
+            />
 
-            {/* Card 4: Need Attention */}
-            <Card
-              className={
+            <StatCard
+              title={<GlossaryTerm termKey="HUMAN_IN_THE_LOOP">Need Attention</GlossaryTerm>}
+              value={escalatedCount.toString()}
+              subtitle={
                 escalatedCount > 0
-                  ? 'border-escalated/50 bg-escalated-subtle/20'
-                  : 'hover:border-border-strong transition-colors'
+                  ? 'Escalated cases require operator signoff'
+                  : 'Zero high-risk escalations pending'
               }
-            >
-              <CardHeader className="p-5 pb-2 border-none">
-                <div className="flex items-center justify-between">
-                  <CardDescription className="text-xs font-semibold text-ink-muted">
-                    <GlossaryTerm termKey="NEED_ATTENTION">Need Attention</GlossaryTerm>
-                  </CardDescription>
-                  <div
-                    className={`p-2 rounded-control ${
-                      escalatedCount > 0
-                        ? 'bg-escalated/20 text-escalated'
-                        : 'bg-surface-sunken text-ink-muted'
-                    }`}
-                  >
-                    <ShieldAlert className="h-4 w-4" />
-                  </div>
-                </div>
-                <CardTitle
-                  className={`text-3xl font-mono font-bold tabular-nums mt-1 ${
-                    escalatedCount > 0 ? 'text-escalated' : 'text-ink'
-                  }`}
-                >
-                  {escalatedCount.toString()}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-5 pt-0 text-xs text-ink-subtle">
-                {escalatedCount > 0
-                  ? `${escalatedCount.toString()} cases escalated for human review`
-                  : 'All autonomous workflows within guardrails'}
-              </CardContent>
-            </Card>
+              icon={<ShieldAlert className={`h-4 w-4 ${escalatedCount > 0 ? 'text-escalated' : 'text-ink-muted'}`} />}
+              variant={escalatedCount > 0 ? 'escalated' : 'default'}
+            />
           </>
         )}
       </section>
 
-      {/* Recovery Opportunity Matrix (2x2) */}
-      <OpportunityMatrix cases={cases} onSelectCase={onSelectCase} />
+      {/* Counterfactual Lift Callout Banner */}
+      {analytics && (
+        <div className="rounded-panel border border-accent/40 bg-accent/5 p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <TrendingUp className="h-4 w-4 text-accent" />
+              <span className="font-mono text-xs font-bold text-ink uppercase tracking-wider">
+                <GlossaryTerm termKey="HOLDOUT_ARM" showIcon={false}>
+                  Counterfactual Recovery Lift (vs. 10% Control Arm)
+                </GlossaryTerm>
+              </span>
+            </div>
+            <p className="text-xs text-ink-muted">
+              The AI engine achieved <strong className="text-recovered font-mono">+{analytics.attributable_lift_pct.toFixed(1)}% lift</strong> in net recovery over natural recovery in uncontacted holdout cases.
+            </p>
+          </div>
+          <div className="flex items-center gap-4 font-mono text-xs border-t md:border-t-0 md:border-l border-border pt-3 md:pt-0 md:pl-6">
+            <div>
+              <span className="text-ink-muted block text-[11px]">
+                <GlossaryTerm termKey="TREATMENT_ARM" showIcon={false}>Treatment Cohort</GlossaryTerm>
+              </span>
+              <span className="text-sm font-bold text-ink">
+                {analytics.treatment_recovery_rate_pct.toFixed(1)}%
+              </span>
+            </div>
+            <div className="h-6 w-px bg-border hidden sm:block" />
+            <div>
+              <span className="text-ink-muted block text-[11px]">
+                <GlossaryTerm termKey="HOLDOUT_ARM" showIcon={false}>Holdout Control</GlossaryTerm>
+              </span>
+              <span className="text-sm font-bold text-ink-muted">
+                {analytics.holdout_recovery_rate_pct.toFixed(1)}%
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
 
-      {/* Recovery Performance & Quick Actions */}
-      <section className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle>Channel Performance & Effectiveness</CardTitle>
-            <CardDescription className="text-sm">
-              Dynamic intervention success rates across single-use payment links, WhatsApp nudges, and smart retries
+      {/* Operations Quick Action Cards Grid */}
+      <section className="grid grid-cols-1 gap-6 md:grid-cols-3">
+        <Card
+          className="cursor-pointer hover:border-accent/40 transition-colors"
+          onClick={() => {
+            onNavigateToRecovery('ACTIVE')
+          }}
+        >
+          <CardHeader className="p-4 sm:p-5 pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-mono text-ink">In-Flight Queue</CardTitle>
+              <RotateCcw className="h-4 w-4 text-accent" />
+            </div>
+            <CardDescription className="text-xs text-ink-muted">
+              Active dunning sequences & scheduled smart retries
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            {analytics?.intervention_performance &&
-            analytics.intervention_performance.length > 0 ? (
-              analytics.intervention_performance.map((item) => (
-                <div key={item.intervention_type} className="space-y-2">
-                  <div className="flex justify-between text-xs font-mono">
-                    <span className="text-ink font-semibold">
-                      {item.intervention_type.replace('_', ' ')}
-                    </span>
-                    <span className="text-recovered font-bold">
-                      {item.success_rate_pct.toFixed(1)}% Success (
-                      {item.successful_recoveries.toString()}/
-                      {item.total_attempts.toString()})
-                    </span>
-                  </div>
-                  <div className="h-2.5 w-full rounded-full bg-surface-sunken overflow-hidden">
-                    <div
-                      className="h-full bg-recovered transition-all duration-500"
-                      style={{
-                        width: `${Math.min(100, item.success_rate_pct).toString()}%`,
-                      }}
-                    />
-                  </div>
-                </div>
-              ))
-            ) : (
-              <p className="py-4 text-center text-xs font-mono text-ink-muted">
-                No channel metrics recorded yet. Seed transactions to generate real-time performance data.
-              </p>
-            )}
+          <CardContent className="p-4 sm:p-5 pt-0">
+            <div className="flex items-baseline justify-between mt-2 font-mono">
+              <span className="text-2xl font-bold text-ink">{activeCount.toString()}</span>
+              <span className="text-xs text-accent flex items-center gap-1">
+                View Queue <ArrowRight className="h-3 w-3" />
+              </span>
+            </div>
           </CardContent>
         </Card>
 
-        {/* Quick Operational Actions */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Autonomous Ops</CardTitle>
-            <CardDescription className="text-sm">
-              Batch generation and holdout verification
+        <Card
+          className={`cursor-pointer transition-colors ${
+            escalatedCount > 0
+              ? 'border-escalated/50 bg-escalated-subtle/20 hover:border-escalated'
+              : 'hover:border-border-strong'
+          }`}
+          onClick={() => {
+            onNavigateToRecovery('ESCALATED')
+          }}
+        >
+          <CardHeader className="p-4 sm:p-5 pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-mono text-ink">Manual Approvals</CardTitle>
+              <ShieldAlert className="h-4 w-4 text-escalated" />
+            </div>
+            <CardDescription className="text-xs text-ink-muted">
+              Cases escalated by deterministic guardrails
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="p-3.5 rounded-control bg-surface-sunken border border-border space-y-1">
-              <span className="text-xs font-mono font-bold text-ink">
-                10% Holdout Control Arm
+          <CardContent className="p-4 sm:p-5 pt-0">
+            <div className="flex items-baseline justify-between mt-2 font-mono">
+              <span className={`text-2xl font-bold ${escalatedCount > 0 ? 'text-escalated' : 'text-ink'}`}>
+                {escalatedCount.toString()}
               </span>
-              <p className="text-xs text-ink-muted leading-relaxed">
-                Deliberately holds out 10% of failed payments uncontacted to verify counterfactual recovery lift.
-              </p>
+              <span className="text-xs text-escalated flex items-center gap-1">
+                Review Cases <ArrowRight className="h-3 w-3" />
+              </span>
             </div>
+          </CardContent>
+        </Card>
 
-            <Button
-              variant="outline"
-              size="sm"
-              className="w-full justify-start font-mono text-xs"
-              onClick={() => {
-                void handleSeedBatch(100)
-              }}
-              disabled={seeding}
-            >
-              Seed 100 Realistic Invoices
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="w-full justify-start font-mono text-xs"
-              onClick={() => {
-                onNavigateToRecovery('ESCALATED')
-              }}
-            >
-              Inspect Escalations ({escalatedCount.toString()})
-            </Button>
+        <Card
+          className="cursor-pointer hover:border-recovered/40 transition-colors"
+          onClick={() => {
+            onNavigateToRecovery('RECOVERED')
+          }}
+        >
+          <CardHeader className="p-4 sm:p-5 pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-mono text-ink">Recovered Volume</CardTitle>
+              <CheckCircle2 className="h-4 w-4 text-recovered" />
+            </div>
+            <CardDescription className="text-xs text-ink-muted">
+              Successfully completed revenue recoveries
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="p-4 sm:p-5 pt-0">
+            <div className="flex items-baseline justify-between mt-2 font-mono">
+              <span className="text-2xl font-bold text-recovered">{recoveredCount.toString()}</span>
+              <span className="text-xs text-recovered flex items-center gap-1">
+                View Ledger <ArrowRight className="h-3 w-3" />
+              </span>
+            </div>
           </CardContent>
         </Card>
       </section>
 
-      {/* Recent Activity Table */}
+      {/* Visual Analytics Charts Grid */}
+      {analytics && (
+        <section className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <RecoveryVelocityChart timeSeries={analytics.time_series} />
+          <LatencyDistributionChart ttrBuckets={analytics.time_to_recovery_buckets} />
+        </section>
+      )}
+
+      {/* Rail & Failure Health Distribution */}
+      {analytics && (
+        <section className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+          <div className="lg:col-span-2">
+            <PaymentRailChart railPerformance={analytics.rail_performance} />
+          </div>
+          <HealthScoreCard
+            healthScore={analytics.health_score}
+            returnOnSpend={analytics.return_on_recovery_spend}
+            recoveryStreak={analytics.recovery_streak}
+          />
+        </section>
+      )}
+
+      {/* Recent Cases Preview Table */}
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
+        <CardHeader className="flex flex-row items-center justify-between p-4 sm:p-5 border-b border-border">
           <div>
-            <CardTitle>Recent Recovery Transactions</CardTitle>
-            <CardDescription className="text-sm">
-              Real-time feed of detected payment failures and active dunning state
+            <CardTitle>Recent Recovery Cases</CardTitle>
+            <CardDescription className="text-xs mt-0.5">
+              Live stream of recent failed payments ingested into recovery engine
             </CardDescription>
           </div>
           <Button
-            variant="ghost"
+            variant="outline"
             size="sm"
-            className="font-mono text-xs text-accent"
             onClick={() => {
-              onNavigateToRecovery()
+              onNavigateToRecovery('ALL')
             }}
+            className="font-mono text-xs"
           >
-            View All ({cases.length.toString()})
+            View All Cases ({cases.length.toString()})
           </Button>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-0">
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Case ID</TableHead>
-                <TableHead>Rail</TableHead>
+                <TableHead>Payment Rail</TableHead>
                 <TableHead>Amount</TableHead>
-                <TableHead>Arm</TableHead>
-                <TableHead>State</TableHead>
-                <TableHead>Error Reason</TableHead>
+                <TableHead>Experiment Arm</TableHead>
+                <TableHead>Current Status</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
                 <>
+                  <SkeletonRow />
                   <SkeletonRow />
                   <SkeletonRow />
                   <SkeletonRow />
@@ -401,11 +402,11 @@ export function OverviewView({
                     colSpan={6}
                     className="h-24 text-center font-mono text-xs text-ink-muted"
                   >
-                    No recovery cases found. Click &apos;Seed 50 Failures&apos; to begin.
+                    No recovery cases found. Click &quot;Seed 50 Failures&quot; to generate synthetic cases.
                   </TableCell>
                 </TableRow>
               ) : (
-                cases.slice(0, 5).map((c) => (
+                cases.slice(0, 8).map((c) => (
                   <TableRow
                     key={c.case_id}
                     className="cursor-pointer hover:bg-surface-sunken/60"
@@ -416,8 +417,8 @@ export function OverviewView({
                     <TableCell className="font-mono text-xs font-semibold text-ink">
                       {c.case_id}
                     </TableCell>
-                    <TableCell className="font-mono text-xs uppercase text-ink-muted">
-                      {c.failure_event.payment_rail}
+                    <TableCell>
+                      <RailBadge rail={c.failure_event.payment_rail} />
                     </TableCell>
                     <TableCell className="font-mono text-xs font-medium text-ink">
                       {formatINR(c.amount_paise)}
@@ -440,8 +441,18 @@ export function OverviewView({
                         {c.state.replace('_', ' ')}
                       </Badge>
                     </TableCell>
-                    <TableCell className="text-xs text-ink-muted max-w-[200px] truncate">
-                      {c.failure_event.error_reason || c.failure_event.error_code}
+                    <TableCell className="text-right">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="font-mono text-xs text-ink-muted hover:text-ink"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          onSelectCase(c)
+                        }}
+                      >
+                        Details
+                      </Button>
                     </TableCell>
                   </TableRow>
                 ))

@@ -35,12 +35,12 @@ def test_webhook_payment_failed_ingestion(client: TestClient) -> None:
     }
 
     response = client.post("/api/webhooks/razorpay", json=payload)
-    assert response.status_code == 200
+    assert response.status_code == 202
     data = response.json()
-    assert data["status"] == "processed"
+    assert data["status"] == "queued"
     assert data["event"] == "payment.failed"
     assert data["case_id"] is not None
-    assert data["action_taken"] == "RETRY_SCHEDULED"
+    assert data["action_taken"] == "QUEUED"
 
 
 def test_webhook_payment_captured_ingestion(client: TestClient) -> None:
@@ -122,8 +122,8 @@ def test_webhook_hmac_signature_validation_accepted(
             "X-Razorpay-Signature": expected_sig,
         },
     )
-    assert response.status_code == 200
-    assert response.json()["status"] == "processed"
+    assert response.status_code == 202
+    assert response.json()["status"] == "queued"
 
 
 def test_webhook_hmac_signature_tampered_rejected(

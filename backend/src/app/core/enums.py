@@ -58,6 +58,7 @@ class InterventionType(str, Enum):
     CUSTOMER_NUDGE = "CUSTOMER_NUDGE"
     INCENTIVIZED_LINK = "INCENTIVIZED_LINK"
     B2B_INVOICE_CHASER = "B2B_INVOICE_CHASER"
+    SMART_COLLECT = "SMART_COLLECT"
     P2P_FOLLOWUP = "P2P_FOLLOWUP"
     MANUAL_ESCALATION = "MANUAL_ESCALATION"
     NO_ACTION = "NO_ACTION"
@@ -112,3 +113,13 @@ class PaymentRail(str, Enum):
     NETBANKING = "NETBANKING"
     B2B_INVOICE = "B2B_INVOICE"
     UNKNOWN = "UNKNOWN"
+
+
+class JobStatus(str, Enum):
+    """Execution status of an observable queue job."""
+
+    QUEUED = "QUEUED"
+    PROCESSING = "PROCESSING"
+    DONE = "DONE"
+    FAILED = "FAILED"
+    DEAD = "DEAD"

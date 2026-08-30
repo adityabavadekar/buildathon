@@ -56,7 +56,7 @@ class Settings(BaseSettings):
         default=None, validation_alias="OPENROUTER_API_KEY"
     )
     openrouter_model: str = Field(
-        default="openrouter/anthropic/claude-3.5-sonnet",
+        default="openrouter/nvidia/nemotron-3.5-lightning:free",
         validation_alias="OPENROUTER_MODEL",
     )
     anthropic_api_key: SecretStr | None = Field(
@@ -64,6 +64,9 @@ class Settings(BaseSettings):
     )
     openai_api_key: SecretStr | None = Field(
         default=None, validation_alias="OPENAI_API_KEY"
+    )
+    groq_api_key: SecretStr | None = Field(
+        default=None, validation_alias="GROQ_API_KEY"
     )
 
     # Razorpay Gateway & Webhook Credentials

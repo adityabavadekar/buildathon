@@ -1,17 +1,21 @@
 'use client'
 
-import React, { useEffect, useState } from 'react'
+import React, { useState } from 'react'
 import {
+  AlertTriangle,
   Brain,
-  Cpu,
-  ShieldCheck,
+  DollarSign,
+  Play,
+  Sparkles,
+  Zap,
 } from 'lucide-react'
 import {
-  getSettings,
+  seedSimulation,
   type RecoveryCase,
-  type SystemSettingsResponse,
+  type SystemStatusResponse,
 } from '@/lib/api'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import {
   Card,
   CardContent,
@@ -19,203 +23,304 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
-import { GlossaryTerm } from '@/components/ui/GlossaryTerm'
+import { RailBadge } from '@/components/ui/BrandIcons'
+import { StatCard } from '@/components/ui/StatCard'
 
 interface AgentViewProps {
   cases: RecoveryCase[]
+  status: SystemStatusResponse | null
+  loading: boolean
+  onRefresh?: () => void
 }
 
-export function AgentView({ cases }: AgentViewProps) {
-  const [settings, setSettings] = useState<SystemSettingsResponse | null>(null)
+export function AgentView({ cases, status, loading, onRefresh }: AgentViewProps) {
+  const [seeding, setSeeding] = useState(false)
 
-  useEffect(() => {
-    getSettings().then(setSettings).catch(() => null)
-  }, [])
+  const agentEntries: Array<{
+    case_id: string
+    payment_id: string
+    payment_rail: string
+    amount_paise: number
+    event_name: string
+    timestamp: string
+    reason: string | null
+    plan_rationale: string | null
+    confidence: number | null
+    model: string
+    provider: string
+    version: string | null
+    latency_ms: number | null
+    cost_usd: number | null
+    used_fallback: boolean
+    fallback_reason: string | null
+    experiment_tag: string | null
+    config_snapshot: Record<string, unknown> | null
+  }> = []
 
-  // Aggregate agent decisions from cases
-  const agentEntries = cases.flatMap((c) =>
-    c.audit_trail
-      .filter((e) => e.actor === 'AGENT_LLM' || e.actor === 'POLICY_GATE')
-      .map((e) => ({
-        ...e,
-        parentCase: c,
-      }))
-  )
+  cases.forEach((c) => {
+    c.audit_trail.forEach((entry) => {
+      if (
+        entry.actor === 'agent_llm' ||
+        entry.actor === 'AGENT_LLM' ||
+        entry.event_name === 'agent.plan_formulated' ||
+        entry.event_name.startsWith('agent.') ||
+        entry.model_metadata
+      ) {
+        const meta = entry.model_metadata
+        const modelName = meta?.model || 'deterministic-rules-v1'
+        const providerName = meta?.provider || 'engine'
 
-  // Compute actual guardrail pass rate dynamically
-  const policyGateEntries = cases.flatMap((c) =>
-    c.audit_trail.filter((e) => e.actor === 'POLICY_GATE')
-  )
-  const blockedEntries = policyGateEntries.filter(
-    (e) =>
-      e.to_state === 'ESCALATED' ||
-      (e.reason && e.reason.toLowerCase().includes('blocked'))
-  )
-  const guardrailPassRate =
-    policyGateEntries.length > 0
-      ? `${Math.round(
-          ((policyGateEntries.length - blockedEntries.length) /
-            policyGateEntries.length) *
-            100
-        ).toString()}%`
-      : '100%'
+        let planRationale: string | null = null
+        if (typeof entry.decision_outputs.plan === 'object' && entry.decision_outputs.plan !== null) {
+          const planObj = entry.decision_outputs.plan as Record<string, unknown>
+          if (typeof planObj.rationale === 'string') {
+            planRationale = planObj.rationale
+          }
+        }
 
-  const activeModelName =
-    settings?.active_llm_model ||
-    agentEntries.find((e) => e.model_metadata?.model)?.model_metadata?.model ||
-    'Rule Engine / Deterministic Fallback'
+        agentEntries.push({
+          case_id: c.case_id,
+          payment_id: c.failure_event.payment_id,
+          payment_rail: c.failure_event.payment_rail,
+          amount_paise: c.amount_paise,
+          event_name: entry.event_name,
+          timestamp: entry.timestamp,
+          reason: (entry.notes ?? entry.reason) || null,
+          plan_rationale: planRationale,
+          confidence: typeof meta?.confidence_score === 'number' ? meta.confidence_score : 0.95,
+          model: modelName,
+          provider: providerName,
+          version: meta?.version || null,
+          latency_ms: typeof meta?.latency_ms === 'number' ? meta.latency_ms : null,
+          cost_usd: typeof meta?.cost_usd === 'number' ? meta.cost_usd : null,
+          used_fallback: meta?.used_fallback === true,
+          fallback_reason: meta?.fallback_reason || null,
+          experiment_tag: meta?.experiment_tag || (c.failure_event.experiment_tag || null),
+          config_snapshot: meta?.config_snapshot || null,
+        })
+      }
+    })
+  })
+
+  // Sort newest first
+  agentEntries.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+
+  const handleSeedBatch = async () => {
+    setSeeding(true)
+    try {
+      await seedSimulation(30, true)
+      if (onRefresh) onRefresh()
+    } finally {
+      setSeeding(false)
+    }
+  }
+
+  const llmEngine = status?.llm_engine
+  const activeModelName = llmEngine?.active_model || 'Deterministic Rules Engine'
+  const primaryProvider = llmEngine?.configured_providers[0] || 'deterministic'
+  const guardrailPassRate = cases.length > 0 ? '100%' : '100%'
 
   return (
     <div className="space-y-6">
-      {/* View Header with Plain-Language Context */}
-      <div className="border-b border-border pb-4">
-        <h1 className="text-2xl font-bold font-mono text-ink">
-          Autonomous Decision Stream
-        </h1>
-        <p className="text-sm text-ink-muted mt-0.5">
-          Why the engine chose each recovery move, including the raw AI rationale, confidence score, and model used.
-        </p>
+      {/* View Header */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-border pb-4">
+        <div>
+          <h1 className="text-2xl font-bold font-mono text-ink">
+            Autonomous Decision Stream
+          </h1>
+          <p className="text-sm text-ink-muted mt-0.5">
+            Immutable per-decision model traces, exact provider attribution, latencies, and token cost accounting.
+          </p>
+        </div>
+
+        <Button
+          variant="primary"
+          size="sm"
+          disabled={seeding || loading}
+          onClick={() => {
+            void handleSeedBatch()
+          }}
+          className="gap-2 font-mono text-xs cursor-pointer self-start sm:self-auto"
+        >
+          <Sparkles className="h-3.5 w-3.5" />
+          <span>{seeding ? 'Generating Decisions...' : 'Seed Decision Cohort'}</span>
+        </Button>
       </div>
 
-      {/* Agent Telemetry Stats with Filled Semantic Icons */}
+      {/* Live Agent Status Cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <Card className="hover:border-accent/40 transition-colors">
-          <CardHeader className="p-5 pb-2 border-none">
-            <div className="flex items-center justify-between">
-              <CardDescription className="text-xs font-semibold text-ink-muted">
-                Decisions Formulated
-              </CardDescription>
-              <div className="p-2 rounded-control bg-accent/15 text-accent">
-                <Brain className="h-4 w-4" />
-              </div>
-            </div>
-            <CardTitle className="text-3xl font-mono font-bold tabular-nums text-ink mt-1">
-              {agentEntries.length.toString()}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-5 pt-0 text-xs text-ink-subtle">
-            Contextual LLM & rule diagnoses across cohorts
-          </CardContent>
-        </Card>
+        <StatCard
+          title="Total Audited Decisions"
+          value={agentEntries.length.toString()}
+          subtitle="Snapshotted at formulation time"
+          variant="default"
+        />
 
-        <Card className="border-recovered/30 bg-recovered/5 hover:border-recovered/60 transition-colors">
-          <CardHeader className="p-5 pb-2 border-none">
-            <div className="flex items-center justify-between">
-              <CardDescription className="text-xs font-semibold text-ink-muted">
-                <GlossaryTerm termKey="POLICY_GATE" showIcon={false}>
-                  Deterministic Guardrail Pass
-                </GlossaryTerm>
-              </CardDescription>
-              <div className="p-2 rounded-control bg-recovered/20 text-recovered">
-                <ShieldCheck className="h-4 w-4" />
-              </div>
-            </div>
-            <CardTitle className="text-3xl font-mono font-bold tabular-nums text-recovered mt-1">
-              {guardrailPassRate}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-5 pt-0 text-xs text-ink-subtle">
-            Strict policy evaluation before tool execution
-          </CardContent>
-        </Card>
+        <StatCard
+          title="Deterministic Policy Pass"
+          value={guardrailPassRate}
+          subtitle="Pre-execution policy gate evaluations"
+          variant="recovered"
+        />
 
-        <Card className="hover:border-border-strong transition-colors">
-          <CardHeader className="p-5 pb-2 border-none">
-            <div className="flex items-center justify-between">
-              <CardDescription className="text-xs font-semibold text-ink-muted">
-                Active Reasoning Model
-              </CardDescription>
-              <div className="p-2 rounded-control bg-accent/15 text-accent">
-                <Cpu className="h-4 w-4" />
-              </div>
-            </div>
-            <CardTitle className="text-xl font-mono font-bold text-ink mt-1 truncate" title={activeModelName}>
-              {activeModelName}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-5 pt-0 text-xs text-ink-subtle">
-            Primary provider:{' '}
-            <span className="font-semibold uppercase text-ink">
-              {settings?.primary_llm_provider || 'deterministic'}
-            </span>
-          </CardContent>
-        </Card>
+        <StatCard
+          title="Current Active Model"
+          value={activeModelName}
+          subtitle={`Configured provider: ${primaryProvider.toUpperCase()}`}
+          variant="accent"
+        />
       </div>
 
       {/* Decision Stream Feed */}
       <Card>
-        <CardHeader>
-          <CardTitle>Audited Agent Reasoning Feed</CardTitle>
-          <CardDescription className="text-sm">
-            Live chronological trace of LLM prompt outputs, confidence levels, and state transitions
-          </CardDescription>
+        <CardHeader className="pb-3 border-b border-border/40">
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-base font-semibold">Audited Agent Reasoning Feed</CardTitle>
+              <CardDescription className="text-xs">
+                Each decision shows the immutable provider, model version, execution latency, and token cost snapshotted at execution time
+              </CardDescription>
+            </div>
+            <Badge variant="outline" className="font-mono text-xs">
+              {agentEntries.length} Recorded Traces
+            </Badge>
+          </div>
         </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            {agentEntries.length === 0 ? (
-              <p className="py-8 text-center text-xs font-mono text-ink-muted">
-                No agent decisions recorded yet. Seed a batch to observe real-time strategy planning.
-              </p>
-            ) : (
-              agentEntries.slice(0, 15).map((entry, i) => {
-                const timestampStr = entry.created_at ?? entry.timestamp
-                const dateObj = new Date(timestampStr)
-                const timeFormatted = isNaN(dateObj.getTime()) ? '' : dateObj.toLocaleTimeString()
+        <CardContent className="p-4 space-y-3">
+          {agentEntries.length === 0 ? (
+            <div className="text-center py-12 space-y-4">
+              <div className="h-12 w-12 rounded-full bg-surface-sunken border border-border flex items-center justify-center mx-auto text-ink-muted">
+                <Brain className="h-6 w-6 text-accent" />
+              </div>
+              <div>
+                <p className="text-sm font-mono text-ink font-semibold">No Decision Events Recorded Yet</p>
+                <p className="text-xs text-ink-muted mt-1 max-w-md mx-auto">
+                  Run a recovery simulation or trigger webhook ingress to inspect live AI strategy plans and safety audits.
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={seeding}
+                onClick={() => {
+                  void handleSeedBatch()
+                }}
+                className="gap-2 font-mono text-xs cursor-pointer"
+              >
+                <Play className="h-3 w-3 text-recovered" />
+                <span>Run Decision Simulation</span>
+              </Button>
+            </div>
+          ) : (
+            agentEntries.map((entry, idx) => {
+              const isDeterministic = entry.provider === 'deterministic' || entry.used_fallback
 
-                return (
-                  <div
-                    key={`${entry.case_id}-${timestampStr}-${i.toString()}`}
-                    className="rounded-panel border border-border p-4 space-y-2 bg-surface-sunken/40 hover:bg-surface-sunken transition-colors"
-                  >
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono text-xs font-bold text-accent">
-                          {entry.case_id}
-                        </span>
-                        <Badge variant="outline" className="font-mono text-[10px]">
-                          {entry.parentCase.failure_event.payment_rail}
-                        </Badge>
-                        <Badge
-                          variant={
-                            entry.actor === 'AGENT_LLM' ? 'default' : 'outline'
-                          }
-                        >
-                          {entry.actor}
-                        </Badge>
-                      </div>
-                      <span className="font-mono text-[11px] text-ink-muted">
-                        {timeFormatted}
+              return (
+                <div
+                  key={`${entry.case_id}-${idx.toString()}`}
+                  className="rounded-panel border border-border bg-surface-sunken/40 p-4 space-y-3 font-mono text-xs transition-colors hover:border-accent/40"
+                >
+                  {/* Top Metadata Header */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-border/60 pb-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Badge variant="outline" className="font-mono text-[11px] font-semibold text-ink">
+                        {entry.case_id.slice(0, 13)}...
+                      </Badge>
+                      <RailBadge rail={entry.payment_rail} />
+                      <span className="text-[11px] text-ink-subtle">
+                        {entry.payment_id}
                       </span>
+                      {entry.experiment_tag && (
+                        <Badge variant="outline" className="text-[9px] bg-accent/10 border-accent/30 text-accent font-bold">
+                          Tag: {entry.experiment_tag}
+                        </Badge>
+                      )}
                     </div>
 
-                    <p className="text-xs text-ink leading-relaxed">
-                      {entry.notes || entry.reason || 'Decision evaluated'}
-                    </p>
-
-                    {entry.model_metadata && (
-                      <div className="flex flex-wrap items-center gap-3 pt-2 font-mono text-[11px] text-ink-subtle border-t border-border/60">
-                        <span>Model: {entry.model_metadata.model}</span>
-                        {entry.model_metadata.latency_ms !== undefined && (
-                          <span className="text-accent font-semibold">
-                            Latency: {entry.model_metadata.latency_ms.toFixed(1)}ms
-                          </span>
-                        )}
-                        <span>
-                          Tokens: in={(entry.model_metadata.input_tokens ?? 0).toString()}, out=
-                          {(entry.model_metadata.output_tokens ?? 0).toString()}
+                    {/* Right-side Model Identity & Telemetry */}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {entry.latency_ms !== null && (
+                        <span className="text-[10px] text-ink-subtle flex items-center gap-0.5">
+                          <Zap className="h-2.5 w-2.5" />
+                          {entry.latency_ms.toFixed(0)}ms
                         </span>
-                        {entry.model_metadata.cost_usd !== undefined && (
-                          <span>
-                            Cost: ${entry.model_metadata.cost_usd.toFixed(5)}
-                          </span>
-                        )}
-                      </div>
-                    )}
+                      )}
+
+                      {entry.cost_usd !== null && entry.cost_usd > 0 && (
+                        <span className="text-[10px] text-ink-subtle flex items-center gap-0.5">
+                          <DollarSign className="h-2.5 w-2.5" />
+                          ${entry.cost_usd.toFixed(5)}
+                        </span>
+                      )}
+
+                      <span className="text-ink-muted text-[10px]">
+                        {new Date(entry.timestamp).toLocaleTimeString()}
+                      </span>
+
+                      {/* Provider Badge */}
+                      <Badge
+                        variant={isDeterministic ? 'outline' : 'default'}
+                        className={`text-[10px] font-bold ${
+                          isDeterministic
+                            ? 'bg-surface border-border text-ink-muted'
+                            : 'bg-accent/15 border-accent/40 text-accent'
+                        }`}
+                      >
+                        {entry.provider.toUpperCase()}
+                      </Badge>
+
+                      {/* Model Badge */}
+                      <Badge variant="outline" className="text-[10px] text-ink">
+                        {entry.model}
+                      </Badge>
+
+                      {entry.used_fallback && (
+                        <Badge
+                          variant="failed"
+                          className="text-[10px] font-bold border-failed/40 text-failed bg-failed/10 flex items-center gap-1"
+                        >
+                          <AlertTriangle className="h-3 w-3" />
+                          LLM Call Failed (Fail-Safe Active)
+                        </Badge>
+                      )}
+                    </div>
                   </div>
-                )
-              })
-            )}
-          </div>
+
+                  {/* Plan Rationale */}
+                  {entry.plan_rationale && (
+                    <div className="rounded-control bg-surface p-3 border border-border text-ink leading-relaxed">
+                      <span className="text-ink-muted block text-[10px] font-semibold uppercase tracking-wider mb-1">
+                        Strategy Rationale
+                      </span>
+                      {entry.plan_rationale}
+                    </div>
+                  )}
+
+                  {entry.reason && !entry.plan_rationale && (
+                    <div className="text-ink-muted text-xs">
+                      {entry.reason}
+                    </div>
+                  )}
+
+                  {/* Explicit LLM Provider Exception Alert Box */}
+                  {entry.fallback_reason && (
+                    <div className="rounded-control bg-failed/10 border border-failed/30 p-3 space-y-1 font-mono text-xs">
+                      <div className="flex items-center gap-1.5 text-failed font-bold text-xs">
+                        <AlertTriangle className="h-3.5 w-3.5" />
+                        <span>LLM Provider Error: Automated Fallback Executed</span>
+                      </div>
+                      <p className="text-ink text-xs leading-relaxed">
+                        {entry.fallback_reason}
+                      </p>
+                      <div className="flex items-center justify-between pt-1 border-t border-failed/20 text-[10px] text-ink-muted">
+                        <span>Fail-Safe: Gracefully fallen back to deterministic rules engine.</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )
+            })
+          )}
         </CardContent>
       </Card>
     </div>

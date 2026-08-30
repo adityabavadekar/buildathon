@@ -1,6 +1,7 @@
 'use client'
 
 import React from 'react'
+import { Building2, CreditCard, RefreshCw, FileText } from 'lucide-react'
 
 interface BrandIconProps {
   className?: string
@@ -125,5 +126,47 @@ export function RuPayIcon({ className = 'h-4 w-4' }: BrandIconProps) {
       <path d="M19 12.4l4.5 5.6h3.8l-4.8-6 4.3-6h-3.7L19 12.4z" fill="#00A651" />
       <path d="M25 6h4l3.5 12h-3.8L27 12h-2V6z" fill="#ED1C24" />
     </svg>
+  )
+}
+
+/** Unified Brand Badge for Payment Rails */
+export function RailBadge({
+  rail,
+  showLabel = true,
+  className = '',
+}: {
+  rail: string
+  showLabel?: boolean
+  className?: string
+}) {
+  const norm = (rail || 'UNKNOWN').toUpperCase()
+  let icon = <CreditCard className="h-3.5 w-3.5 text-ink-muted" />
+  let label = norm
+
+  if (norm.includes('UPI')) {
+    icon = <UpiIcon className="h-3.5 w-3.5" />
+    label = 'UPI'
+  } else if (norm.includes('CARD') || norm.includes('RUPAY')) {
+    icon = <RuPayIcon className="h-3.5 w-3.5" />
+    label = 'Card (RuPay)'
+  } else if (norm.includes('NETBANK') || norm.includes('NB')) {
+    icon = <Building2 className="h-3.5 w-3.5 text-accent" />
+    label = 'NetBanking'
+  } else if (norm.includes('NACH') || norm.includes('MANDATE') || norm.includes('ENACH')) {
+    icon = <RefreshCw className="h-3.5 w-3.5 text-recovered" />
+    label = 'eNACH / AutoPay'
+  } else if (norm.includes('INVOICE') || norm.includes('B2B')) {
+    icon = <FileText className="h-3.5 w-3.5 text-amber-500" />
+    label = 'B2B Invoice'
+  }
+
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-control bg-surface-sunken/80 border border-border px-2 py-0.5 font-mono text-[11px] text-ink font-medium ${className}`}
+      title={`Payment Rail: ${label}`}
+    >
+      {icon}
+      {showLabel && <span>{label}</span>}
+    </span>
   )
 }

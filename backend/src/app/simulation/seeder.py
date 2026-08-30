@@ -107,6 +107,8 @@ def _pseudo_random_float() -> float:
 async def seed_simulation_batch(
     count: int = 50,
     simulate_resolutions: bool = True,
+    experiment_tag: str | None = None,
+    model_override: str | None = None,
 ) -> dict[str, Any]:
     """Generate N realistic failure events and simulate recovery outcomes."""
     orchestrator = get_recovery_orchestrator()
@@ -137,6 +139,8 @@ async def seed_simulation_batch(
             if "AP" in template["error_code"] or template["error_code"] == "XT"
             else None,
             occurred_at=occurred_at,
+            experiment_tag=experiment_tag,
+            model_override=model_override,
             metadata={"source": "simulation"},
         )
 

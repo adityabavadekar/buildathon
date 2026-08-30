@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 from app.audit.repository import get_case_repository
 from app.core.config import get_settings
 from app.core.enums import RecoveryState
+from app.core.operator import OperatorMode, get_operator_mode
 from app.intervention.orchestrator import get_recovery_orchestrator
 from app.llm.client import configured_providers
 from app.simulation.seeder import reset_simulation_data, seed_simulation_batch
@@ -26,6 +27,8 @@ class SeedRequest(BaseModel):
 
     count: int = Field(default=50, ge=1, le=500)
     simulate_resolutions: bool = Field(default=True)
+    experiment_tag: str | None = None
+    model_override: str | None = None
 
 
 class SeedResponse(BaseModel):
@@ -64,6 +67,8 @@ async def seed_batch(req: SeedRequest) -> SeedResponse:
     result = await seed_simulation_batch(
         count=req.count,
         simulate_resolutions=req.simulate_resolutions,
+        experiment_tag=req.experiment_tag,
+        model_override=req.model_override,
     )
     return SeedResponse(
         seeded_count=result["seeded_count"],
@@ -134,9 +139,14 @@ async def get_system_status() -> SystemStatusResponse:
 
     providers = configured_providers()
     rzp_configured = bool(settings.razorpay_key_id and settings.razorpay_key_secret)
+    operator_mode = get_operator_mode()
+    orchestrator = get_recovery_orchestrator()
+    policy = orchestrator.policy
 
     return SystemStatusResponse(
-        system_status="OPERATIONAL",
+        system_status="OPERATIONAL"
+        if operator_mode != OperatorMode.MONITORING_ONLY
+        else "HELD",
         uptime_seconds=uptime,
         environment=settings.env,
         database_cases_count=total_cases,
@@ -157,15 +167,18 @@ async def get_system_status() -> SystemStatusResponse:
             "active_model": settings.openrouter_model
             if "openrouter" in providers
             else "deterministic_rules",
-            "circuit_breaker": "ACTIVE",
+            "circuit_breaker": "ACTIVE"
+            if operator_mode == OperatorMode.MONITORING_ONLY
+            else "INACTIVE",
+            "operator_mode": operator_mode.value,
             "offline_fallback_operational": True,
         },
         policy_enforcement={
             "guardrail_status": "ACTIVE",
-            "max_touches_cap": 3,
-            "cooldown_hours": 24,
-            "discount_cap_bps": 1000,
-            "holdout_ratio_pct": 10,
+            "max_touches_cap": policy.max_touches,
+            "cooldown_hours": policy.min_cooldown_hours,
+            "discount_cap_bps": policy.max_discount_bps,
+            "holdout_ratio_pct": int(policy.holdout_percentage * 100),
         },
         timestamp=datetime.now(UTC),
     )

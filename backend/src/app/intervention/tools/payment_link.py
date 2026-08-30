@@ -105,6 +105,9 @@ class RazorpayPaymentLinkTool(BaseInterventionTool):
                         "customer_id": case.failure_event.customer_id,
                         "live_gateway_call": True,
                     }
+                    case.payment_link_id = link_id
+                    case.payment_link_url = short_url
+                    case.payment_link_expires_at = expire_by
                     return ToolExecutionResult(
                         success=True,
                         action_taken="PAYMENT_LINK_CREATED",
@@ -138,6 +141,9 @@ class RazorpayPaymentLinkTool(BaseInterventionTool):
                         "sandbox_simulated": True,
                         "rate_limited": True,
                     }
+                    case.payment_link_id = sim_link_id
+                    case.payment_link_url = sim_short_url
+                    case.payment_link_expires_at = expire_by
                     return ToolExecutionResult(
                         success=True,
                         action_taken="PAYMENT_LINK_CREATED",
@@ -192,6 +198,10 @@ class RazorpayPaymentLinkTool(BaseInterventionTool):
             "live_gateway_call": False,
             "sandbox_simulated": True,
         }
+
+        case.payment_link_id = sim_link_id
+        case.payment_link_url = sim_short_url
+        case.payment_link_expires_at = expire_by
 
         return ToolExecutionResult(
             success=True,

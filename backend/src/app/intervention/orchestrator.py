@@ -8,7 +8,7 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
-from app.audit.models import AuditEntry, RecoveryCase
+from app.audit.models import AuditEntry, RecoveryCase, ScheduledJob
 from app.audit.repository import CaseRepository, get_case_repository
 from app.audit.state_machine import transition_case
 from app.core.enums import (
@@ -20,6 +20,7 @@ from app.core.enums import (
     RecoveryState,
 )
 from app.core.logging import get_logger
+from app.core.operator import OperatorMode, get_operator_mode
 from app.intervention.models import InterventionPlan, MerchantPolicy
 from app.intervention.policy_gate import PolicyGate
 from app.intervention.tools.mandate_retry import MandateRetryTool
@@ -68,6 +69,7 @@ class RecoveryOrchestrator:
         failure_event: RawFailureEvent,
         *,
         experiment_arm_override: ExperimentArm | None = None,
+        use_llm: bool = False,
     ) -> RecoveryCase:
         """Ingest failure event, assign arm, formulate plan, gate policy, and execute or schedule."""
         existing_case = self.repository.get_by_payment_id(failure_event.payment_id)
@@ -210,8 +212,44 @@ class RecoveryOrchestrator:
             self.repository.save(case)
             return case
 
-        # 3. Execute approved intervention
+        # 3. Check live operator autonomy mode
         active_plan = eval_result.modified_plan or plan
+        operator_mode = get_operator_mode()
+
+        if operator_mode == OperatorMode.MONITORING_ONLY:
+            case.audit_trail.append(
+                AuditEntry(
+                    case_id=case.case_id,
+                    event_name="intervention.held_circuit_breaker",
+                    actor=AuditActor.POLICY_GATE,
+                    from_state=case.state,
+                    to_state=case.state,
+                    decision_inputs={
+                        "operator_mode": operator_mode.value,
+                        "plan": active_plan.model_dump(mode="json"),
+                    },
+                    notes="Outbound intervention held by global circuit breaker (MONITORING_ONLY mode active).",
+                )
+            )
+            self.repository.save(case)
+            return case
+
+        if operator_mode == OperatorMode.HUMAN_IN_THE_LOOP:
+            transition_case(
+                case,
+                to_state=RecoveryState.ESCALATED,
+                actor=AuditActor.POLICY_GATE,
+                reason=f"Intervention {active_plan.intervention_type.value} paused for human operator approval under HUMAN_IN_THE_LOOP mode",
+                event_name="intervention.pending_human_approval",
+                decision_inputs={
+                    "operator_mode": operator_mode.value,
+                    "plan": active_plan.model_dump(mode="json"),
+                },
+            )
+            self.repository.save(case)
+            return case
+
+        # 4. Execute approved intervention under FULL_AUTONOMY
         await self._execute_plan(case, active_plan)
         self.repository.save(case)
         return case
@@ -270,6 +308,22 @@ class RecoveryOrchestrator:
                 },
             )
             return
+
+        case.due_at = plan.scheduled_at
+        case.next_action = plan.intervention_type.value
+
+        job = ScheduledJob(
+            case_id=case.case_id,
+            job_type=plan.intervention_type.value,
+            due_at=plan.scheduled_at,
+            idempotency_key=plan.idempotency_key,
+            payload={
+                "plan_id": plan.plan_id,
+                "discount_bps": plan.discount_bps,
+                "discount_paise": plan.discount_paise,
+            },
+        )
+        self.repository.schedule_job(job)
 
         transition_case(
             case,
