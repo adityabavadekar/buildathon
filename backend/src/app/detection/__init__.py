@@ -1,5 +1,6 @@
-"""Detection: finds revenue at risk (failed payments, abandoned checkouts,
-failed subscription renewals, overdue receivables) and diagnoses why.
+"""Detection and contextual classification domain."""
 
-Empty by design - no logic exists yet.
-"""
+from app.detection.classifier import FailureClassifier
+from app.detection.models import DiagnosisResult, RawFailureEvent
+
+__all__ = ["DiagnosisResult", "FailureClassifier", "RawFailureEvent"]

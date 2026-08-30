@@ -1,3 +1,5 @@
+'use client'
+
 import { useEffect, useState } from 'react'
 import { ApiError, getHealth, type HealthResponse } from '@/lib/api'
 
@@ -6,14 +8,7 @@ type State =
   | { kind: 'ready'; health: HealthResponse }
   | { kind: 'error'; message: string; requestId: string | null }
 
-/**
- * Health-check page.
- *
- * Deliberately minimal, but it establishes the visual direction the dashboard
- * will inherit: mono tabular figures for anything numeric, a status dot driven
- * by semantic tokens, and a restrained panel treatment.
- */
-export default function App() {
+export default function Home() {
   const [state, setState] = useState<State>({ kind: 'loading' })
 
   useEffect(() => {
@@ -103,7 +98,8 @@ export default function App() {
       </section>
 
       <p className="mt-4 text-xs text-ink-subtle">
-        Scaffold only - no detection, intervention, or recovery logic yet.
+        Phase 1 Domain Models active - Detection, Policies, and Invariant gates
+        ready.
       </p>
     </main>
   )

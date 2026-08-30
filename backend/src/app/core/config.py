@@ -40,8 +40,15 @@ class Settings(BaseSettings):
     )
 
     cors_origins: list[str] = Field(
-        default=["http://localhost:5173", "http://127.0.0.1:5173"],
-        description="Allowed browser origins. The defaults are the Vite dev server.",
+        default=[
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+            "http://192.168.1.4:5173",
+            "http://192.168.1.4:3000",
+        ],
+        description="Allowed browser origins for local development and network access.",
     )
 
     # These keep their conventional names rather than taking the APP_ prefix, so

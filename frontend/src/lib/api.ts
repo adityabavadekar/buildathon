@@ -6,11 +6,10 @@
  */
 
 /**
- * Base URL for the API. Defaults to `/api`, which the Vite dev server proxies to
- * the backend (see vite.config.ts), so the browser sees a single origin in
- * development. Set VITE_API_BASE_URL to target a deployed backend.
+ * Base URL for the API. Defaults to `/api`, which Next.js rewrites to
+ * the backend in development. Set NEXT_PUBLIC_API_BASE_URL to target a deployed backend.
  */
-const API_BASE_URL: string = import.meta.env.VITE_API_BASE_URL ?? '/api'
+const API_BASE_URL: string = process.env.NEXT_PUBLIC_API_BASE_URL ?? '/api'
 
 export interface HealthResponse {
   status: 'ok'
@@ -21,9 +20,6 @@ export interface HealthResponse {
 
 /** Thrown when the backend responds with a non-2xx status. */
 export class ApiError extends Error {
-  // Written as explicit fields rather than constructor parameter properties:
-  // `erasableSyntaxOnly` (on by default in the Vite template) forbids the
-  // shorthand, since it emits runtime code rather than being purely erasable.
   readonly status: number
   readonly requestId: string | null
 
@@ -36,8 +32,6 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  // Headers is used rather than an object spread: RequestInit['headers'] may be
-  // an array or a Headers instance, and spreading either would produce garbage.
   const headers = new Headers(init?.headers)
   headers.set('Accept', 'application/json')
 

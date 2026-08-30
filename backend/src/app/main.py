@@ -64,7 +64,9 @@ def create_app() -> FastAPI:
         expose_headers=["x-request-id"],
     )
 
+    # Health check is available at both /health and /api/health
     app.include_router(health.router)
+    app.include_router(health.router, prefix="/api")
     return app
 
 

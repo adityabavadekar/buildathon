@@ -1,5 +1,6 @@
-"""Intervention: chooses and executes a bounded recovery action, subject to
-explicit limits, approval gates, and stopping rules.
+"""Intervention planning and policy guardrail domain."""
 
-Empty by design - no logic exists yet.
-"""
+from app.intervention.models import InterventionPlan, MerchantPolicy, PolicyEvaluation
+from app.intervention.policy_gate import PolicyGate
+
+__all__ = ["InterventionPlan", "MerchantPolicy", "PolicyEvaluation", "PolicyGate"]

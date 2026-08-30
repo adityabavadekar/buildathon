@@ -1,0 +1,136 @@
+"""Tests for policy invariants, touch caps, cooldowns, and margin limits."""
+
+from datetime import UTC, datetime, timedelta
+
+from app.audit.models import RecoveryCase
+from app.core.enums import (
+    ExperimentArm,
+    InterventionType,
+    OutreachChannel,
+    PolicyCheckResult,
+)
+from app.detection.models import RawFailureEvent
+from app.intervention.models import InterventionPlan, MerchantPolicy
+from app.intervention.policy_gate import PolicyGate
+
+
+def create_sample_case(
+    amount_paise: int = 100000,
+    touches_count: int = 0,
+    is_opted_out: bool = False,
+    experiment_arm: ExperimentArm = ExperimentArm.TREATMENT,
+    last_touch_at: datetime | None = None,
+) -> RecoveryCase:
+    event = RawFailureEvent(
+        event_id="evt_test",
+        payment_id="pay_test",
+        customer_id="cust_test",
+        amount_paise=amount_paise,
+        error_code="BAD_REQUEST_ERROR",
+        occurred_at=datetime.now(UTC),
+    )
+    return RecoveryCase(
+        case_id="case_test",
+        amount_paise=amount_paise,
+        failure_event=event,
+        touches_count=touches_count,
+        is_opted_out=is_opted_out,
+        experiment_arm=experiment_arm,
+        last_touch_at=last_touch_at,
+    )
+
+
+def test_policy_gate_blocks_opted_out_customers() -> None:
+    gate = PolicyGate()
+    case = create_sample_case(is_opted_out=True)
+    plan = InterventionPlan(
+        plan_id="plan_1",
+        case_id=case.case_id,
+        intervention_type=InterventionType.CUSTOMER_NUDGE,
+        channel=OutreachChannel.WHATSAPP,
+        scheduled_at=datetime.now(UTC),
+        idempotency_key="idem_1",
+        rationale="Nudge",
+    )
+
+    evaluation = gate.evaluate(case, plan)
+    assert evaluation.result == PolicyCheckResult.BLOCKED_OPT_OUT
+    assert not evaluation.is_allowed
+
+
+def test_policy_gate_preserves_holdout_control_group() -> None:
+    gate = PolicyGate()
+    case = create_sample_case(experiment_arm=ExperimentArm.HOLDOUT_CONTROL)
+    plan = InterventionPlan(
+        plan_id="plan_2",
+        case_id=case.case_id,
+        intervention_type=InterventionType.SMART_PAYMENT_LINK,
+        scheduled_at=datetime.now(UTC),
+        idempotency_key="idem_2",
+        rationale="Send link",
+    )
+
+    evaluation = gate.evaluate(case, plan)
+    assert evaluation.result == PolicyCheckResult.HOLDOUT_CONTROL
+    assert not evaluation.is_allowed
+
+
+def test_policy_gate_blocks_when_max_touches_exceeded() -> None:
+    gate = PolicyGate()
+    case = create_sample_case(touches_count=3)
+    policy = MerchantPolicy(max_touches=3)
+    plan = InterventionPlan(
+        plan_id="plan_3",
+        case_id=case.case_id,
+        intervention_type=InterventionType.SMART_RETRY,
+        scheduled_at=datetime.now(UTC),
+        idempotency_key="idem_3",
+        rationale="Retry attempt 4",
+    )
+
+    evaluation = gate.evaluate(case, plan, policy)
+    assert evaluation.result == PolicyCheckResult.BLOCKED_MAX_RETRIES
+    assert not evaluation.is_allowed
+
+
+def test_policy_gate_enforces_minimum_cooldown() -> None:
+    gate = PolicyGate()
+    now = datetime.now(UTC)
+    case = create_sample_case(touches_count=1, last_touch_at=now - timedelta(hours=6))
+    policy = MerchantPolicy(min_cooldown_hours=24)
+    plan = InterventionPlan(
+        plan_id="plan_4",
+        case_id=case.case_id,
+        intervention_type=InterventionType.CUSTOMER_NUDGE,
+        channel=OutreachChannel.SMS,
+        scheduled_at=now,
+        idempotency_key="idem_4",
+        rationale="Too soon nudge",
+    )
+
+    evaluation = gate.evaluate(case, plan, policy)
+    assert evaluation.result == PolicyCheckResult.BLOCKED_COOLDOWN
+    assert not evaluation.is_allowed
+
+
+def test_policy_gate_clamps_excessive_discount() -> None:
+    gate = PolicyGate()
+    case = create_sample_case(amount_paise=100000)  # INR 1,000
+    policy = MerchantPolicy(max_discount_bps=1000)  # 10% max
+    plan = InterventionPlan(
+        plan_id="plan_5",
+        case_id=case.case_id,
+        intervention_type=InterventionType.INCENTIVIZED_LINK,
+        discount_bps=2000,
+        discount_paise=20000,
+        scheduled_at=datetime.now(UTC),
+        idempotency_key="idem_5",
+        rationale="Aggressive discount",
+    )
+
+    evaluation = gate.evaluate(case, plan, policy)
+    assert evaluation.result == PolicyCheckResult.APPROVED
+    assert evaluation.is_allowed
+    assert evaluation.modified_plan is not None
+    assert evaluation.modified_plan.discount_bps == 1000
+    assert evaluation.modified_plan.discount_paise == 10000

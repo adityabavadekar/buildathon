@@ -8,11 +8,17 @@ __pycache__/
 dist/
 build/
 *.egg-info/
+.coverage
+htmlcov/
 
-# Node
+# Node & Next.js
 node_modules/
+.next/
+out/
 frontend/dist/
 .vite/
+*.tsbuildinfo
+.pnpm-debug.log*
 
 # Environment - never commit real credentials
 .env
@@ -24,6 +30,8 @@ frontend/dist/
 .idea/
 .vscode/
 *.swp
+Thumbs.db
 
-# Logs
+# Logs & Temporary
 *.log
+.cache/
