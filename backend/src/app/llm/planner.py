@@ -70,7 +70,9 @@ Output JSON ONLY. No preamble or markdown commentary.
 def _extract_json_block(text: str) -> dict[str, Any]:
     """Extract and parse first valid JSON object from LLM text response."""
     clean = text.strip()
-    clean = clean.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+    clean = (
+        clean.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+    )
 
     try:
         parsed: Any = json.loads(clean)
@@ -101,7 +103,9 @@ class RecoveryPlanner:
     ) -> tuple[DiagnosisResult, dict[str, Any] | None]:
         """Generate a recovery diagnosis and strategy plan using LLM or deterministic fallback."""
         providers = configured_providers()
-        if not providers or any(k in str(event.metadata) for k in ("simulation", "test")):
+        if not providers or any(
+            k in str(event.metadata) for k in ("simulation", "test")
+        ):
             return self.fallback_classifier.classify(event), None
 
         prompt_payload = {
@@ -138,6 +142,7 @@ class RecoveryPlanner:
                 "output_tokens": response.output_tokens,
                 "cost_usd": response.cost_usd,
                 "call_id": response.call_id,
+                "latency_ms": response.latency_ms,
             }
 
             parsed_data = _extract_json_block(response.text)
@@ -156,7 +161,9 @@ class RecoveryPlanner:
                         "llm_model": response.model,
                         "dunning_message_en": plan.dunning_message_en,
                         "dunning_message_hi": plan.dunning_message_hi,
-                        "suggested_channel": plan.channel.value if plan.channel else None,
+                        "suggested_channel": plan.channel.value
+                        if plan.channel
+                        else None,
                     },
                 )
                 return diagnosis, llm_metadata

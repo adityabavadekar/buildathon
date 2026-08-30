@@ -77,6 +77,14 @@ class Settings(BaseSettings):
         default=None, validation_alias="RAZORPAY_WEBHOOK_SECRET"
     )
 
+    # Customer Outreach & Notification Webhook
+    notification_webhook_url: str | None = Field(
+        default=None, validation_alias="NOTIFICATION_WEBHOOK_URL"
+    )
+    whatsapp_api_token: SecretStr | None = Field(
+        default=None, validation_alias="WHATSAPP_API_TOKEN"
+    )
+
     @property
     def is_production(self) -> bool:
         return self.env == "production"

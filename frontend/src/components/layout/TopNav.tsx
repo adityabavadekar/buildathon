@@ -1,9 +1,10 @@
 'use client'
 
-import React from 'react'
+import React, { useEffect, useState } from 'react'
 import {
   AlertCircle,
   CheckCircle2,
+  Clock,
   RotateCcw,
   Search,
 } from 'lucide-react'
@@ -15,6 +16,7 @@ interface TopNavProps {
   health: HealthResponse | null
   analytics: AnalyticsSummaryResponse | null
   healthLoading: boolean
+  lastRefreshedAt?: Date | null
   onRefresh: () => void
   onOpenCommand: () => void
 }
@@ -28,14 +30,36 @@ function formatINR(paise: number): string {
   }).format(rupees)
 }
 
+function formatTimeAgo(date: Date | null | undefined): string {
+  if (!date) return 'Live'
+  const seconds = Math.max(0, Math.floor((Date.now() - date.getTime()) / 1000))
+  if (seconds < 5) return 'Just now'
+  if (seconds < 60) return `${seconds.toString()}s ago`
+  const minutes = Math.floor(seconds / 60)
+  return `${minutes.toString()}m ago`
+}
+
 export function TopNav({
   title,
   health,
   analytics,
   healthLoading,
+  lastRefreshedAt,
   onRefresh,
   onOpenCommand,
 }: TopNavProps) {
+  const [, setTick] = useState(0)
+
+  // Force re-render every 3 seconds to keep relative refresh timestamp live
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setTick((t) => t + 1)
+    }, 3000)
+    return () => {
+      clearInterval(timer)
+    }
+  }, [])
+
   return (
     <header className="flex h-16 items-center justify-between border-b border-border bg-surface px-6">
       <div className="flex items-center gap-4">
@@ -66,11 +90,20 @@ export function TopNav({
           className="flex items-center gap-2 rounded-control bg-surface-sunken border border-border px-3 py-1.5 text-xs font-mono text-ink-muted hover:text-ink hover:border-border-strong transition-colors cursor-pointer"
         >
           <Search className="h-3.5 w-3.5 text-ink-subtle" />
-          <span>Search & Actions</span>
+          <span className="hidden sm:inline">Search & Actions</span>
           <kbd className="rounded bg-surface border border-border/80 px-1 text-[10px] text-ink-subtle">
             ⌘K
           </kbd>
         </button>
+
+        {/* Live Last Refreshed Indicator */}
+        <div className="hidden md:flex items-center gap-1.5 text-[11px] font-mono text-ink-muted px-2 py-1 rounded-control bg-surface-sunken border border-border/60">
+          <Clock className="h-3 w-3 text-ink-subtle" />
+          <span>Last sync:</span>
+          <span className="text-ink font-semibold">
+            {formatTimeAgo(lastRefreshedAt)}
+          </span>
+        </div>
 
         {/* Backend Connectivity Status */}
         {healthLoading ? (
@@ -78,7 +111,7 @@ export function TopNav({
         ) : health ? (
           <div className="flex items-center gap-1.5 text-recovered">
             <CheckCircle2 className="h-3.5 w-3.5" />
-            <span className="text-xs font-mono text-ink-muted hidden md:inline">
+            <span className="text-xs font-mono text-ink-muted hidden lg:inline">
               v{health.version} ({health.env})
             </span>
           </div>

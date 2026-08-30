@@ -74,7 +74,9 @@ class RecoveryOrchestrator:
         if existing_case:
             return existing_case
 
-        arm = experiment_arm_override or self._assign_experiment_arm(failure_event.payment_id)
+        arm = experiment_arm_override or self._assign_experiment_arm(
+            failure_event.payment_id
+        )
 
         case = RecoveryCase(
             merchant_id=self.policy.merchant_id,
@@ -102,7 +104,11 @@ class RecoveryOrchestrator:
         )
 
         if arm == ExperimentArm.HOLDOUT_CONTROL:
-            logger.info("case.holdout_assigned", case_id=case.case_id, payment_id=failure_event.payment_id)
+            logger.info(
+                "case.holdout_assigned",
+                case_id=case.case_id,
+                payment_id=failure_event.payment_id,
+            )
             case.audit_trail.append(
                 AuditEntry(
                     case_id=case.case_id,
@@ -110,7 +116,9 @@ class RecoveryOrchestrator:
                     actor=AuditActor.POLICY_GATE,
                     from_state=RecoveryState.ANALYSIS_QUEUED,
                     to_state=RecoveryState.ANALYSIS_QUEUED,
-                    decision_inputs={"holdout_percentage": self.policy.holdout_percentage},
+                    decision_inputs={
+                        "holdout_percentage": self.policy.holdout_percentage
+                    },
                     notes="Assigned to holdout control arm. No outreach permitted.",
                 )
             )
@@ -122,7 +130,9 @@ class RecoveryOrchestrator:
 
         discount_paise = 0
         if diagnosis.discount_bps_suggested > 0:
-            discount_paise = int(case.amount_paise * (diagnosis.discount_bps_suggested / 10000))
+            discount_paise = int(
+                case.amount_paise * (diagnosis.discount_bps_suggested / 10000)
+            )
 
         channel = (
             OutreachChannel.WHATSAPP
@@ -131,7 +141,9 @@ class RecoveryOrchestrator:
             else None
         )
 
-        scheduled_at = datetime.now(UTC) + timedelta(hours=diagnosis.recommended_delay_hours)
+        scheduled_at = datetime.now(UTC) + timedelta(
+            hours=diagnosis.recommended_delay_hours
+        )
         idempotency_key = f"idem_{case.case_id}_{case.touches_count + 1}"
 
         plan = InterventionPlan(
@@ -170,7 +182,10 @@ class RecoveryOrchestrator:
                 actor=AuditActor.POLICY_GATE,
                 from_state=RecoveryState.ANALYSIS_QUEUED,
                 to_state=RecoveryState.ANALYSIS_QUEUED,
-                decision_inputs={"policy_check": eval_result.result.value, "is_allowed": eval_result.is_allowed},
+                decision_inputs={
+                    "policy_check": eval_result.result.value,
+                    "is_allowed": eval_result.is_allowed,
+                },
                 notes=f"Policy verdict: {eval_result.result.value}. {eval_result.reason}",
             )
         )
@@ -210,22 +225,51 @@ class RecoveryOrchestrator:
         if plan.discount_paise > 0:
             case.discount_paise_granted = plan.discount_paise
 
-        if plan.intervention_type in (InterventionType.PASSIVE_RETRY, InterventionType.SMART_RETRY):
+        if plan.intervention_type in (
+            InterventionType.PASSIVE_RETRY,
+            InterventionType.SMART_RETRY,
+        ):
             case.retry_count += 1
             exec_res = await self.mandate_retry_tool.execute(case, plan)
             target_state = RecoveryState.RETRY_SCHEDULED
-        elif plan.intervention_type in (InterventionType.SMART_PAYMENT_LINK, InterventionType.INCENTIVIZED_LINK):
+        elif plan.intervention_type in (
+            InterventionType.SMART_PAYMENT_LINK,
+            InterventionType.INCENTIVIZED_LINK,
+            InterventionType.B2B_INVOICE_CHASER,
+        ):
             exec_res = await self.payment_link_tool.execute(case, plan)
-            target_state = RecoveryState.OUTREACH_PENDING
+            target_state = (
+                RecoveryState.IN_DUNNING
+                if plan.intervention_type == InterventionType.B2B_INVOICE_CHASER
+                else RecoveryState.OUTREACH_PENDING
+            )
         elif plan.intervention_type == InterventionType.CUSTOMER_NUDGE:
             case.outreach_count += 1
             exec_res = await self.notification_tool.execute(case, plan)
             target_state = RecoveryState.IN_DUNNING
+        elif plan.intervention_type == InterventionType.P2P_FOLLOWUP:
+            case.outreach_count += 1
+            exec_res = await self.notification_tool.execute(case, plan)
+            target_state = RecoveryState.P2P_PROMISED
         else:
             return
 
-        case.total_cost_paise += exec_res.cost_incurred_paise
         case.recompute_nrv()
+
+        if not exec_res.success:
+            transition_case(
+                case,
+                to_state=RecoveryState.FAILED,
+                actor=AuditActor.SYSTEM,
+                reason=f"Intervention execution failed on {plan.intervention_type.value}: {exec_res.action_taken}",
+                event_name="intervention.failed",
+                cost_incurred_paise=exec_res.cost_incurred_paise,
+                decision_inputs={
+                    "plan": plan.model_dump(mode="json"),
+                    "execution_error": exec_res.data,
+                },
+            )
+            return
 
         transition_case(
             case,
@@ -234,7 +278,10 @@ class RecoveryOrchestrator:
             reason=f"Executed {plan.intervention_type.value}: {exec_res.action_taken}",
             event_name="intervention.executed",
             cost_incurred_paise=exec_res.cost_incurred_paise,
-            decision_inputs={"plan": plan.model_dump(mode="json"), "execution_data": exec_res.data},
+            decision_inputs={
+                "plan": plan.model_dump(mode="json"),
+                "execution_data": exec_res.data,
+            },
         )
 
     async def approve_case(
@@ -320,3 +367,6 @@ class RecoveryOrchestrator:
 def get_recovery_orchestrator() -> RecoveryOrchestrator:
     """Return cached singleton instance of RecoveryOrchestrator."""
     return RecoveryOrchestrator()
+
+
+get_orchestrator = get_recovery_orchestrator

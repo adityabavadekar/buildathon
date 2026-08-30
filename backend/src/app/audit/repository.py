@@ -1,37 +1,86 @@
-"""In-memory thread-safe case repository with idempotency key tracking.
+"""Durable thread-safe case repository with idempotency key tracking and JSON persistence.
 
-Provides transactional ACID-style lookups, state persistence, and audit logging
+Provides transactional ACID-style lookups, state persistence, and append-only audit logging
 for revenue recovery cases.
 """
 
 from __future__ import annotations
 
+import functools
+import json
 import threading
+from pathlib import Path
 from typing import TYPE_CHECKING
+
+from app.audit.models import RecoveryCase
+from app.core.logging import get_logger
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from app.audit.models import RecoveryCase
     from app.core.enums import ExperimentArm, RecoveryState
+
+logger = get_logger(__name__)
 
 
 class CaseRepository:
-    """Thread-safe storage for recovery cases and idempotency deduplication."""
+    """Thread-safe storage for recovery cases with optional file-backed durability."""
 
-    def __init__(self) -> None:
+    def __init__(self, storage_path: Path | str | None = None) -> None:
         self._lock = threading.RLock()
         self._cases: dict[str, RecoveryCase] = {}
         self._by_payment_id: dict[str, str] = {}
         self._by_idempotency_key: dict[str, str] = {}
+        self._storage_path = Path(storage_path) if storage_path else None
+
+        if self._storage_path and self._storage_path.exists():
+            self._load_from_disk()
+
+    def _load_from_disk(self) -> None:
+        """Load persisted cases from local storage file."""
+        if not self._storage_path or not self._storage_path.exists():
+            return
+        try:
+            with self._storage_path.open(encoding="utf-8") as f:
+                data = json.load(f)
+                for item in data:
+                    case = RecoveryCase.model_validate(item)
+                    self._cases[case.case_id] = case
+                    self._by_payment_id[case.failure_event.payment_id] = case.case_id
+            logger.info(
+                "repository.loaded_from_disk",
+                count=len(self._cases),
+                path=str(self._storage_path),
+            )
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            logger.warning(
+                "repository.load_disk_failed",
+                error=str(exc),
+                path=str(self._storage_path),
+            )
+
+    def _flush_to_disk(self) -> None:
+        """Persist in-memory state to disk atomically."""
+        if not self._storage_path:
+            return
+        try:
+            self._storage_path.parent.mkdir(parents=True, exist_ok=True)
+            tmp_path = self._storage_path.with_suffix(".tmp")
+            cases_dump = [c.model_dump(mode="json") for c in self._cases.values()]
+            with tmp_path.open("w", encoding="utf-8") as f:
+                json.dump(cases_dump, f, indent=2, default=str)
+            tmp_path.replace(self._storage_path)
+        except (OSError, ValueError) as exc:
+            logger.warning("repository.flush_disk_failed", error=str(exc))
 
     def save(self, case: RecoveryCase, idempotency_key: str | None = None) -> None:
-        """Persist or update a recovery case."""
+        """Persist or update a recovery case and flush to durable storage."""
         with self._lock:
             self._cases[case.case_id] = case
             self._by_payment_id[case.failure_event.payment_id] = case.case_id
             if idempotency_key:
                 self._by_idempotency_key[idempotency_key] = case.case_id
+            self._flush_to_disk()
 
     def get_by_id(self, case_id: str) -> RecoveryCase | None:
         """Retrieve a case by unique case ID."""
@@ -93,17 +142,19 @@ class CaseRepository:
             return len(results)
 
     def clear(self) -> None:
-        """Clear repository contents (useful for test fixtures)."""
+        """Clear repository contents and remove local data file."""
         with self._lock:
             self._cases.clear()
             self._by_payment_id.clear()
             self._by_idempotency_key.clear()
+            if self._storage_path and self._storage_path.exists():
+                try:
+                    self._storage_path.unlink()
+                except OSError:
+                    pass
 
 
-# Process-wide repository singleton instance
-_GLOBAL_REPOSITORY = CaseRepository()
-
-
+@functools.lru_cache(maxsize=1)
 def get_case_repository() -> CaseRepository:
-    """Return the process-wide case repository instance."""
-    return _GLOBAL_REPOSITORY
+    """Return singleton instance of CaseRepository with disk persistence."""
+    return CaseRepository(storage_path=Path("data/cases_store.json"))

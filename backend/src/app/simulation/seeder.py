@@ -72,11 +72,18 @@ FAILURE_TEMPLATES: list[dict[str, Any]] = [
         "amounts": [39900, 89900, 189900],
     },
     {
-        "rail": PaymentRail.NETBANKING,
-        "category": FailureCategory.LIQUIDITY_CONSTRAINT,
+        "rail": PaymentRail.B2B_INVOICE,
+        "category": FailureCategory.B2B_RECEIVABLES_OVERDUE,
         "error_code": "OVERDUE_RECEIVABLE",
-        "error_reason": "Net-30 B2B invoice past due date",
+        "error_reason": "Net-30 B2B invoice past due date; automated dunning chaser",
         "amounts": [5000000, 12000000, 25000000, 75000000],
+    },
+    {
+        "rail": PaymentRail.UPI,
+        "category": FailureCategory.PROMISE_TO_PAY_DELAY,
+        "error_code": "P2P_PROMISED",
+        "error_reason": "Customer committed to pay by promised salary credit date",
+        "amounts": [49900, 149900, 299900],
     },
 ]
 
@@ -126,7 +133,9 @@ async def seed_simulation_batch(
             error_code=template["error_code"],
             error_description=template["error_reason"],
             error_reason=template["error_reason"],
-            npci_response_code=template["error_code"] if "AP" in template["error_code"] or template["error_code"] == "XT" else None,
+            npci_response_code=template["error_code"]
+            if "AP" in template["error_code"] or template["error_code"] == "XT"
+            else None,
             occurred_at=occurred_at,
             metadata={"source": "simulation"},
         )
@@ -150,7 +159,7 @@ async def seed_simulation_batch(
 
             if should_recover and case.state != RecoveryState.ESCALATED:
                 capture_id = f"pay_cap_{uuid4().hex[:12]}"
-                rec_amount = case.amount_paise - case.discount_paise_granted
+                rec_amount = case.amount_paise
                 orchestrator.process_payment_captured(
                     payment_id=case.failure_event.payment_id,
                     amount_paise=rec_amount,

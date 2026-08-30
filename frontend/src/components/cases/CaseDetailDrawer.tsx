@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import {
   DollarSign,
   MessageSquare,
@@ -9,12 +9,16 @@ import {
 } from 'lucide-react'
 import {
   approveCase,
+  getPolicies,
   resolveCaseSim,
+  type PolicyResponse,
   type RecoveryCase,
   type RecoveryState,
 } from '@/lib/api'
 import { Badge, type BadgeVariant } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { GlossaryTerm } from '@/components/ui/GlossaryTerm'
+import { STATE_READINGS } from '@/lib/glossary'
 import { WhatsAppPreview } from '@/components/whatsapp/WhatsAppPreview'
 
 interface CaseDetailDrawerProps {
@@ -57,8 +61,20 @@ export function CaseDetailDrawer({
 }: CaseDetailDrawerProps) {
   const [actionLoading, setActionLoading] = useState<boolean>(false)
   const [activeTab, setActiveTab] = useState<'overview' | 'outreach' | 'audit' | 'actions'>('overview')
+  const [policy, setPolicy] = useState<PolicyResponse | null>(null)
+
+  useEffect(() => {
+    getPolicies()
+      .then((p) => {
+        setPolicy(p)
+      })
+      .catch(() => null)
+  }, [])
 
   if (!caseItem) return null
+
+  const maxTouches = policy?.max_touches ?? 3
+  const stateDescription = STATE_READINGS[caseItem.state] || caseItem.state
 
   const handleApprove = async () => {
     try {
@@ -92,89 +108,79 @@ export function CaseDetailDrawer({
               <Badge variant={stateToVariant(caseItem.state)}>
                 {caseItem.state.replace('_', ' ')}
               </Badge>
-              <Badge variant="outline">{caseItem.experiment_arm}</Badge>
+              <Badge variant="outline">
+                {caseItem.experiment_arm === 'HOLDOUT_CONTROL' ? 'Holdout (10%)' : 'Treatment'}
+              </Badge>
             </div>
             <span className="text-[11px] font-mono text-ink-muted mt-1 block">
               Payment ID: {caseItem.failure_event.payment_id} | Created: {new Date(caseItem.created_at).toLocaleString()}
             </span>
           </div>
-
           <button
-            type="button"
             onClick={onClose}
-            className="rounded-control p-1 text-ink-muted hover:text-ink hover:bg-border/40 transition-colors cursor-pointer"
-            title="Close Drawer [Esc]"
+            className="rounded-control p-1.5 text-ink-muted hover:bg-surface hover:text-ink transition-colors"
           >
             <X className="h-4 w-4" />
           </button>
         </div>
 
-        {/* Tab Navigation */}
-        <div className="flex border-b border-border bg-surface px-5">
-          {(
-            [
-              { id: 'overview', label: 'Financials & Diagnosis' },
-              { id: 'outreach', label: 'WhatsApp Outreach' },
-              { id: 'audit', label: `Audit Trail (${caseItem.audit_trail.length.toString()})` },
-              { id: 'actions', label: 'Operator Actions' },
-            ] as const
-          ).map((tab) => (
+        {/* State Explanation Banner */}
+        <div className="px-5 py-2.5 bg-surface-sunken border-b border-border text-xs flex items-center justify-between">
+          <span className="text-ink font-medium">{stateDescription}</span>
+          <span className="text-[10px] font-mono text-ink-subtle uppercase">Lifecycle State</span>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex border-b border-border px-5 gap-6 font-mono text-xs">
+          {(['overview', 'outreach', 'audit', 'actions'] as const).map((tab) => (
             <button
-              key={tab.id}
-              type="button"
+              key={tab}
               onClick={() => {
-                setActiveTab(tab.id)
+                setActiveTab(tab)
               }}
-              className={`border-b-2 px-4 py-2.5 text-xs font-mono font-medium transition-colors cursor-pointer ${
-                activeTab === tab.id
-                  ? 'border-accent text-accent font-semibold'
+              className={`py-3 border-b-2 font-medium capitalize transition-colors ${
+                activeTab === tab
+                  ? 'border-accent text-accent'
                   : 'border-transparent text-ink-muted hover:text-ink'
               }`}
             >
-              {tab.label}
+              {tab}
             </button>
           ))}
         </div>
 
-        {/* Tab Content Area */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+        {/* Drawer Body */}
+        <div className="flex-1 overflow-y-auto p-5 space-y-6">
           {activeTab === 'overview' && (
             <>
-              {/* Financial Ledger */}
-              <div className="space-y-2">
-                <div className="flex items-center gap-1.5 text-xs font-mono font-semibold uppercase tracking-wider text-ink-muted">
-                  <DollarSign className="h-3.5 w-3.5 text-accent" />
-                  <span>Unit Economics Ledger</span>
+              {/* Financial Breakdown */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="p-4 rounded-panel bg-surface-sunken border border-border space-y-1">
+                  <span className="text-[11px] font-mono text-ink-muted flex items-center justify-between">
+                    <GlossaryTerm termKey="AT_RISK_REVENUE" showIcon={false}>
+                      At-Risk Amount
+                    </GlossaryTerm>
+                  </span>
+                  <div className="text-lg font-mono font-bold text-ink">
+                    {formatINR(caseItem.amount_paise)}
+                  </div>
                 </div>
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 font-mono">
-                  <div className="p-3 rounded-control bg-surface-sunken border border-border">
-                    <span className="text-[10px] text-ink-muted block uppercase">Amount at Risk</span>
-                    <span className="text-sm font-bold text-ink mt-0.5 block">
-                      {formatINR(caseItem.amount_paise)}
-                    </span>
-                  </div>
-                  <div className="p-3 rounded-control bg-surface-sunken border border-border">
-                    <span className="text-[10px] text-ink-muted block uppercase">Recovered</span>
-                    <span className="text-sm font-bold text-recovered mt-0.5 block">
-                      {formatINR(caseItem.recovered_amount_paise)}
-                    </span>
-                  </div>
-                  <div className="p-3 rounded-control bg-surface-sunken border border-border">
-                    <span className="text-[10px] text-ink-muted block uppercase">Total Cost</span>
-                    <span className="text-sm font-bold text-failed mt-0.5 block">
-                      -{formatINR(caseItem.total_cost_paise)}
-                    </span>
-                  </div>
-                  <div className="p-3 rounded-control bg-surface-sunken border border-recovered/40">
-                    <span className="text-[10px] text-recovered block uppercase">Net Value (NRV)</span>
-                    <span className="text-sm font-bold text-recovered mt-0.5 block">
-                      {formatINR(caseItem.net_recovered_value_paise)}
-                    </span>
+
+                <div className="p-4 rounded-panel bg-surface-sunken border border-border space-y-1">
+                  <span className="text-[11px] font-mono text-ink-muted flex items-center justify-between">
+                    <GlossaryTerm termKey="RECOVERED_NRV" showIcon={false}>
+                      Net Recovered Value (NRV)
+                    </GlossaryTerm>
+                  </span>
+                  <div className="text-lg font-mono font-bold text-recovered">
+                    {caseItem.state === 'RECOVERED'
+                      ? formatINR(caseItem.net_recovered_value_paise || caseItem.recovered_amount_paise)
+                      : '--'}
                   </div>
                 </div>
               </div>
 
-              {/* Failure Event Context */}
+              {/* Ingestion & Telemetry */}
               <div className="space-y-2">
                 <span className="text-xs font-mono font-semibold uppercase tracking-wider text-ink-muted">
                   Failure Telemetry & Ingestion
@@ -203,15 +209,29 @@ export function CaseDetailDrawer({
               <div className="space-y-2">
                 <div className="flex items-center gap-1.5 text-xs font-mono font-semibold uppercase tracking-wider text-ink-muted">
                   <ShieldCheck className="h-3.5 w-3.5 text-recovered" />
-                  <span>Policy Guardrail Status</span>
+                  <span>
+                    <GlossaryTerm termKey="POLICY_GATE" showIcon={false}>
+                      Policy Guardrail Status
+                    </GlossaryTerm>
+                  </span>
                 </div>
                 <div className="grid grid-cols-2 gap-3 font-mono text-xs">
                   <div className="p-3 rounded-control bg-surface-sunken border border-border flex justify-between items-center">
-                    <span className="text-ink-muted">Touches Count</span>
-                    <span className="font-semibold text-ink">{caseItem.touches_count.toString()} / 3 Max</span>
+                    <span className="text-ink-muted">
+                      <GlossaryTerm termKey="TOUCHES" showIcon={false}>
+                        Touches Count
+                      </GlossaryTerm>
+                    </span>
+                    <span className="font-semibold text-ink">
+                      {caseItem.touches_count.toString()} / {maxTouches.toString()} Max
+                    </span>
                   </div>
                   <div className="p-3 rounded-control bg-surface-sunken border border-border flex justify-between items-center">
-                    <span className="text-ink-muted">Discount Granted</span>
+                    <span className="text-ink-muted">
+                      <GlossaryTerm termKey="DISCOUNT_GRANTED" showIcon={false}>
+                        Discount Granted
+                      </GlossaryTerm>
+                    </span>
                     <span className="font-semibold text-ink">{formatINR(caseItem.discount_paise_granted)}</span>
                   </div>
                 </div>
@@ -250,7 +270,7 @@ export function CaseDetailDrawer({
                   <p className="mt-1.5 text-xs text-ink">{entry.reason}</p>
                   {entry.cost_incurred_paise > 0 && (
                     <span className="text-[10px] font-mono text-failed mt-0.5 block">
-                      Cost: -{formatINR(entry.cost_incurred_paise)}
+                      Cost Incurred: -{formatINR(entry.cost_incurred_paise)}
                     </span>
                   )}
                   {Object.keys(entry.decision_inputs).length > 0 && (
@@ -265,49 +285,40 @@ export function CaseDetailDrawer({
 
           {activeTab === 'actions' && (
             <div className="space-y-4">
-              <span className="text-xs font-mono font-semibold uppercase tracking-wider text-ink-muted">
-                Manual Operator Overrides
-              </span>
-
-              {caseItem.state === 'ESCALATED' && (
-                <div className="p-4 rounded-panel bg-escalated-subtle/20 border border-escalated/40 space-y-3">
-                  <span className="text-xs font-semibold text-escalated font-mono block">
-                    Action Required: High-Value / Policy Escalation
-                  </span>
-                  <p className="text-xs text-ink">
-                    This transaction was paused by the safety gate. Review the diagnosis and approve execution to resume recovery.
-                  </p>
-                  <Button
-                    variant="primary"
-                    disabled={actionLoading}
-                    onClick={() => {
-                      void handleApprove()
-                    }}
-                  >
-                    {actionLoading ? 'Approving...' : 'Approve Intervention'}
-                  </Button>
+              <div className="p-4 rounded-panel bg-surface-sunken border border-border space-y-2">
+                <span className="text-xs font-mono font-bold text-ink">Operator Actions</span>
+                <p className="text-xs text-ink-muted">
+                  Approve an escalated case or simulate a customer payment completion against the Razorpay webhook pipeline.
+                </p>
+                <div className="pt-2 flex flex-wrap gap-2">
+                  {caseItem.state === 'ESCALATED' && (
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        void handleApprove()
+                      }}
+                      disabled={actionLoading}
+                      className="font-mono text-xs"
+                    >
+                      {actionLoading ? 'Approving...' : 'Approve Case'}
+                    </Button>
+                  )}
+                  {caseItem.state !== 'RECOVERED' && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        void handleSimulatePayment()
+                      }}
+                      disabled={actionLoading}
+                      className="font-mono text-xs flex items-center gap-1.5"
+                    >
+                      <DollarSign className="h-3.5 w-3.5 text-recovered" />
+                      {actionLoading ? 'Processing...' : 'Simulate Customer Payment'}
+                    </Button>
+                  )}
                 </div>
-              )}
-
-              {caseItem.state !== 'RECOVERED' && (
-                <div className="p-4 rounded-panel bg-surface-sunken border border-border space-y-3">
-                  <span className="text-xs font-semibold text-ink font-mono block">
-                    Simulate Payment Captured Webhook
-                  </span>
-                  <p className="text-xs text-ink-muted">
-                    Simulate the customer completing checkout or mandate capture via Razorpay webhook.
-                  </p>
-                  <Button
-                    variant="secondary"
-                    disabled={actionLoading}
-                    onClick={() => {
-                      void handleSimulatePayment()
-                    }}
-                  >
-                    {actionLoading ? 'Simulating...' : 'Mark as Recovered'}
-                  </Button>
-                </div>
-              )}
+              </div>
             </div>
           )}
         </div>

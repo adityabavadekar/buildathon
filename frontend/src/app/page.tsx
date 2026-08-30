@@ -8,7 +8,6 @@ import {
   getSettings,
   getSystemStatus,
   listCases,
-  resetSimulation,
   seedSimulation,
   type AnalyticsSummaryResponse,
   type HealthResponse,
@@ -42,6 +41,7 @@ export default function DashboardPage() {
   const [systemStatus, setSystemStatus] = useState<SystemStatusResponse | null>(null)
   const [selectedCase, setSelectedCase] = useState<RecoveryCase | null>(null)
   const [commandOpen, setCommandOpen] = useState<boolean>(false)
+  const [lastRefreshedAt, setLastRefreshedAt] = useState<Date | null>(null)
 
   const fetchData = useCallback(async () => {
     try {
@@ -64,6 +64,7 @@ export default function DashboardPage() {
       setPolicies(pRes)
       setSettings(sRes)
       setSystemStatus(statusRes)
+      setLastRefreshedAt(new Date())
     } finally {
       setHealthLoading(false)
       setCasesLoading(false)
@@ -98,16 +99,11 @@ export default function DashboardPage() {
     void fetchData()
   }
 
-  const handleResetData = async () => {
-    await resetSimulation()
-    void fetchData()
-  }
-
   const escalatedCount = cases.filter((c) => c.state === 'ESCALATED').length
 
   return (
-    <div className="flex min-h-screen bg-canvas text-ink font-sans antialiased">
-      {/* 1. Left Sidebar Navigation */}
+    <div className="flex h-screen w-full bg-surface-sunken overflow-hidden">
+      {/* 1. Left Sidebar */}
       <Sidebar
         activeSection={activeSection}
         onSelectSection={(section) => {
@@ -124,6 +120,7 @@ export default function DashboardPage() {
           health={health}
           analytics={analytics}
           healthLoading={healthLoading}
+          lastRefreshedAt={lastRefreshedAt}
           onRefresh={() => {
             void fetchData()
           }}
@@ -133,7 +130,7 @@ export default function DashboardPage() {
         />
 
         <main className="flex-1 overflow-y-auto p-6 lg:p-8">
-          <div className="mx-auto max-w-6xl">
+          <div className="mx-auto max-w-7xl">
             {activeSection === 'overview' && (
               <OverviewView
                 cases={cases}
@@ -178,7 +175,14 @@ export default function DashboardPage() {
               <PoliciesView policies={policies} loading={casesLoading} />
             )}
 
-            {activeSection === 'audit' && <AuditView cases={cases} />}
+            {activeSection === 'audit' && (
+              <AuditView
+                cases={cases}
+                onRefresh={() => {
+                  void fetchData()
+                }}
+              />
+            )}
 
             {activeSection === 'status' && (
               <StatusView
@@ -198,17 +202,19 @@ export default function DashboardPage() {
       </div>
 
       {/* 3. Global Slide-Over Case Detail Drawer */}
-      <CaseDetailDrawer
-        caseItem={selectedCase}
-        onClose={() => {
-          setSelectedCase(null)
-        }}
-        onActionComplete={() => {
-          void fetchData()
-        }}
-      />
+      {selectedCase && (
+        <CaseDetailDrawer
+          caseItem={selectedCase}
+          onClose={() => {
+            setSelectedCase(null)
+          }}
+          onActionComplete={() => {
+            void fetchData()
+          }}
+        />
+      )}
 
-      {/* 4. Global Command Palette (⌘K) */}
+      {/* 4. Global Command Palette */}
       <CommandPalette
         open={commandOpen}
         onClose={() => {
@@ -218,14 +224,14 @@ export default function DashboardPage() {
         onSelectCase={(c) => {
           setSelectedCase(c)
         }}
-        onNavigate={(sec) => {
-          setActiveSection(sec)
+        onNavigate={(section) => {
+          setActiveSection(section)
         }}
         onSeed={() => {
           void handleSeedBatch()
         }}
         onReset={() => {
-          void handleResetData()
+          void fetchData()
         }}
       />
     </div>

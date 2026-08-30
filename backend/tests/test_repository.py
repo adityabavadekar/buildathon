@@ -8,7 +8,9 @@ from app.core.enums import ExperimentArm, RecoveryState
 from app.detection.models import RawFailureEvent
 
 
-def _make_case(case_id: str, payment_id: str, state: RecoveryState = RecoveryState.IN_DUNNING) -> RecoveryCase:
+def _make_case(
+    case_id: str, payment_id: str, state: RecoveryState = RecoveryState.IN_DUNNING
+) -> RecoveryCase:
     event = RawFailureEvent(
         event_id=f"evt_{payment_id}",
         payment_id=payment_id,

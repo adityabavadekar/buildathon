@@ -27,7 +27,9 @@ class CaseListResponse(BaseModel):
 class CaseActionRequest(BaseModel):
     """Payload for operator approval or override."""
 
-    notes: str = Field(description="Operator reason for approval or intervention override")
+    notes: str = Field(
+        description="Operator reason for approval or intervention override"
+    )
     override_discount_bps: int | None = Field(default=None, ge=0, le=5000)
 
 
@@ -74,7 +76,9 @@ async def get_case(case_id: str) -> RecoveryCase:
     return case
 
 
-@router.get("/{case_id}/audit", response_model=list[AuditEntry], summary="Get Case Audit Trail")
+@router.get(
+    "/{case_id}/audit", response_model=list[AuditEntry], summary="Get Case Audit Trail"
+)
 async def get_case_audit(case_id: str) -> list[AuditEntry]:
     """Retrieve the chronological audit trail entries for a case."""
     repo = get_case_repository()
@@ -87,7 +91,11 @@ async def get_case_audit(case_id: str) -> list[AuditEntry]:
     return case.audit_trail
 
 
-@router.post("/{case_id}/approve", response_model=RecoveryCase, summary="Operator Approve Escalated Case")
+@router.post(
+    "/{case_id}/approve",
+    response_model=RecoveryCase,
+    summary="Operator Approve Escalated Case",
+)
 async def approve_case(case_id: str, action: CaseActionRequest) -> RecoveryCase:
     """Human operator approval for an escalated case."""
     repo = get_case_repository()
@@ -111,7 +119,10 @@ async def approve_case(case_id: str, action: CaseActionRequest) -> RecoveryCase:
         actor=AuditActor.HUMAN_OPERATOR,
         reason=f"Operator Approval: {action.notes}",
         event_name="operator.approved",
-        decision_inputs={"notes": action.notes, "override_discount_bps": action.override_discount_bps},
+        decision_inputs={
+            "notes": action.notes,
+            "override_discount_bps": action.override_discount_bps,
+        },
     )
     repo.save(case)
     return case

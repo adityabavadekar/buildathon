@@ -31,6 +31,8 @@ export interface AuditEntry {
   reason: string
   event_name: string
   timestamp: string
+  created_at?: string
+  notes?: string
   decision_inputs: Record<string, unknown>
   decision_outputs: Record<string, unknown>
   cost_incurred_paise: number
@@ -40,6 +42,7 @@ export interface AuditEntry {
     output_tokens?: number
     cost_usd?: number
     call_id?: string
+    latency_ms?: number
   } | null
 }
 
@@ -257,6 +260,52 @@ export interface SystemSettingsResponse {
   deterministic_fallback_active: boolean
 }
 
+export interface GatewayTestResponse {
+  status: 'CONNECTED' | 'PARTIAL' | 'SANDBOX_SIM'
+  latency_ms: number
+  key_id: string
+  hmac_ready: boolean
+  webhook_url: string
+  supported_rails: string[]
+  message: string
+}
+
+export interface ProviderSetting {
+  name: string
+  label: string
+  enabled: boolean
+  priority: number
+  active_model: string
+  available_models: string[]
+  has_api_key: boolean
+}
+
+export interface LLMSettingsState {
+  providers: ProviderSetting[]
+  timeout_seconds: number
+  temperature: number
+}
+
+export interface ModelStatItem {
+  model: string
+  provider: string
+  call_count: number
+  total_input_tokens: number
+  total_output_tokens: number
+  total_cost_usd: number
+  avg_latency_ms: number
+}
+
+export interface LLMReportResponse {
+  total_calls: number
+  total_input_tokens: number
+  total_output_tokens: number
+  total_cost_usd: number
+  average_latency_ms: number
+  model_breakdown: ModelStatItem[]
+  providers: ProviderSetting[]
+}
+
 export function getAnalytics(): Promise<AnalyticsSummaryResponse> {
   return request<AnalyticsSummaryResponse>('/analytics')
 }
@@ -267,6 +316,28 @@ export function getPolicies(): Promise<PolicyResponse> {
 
 export function getSettings(): Promise<SystemSettingsResponse> {
   return request<SystemSettingsResponse>('/settings')
+}
+
+export function getLlmConfig(): Promise<LLMSettingsState> {
+  return request<LLMSettingsState>('/settings/llm-config')
+}
+
+export function updateLlmConfig(state: LLMSettingsState): Promise<LLMSettingsState> {
+  return request<LLMSettingsState>('/settings/llm-config', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(state),
+  })
+}
+
+export function getLlmReport(): Promise<LLMReportResponse> {
+  return request<LLMReportResponse>('/settings/llm-report')
+}
+
+export function testGatewayConnection(): Promise<GatewayTestResponse> {
+  return request<GatewayTestResponse>('/settings/test-gateway', {
+    method: 'POST',
+  })
 }
 
 export interface SystemStatusResponse {

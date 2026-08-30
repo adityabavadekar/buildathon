@@ -26,7 +26,6 @@ class RecoveryState(str, Enum):
         """Return True if this state is permanently resolved and immutable."""
         return self in {
             RecoveryState.RECOVERED,
-            RecoveryState.ESCALATED,
             RecoveryState.ABANDONED,
             RecoveryState.WRITTEN_OFF,
         }
@@ -44,6 +43,8 @@ class FailureCategory(str, Enum):
     LIQUIDITY_CONSTRAINT = "LIQUIDITY_CONSTRAINT"
     STRUCTURAL_MANDATE_FAILURE = "STRUCTURAL_MANDATE_FAILURE"
     CHECKOUT_DROP_OFF = "CHECKOUT_DROP_OFF"
+    B2B_RECEIVABLES_OVERDUE = "B2B_RECEIVABLES_OVERDUE"
+    PROMISE_TO_PAY_DELAY = "PROMISE_TO_PAY_DELAY"
     SYSTEMIC_GATEWAY_FAILURE = "SYSTEMIC_GATEWAY_FAILURE"
     UNCLASSIFIED = "UNCLASSIFIED"
 
@@ -56,6 +57,8 @@ class InterventionType(str, Enum):
     SMART_PAYMENT_LINK = "SMART_PAYMENT_LINK"
     CUSTOMER_NUDGE = "CUSTOMER_NUDGE"
     INCENTIVIZED_LINK = "INCENTIVIZED_LINK"
+    B2B_INVOICE_CHASER = "B2B_INVOICE_CHASER"
+    P2P_FOLLOWUP = "P2P_FOLLOWUP"
     MANUAL_ESCALATION = "MANUAL_ESCALATION"
     NO_ACTION = "NO_ACTION"
 
@@ -107,4 +110,5 @@ class PaymentRail(str, Enum):
     ENACH = "ENACH"
     CARD = "CARD"
     NETBANKING = "NETBANKING"
+    B2B_INVOICE = "B2B_INVOICE"
     UNKNOWN = "UNKNOWN"

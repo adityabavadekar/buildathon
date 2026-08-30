@@ -64,12 +64,4 @@ class RecoveryCase(BaseModel):
             outreach_count=self.outreach_count,
             discount_paise=self.discount_paise_granted,
         )
-        self.total_cost_paise = (
-            (self.recovered_amount_paise - self.net_recovered_value_paise)
-            if self.recovered_amount_paise >= self.net_recovered_value_paise
-            else (
-                self.retry_count * 250
-                + self.outreach_count * 50
-                + self.discount_paise_granted
-            )
-        )
+        self.total_cost_paise = self.retry_count * 250 + self.outreach_count * 50

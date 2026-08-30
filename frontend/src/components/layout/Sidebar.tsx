@@ -11,6 +11,7 @@ import {
   Settings,
   ShieldCheck,
 } from 'lucide-react'
+import { RazorpaySymbol } from '@/components/ui/BrandIcons'
 
 export type NavSection =
   | 'overview'
@@ -55,8 +56,8 @@ export function Sidebar({
     <aside className="flex h-screen w-64 flex-col border-r border-border bg-surface shrink-0 select-none">
       {/* Brand Header */}
       <div className="flex h-16 items-center gap-3 border-b border-border px-5">
-        <div className="flex h-8 w-8 items-center justify-center rounded-control bg-accent-subtle border border-accent/40 font-mono font-bold text-xs text-accent">
-          RZ
+        <div className="flex h-8 w-8 items-center justify-center rounded-control bg-accent/10 border border-accent/30 text-accent">
+          <RazorpaySymbol className="h-5 w-5" />
         </div>
         <div>
           <span className="text-sm font-semibold tracking-tight text-ink block">

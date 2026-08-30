@@ -9,7 +9,9 @@ def test_seed_and_reset_simulation_api(client: TestClient) -> None:
     assert res_reset.status_code == 200
 
     # 2. Seed batch of 15
-    res_seed = client.post("/api/simulation/seed", json={"count": 15, "simulate_resolutions": True})
+    res_seed = client.post(
+        "/api/simulation/seed", json={"count": 15, "simulate_resolutions": True}
+    )
     assert res_seed.status_code == 200
     data = res_seed.json()
     assert data["seeded_count"] == 15

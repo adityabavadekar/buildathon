@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 
 from app.audit.repository import get_case_repository
 from app.core.config import get_settings
+from app.core.enums import RecoveryState
 from app.intervention.orchestrator import get_recovery_orchestrator
 from app.llm.client import configured_providers
 from app.simulation.seeder import reset_simulation_data, seed_simulation_batch
@@ -85,6 +86,15 @@ async def simulate_resolve_case(req: ResolveCaseRequest) -> dict[str, Any]:
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
 
+    if case.state == RecoveryState.RECOVERED:
+        return {
+            "status": "already_resolved",
+            "case_id": case.case_id,
+            "state": case.state.value,
+            "recovered_amount_paise": case.recovered_amount_paise,
+            "net_recovered_value_paise": case.net_recovered_value_paise,
+        }
+
     amount = req.amount_paise or (case.amount_paise - case.discount_paise_granted)
     orchestrator = get_recovery_orchestrator()
     updated = orchestrator.process_payment_captured(
@@ -104,7 +114,9 @@ async def simulate_resolve_case(req: ResolveCaseRequest) -> dict[str, Any]:
     }
 
 
-@router.get("/status", response_model=SystemStatusResponse, summary="Get Full System Status")
+@router.get(
+    "/status", response_model=SystemStatusResponse, summary="Get Full System Status"
+)
 async def get_system_status() -> SystemStatusResponse:
     """Retrieve comprehensive system telemetry, gateway health, and active queues."""
     repo = get_case_repository()
@@ -114,7 +126,9 @@ async def get_system_status() -> SystemStatusResponse:
     cases = list(repo.list_cases(limit=10000))
     total_cases = len(cases)
     active_queue = sum(
-        1 for c in cases if c.state.value in ("IN_DUNNING", "OUTREACH_PENDING", "RETRY_SCHEDULED")
+        1
+        for c in cases
+        if c.state.value in ("IN_DUNNING", "OUTREACH_PENDING", "RETRY_SCHEDULED")
     )
     escalated_queue = sum(1 for c in cases if c.state.value == "ESCALATED")
 
@@ -130,7 +144,9 @@ async def get_system_status() -> SystemStatusResponse:
         escalated_queue_count=escalated_queue,
         gateway_integration={
             "provider": "Razorpay",
-            "mode": "TEST" if settings.razorpay_key_id and "test" in settings.razorpay_key_id else "PROD",
+            "mode": "TEST"
+            if settings.razorpay_key_id and "test" in settings.razorpay_key_id
+            else "PROD",
             "authenticated": rzp_configured,
             "key_id": settings.razorpay_key_id,
             "webhook_endpoint": "/api/webhooks/razorpay",
@@ -138,7 +154,9 @@ async def get_system_status() -> SystemStatusResponse:
         },
         llm_engine={
             "configured_providers": providers,
-            "active_model": settings.openrouter_model if "openrouter" in providers else "deterministic_rules",
+            "active_model": settings.openrouter_model
+            if "openrouter" in providers
+            else "deterministic_rules",
             "circuit_breaker": "ACTIVE",
             "offline_fallback_operational": True,
         },

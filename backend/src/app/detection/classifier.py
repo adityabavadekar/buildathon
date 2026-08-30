@@ -13,7 +13,7 @@ from app.core.constants import (
     SALARY_CYCLE_RETRY_SPACING_HOURS,
     TRANSIENT_BANK_WINDOW_DELAY_HOURS,
 )
-from app.core.enums import FailureCategory, InterventionType
+from app.core.enums import FailureCategory, InterventionType, PaymentRail
 from app.detection.models import DiagnosisResult, RawFailureEvent
 
 
@@ -36,7 +36,7 @@ class FailureClassifier:
         "MD02",
     }
 
-    def classify(self, event: RawFailureEvent) -> DiagnosisResult:
+    def classify(self, event: RawFailureEvent) -> DiagnosisResult:  # noqa: PLR0911
         """Classify a failure event using error codes, reason sub-codes, and NPCI codes."""
         reason = (event.error_reason or "").lower()
         code = (event.error_code or "").upper()
@@ -52,7 +52,49 @@ class FailureClassifier:
             "npci_code": npci,
         }
 
-        # 1. Transient Banking Window / CBS Cutoff
+        # 1. B2B Overdue Receivables
+        if (
+            "b2b" in reason
+            or "invoice_past_due" in reason
+            or "overdue" in reason
+            or event.payment_rail == PaymentRail.B2B_INVOICE
+        ):
+            return DiagnosisResult(
+                category=FailureCategory.B2B_RECEIVABLES_OVERDUE,
+                confidence=Decimal("0.92"),
+                recommended_intervention=InterventionType.B2B_INVOICE_CHASER,
+                recommended_delay_hours=24,
+                discount_bps_suggested=0,
+                reasoning=(
+                    "B2B net-terms receivable past due date. "
+                    "Automated multi-channel reconciliation dunning initiated with single-click payment link."
+                ),
+                requires_human_approval=False,
+                signals_evaluated=signals,
+            )
+
+        # 2. Promise to Pay (P2P) Grace Period
+        if (
+            "promise_to_pay" in reason
+            or "p2p" in reason
+            or "customer_promised" in reason
+            or "grace_period" in reason
+        ):
+            return DiagnosisResult(
+                category=FailureCategory.PROMISE_TO_PAY_DELAY,
+                confidence=Decimal("0.90"),
+                recommended_intervention=InterventionType.P2P_FOLLOWUP,
+                recommended_delay_hours=72,
+                discount_bps_suggested=0,
+                reasoning=(
+                    "Customer explicitly committed to pay by scheduled date. "
+                    "Aggressive automated retries paused; scheduled gentle verification follow-up."
+                ),
+                requires_human_approval=False,
+                signals_evaluated=signals,
+            )
+
+        # 3. Transient Banking Window / CBS Cutoff
         if (
             npci in self.TRANSIENT_NPCI_CODES
             or "cutoff" in reason
@@ -75,7 +117,7 @@ class FailureClassifier:
                 signals_evaluated=signals,
             )
 
-        # 2. Structural Mandate Failure
+        # 4. Structural Mandate Failure
         if (
             npci in self.MANDATE_FAIL_NPCI_CODES
             or "mandate_revoked" in reason
@@ -98,7 +140,7 @@ class FailureClassifier:
                 signals_evaluated=signals,
             )
 
-        # 3. Liquidity Constraint / Insufficient Funds
+        # 5. Liquidity Constraint / Insufficient Funds
         if (
             npci in self.LIQUIDITY_NPCI_CODES
             or "insufficient_funds" in reason
@@ -120,7 +162,7 @@ class FailureClassifier:
                 signals_evaluated=signals,
             )
 
-        # 4. Checkout Drop-off / Authentication Failure
+        # 6. Checkout Drop-off / Authentication Failure
         if (
             "otp_timeout" in reason
             or "authentication_failed" in reason
@@ -143,7 +185,7 @@ class FailureClassifier:
                 signals_evaluated=signals,
             )
 
-        # 5. Systemic Gateway 5XX Error
+        # 7. Systemic Gateway 5XX Error
         if (
             code in {"GATEWAY_ERROR", "SERVER_ERROR", "INTERNAL_SERVER_ERROR"}
             or source == "gateway"
@@ -162,7 +204,7 @@ class FailureClassifier:
                 signals_evaluated=signals,
             )
 
-        # 6. Unclassified / Low Confidence -> Escalation
+        # 8. Unclassified / Low Confidence -> Escalation
         return DiagnosisResult(
             category=FailureCategory.UNCLASSIFIED,
             confidence=MIN_CONFIDENCE_THRESHOLD,
@@ -176,3 +218,11 @@ class FailureClassifier:
             requires_human_approval=True,
             signals_evaluated=signals,
         )
+
+
+_default_classifier = FailureClassifier()
+
+
+def classify_failure(event: RawFailureEvent) -> DiagnosisResult:
+    """Classify a raw payment failure event using default taxonomy rules."""
+    return _default_classifier.classify(event)

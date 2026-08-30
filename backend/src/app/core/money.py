@@ -127,7 +127,7 @@ def calculate_net_recovered_value_paise(
     recovered_amount_paise: int,
     retry_count: int,
     outreach_count: int,
-    discount_paise: int,
+    discount_paise: int = 0,
     *,
     gateway_retry_cost_paise: int = GATEWAY_RETRY_COST_PAISE,
     outreach_cost_paise: int = OUTREACH_WHATSAPP_COST_PAISE,

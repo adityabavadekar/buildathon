@@ -1,4 +1,4 @@
-"""Tests for state machine transitions and audit logging."""
+"""Tests for state machine transitions, audit entry generation, and invariant enforcement."""
 
 from datetime import UTC, datetime
 
@@ -58,6 +58,33 @@ def test_legal_lifecycle_transitions() -> None:
     assert case.state.is_terminal is True
     assert len(case.audit_trail) == 3
     assert case.net_recovered_value_paise == 499750
+
+
+def test_escalated_state_transition_to_recovered_and_active() -> None:
+    event = RawFailureEvent(
+        event_id="evt_esc_res",
+        payment_id="pay_esc_res",
+        customer_id="cust_esc_res",
+        amount_paise=12000000,
+        error_code="BAD_REQUEST_ERROR",
+        occurred_at=datetime.now(UTC),
+    )
+    case = RecoveryCase(
+        case_id="case_esc_res",
+        amount_paise=12000000,
+        failure_event=event,
+        state=RecoveryState.ESCALATED,
+    )
+    assert case.state.is_terminal is False
+
+    case.recovered_amount_paise = 12000000
+    case = transition_case(
+        case,
+        to_state=RecoveryState.RECOVERED,
+        actor=AuditActor.GATEWAY_WEBHOOK,
+        reason="Payment captured while case was in escalation queue",
+    )
+    assert case.state == RecoveryState.RECOVERED
 
 
 def test_terminal_state_immutability_raises() -> None:

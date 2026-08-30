@@ -10,10 +10,9 @@ revenue at risk (failed payments, abandoned checkouts, failed subscription
 renewals, overdue receivables), diagnoses the cause, chooses a **bounded**
 intervention, executes it, and proves across a batch how much money it recovered.
 
-**Current stage: scaffold.** Both services boot and communicate. There is no
-detection, diagnosis, intervention, or recovery logic yet — the
-`detection/`, `intervention/`, and `audit/` packages are intentionally empty.
-Do not add product logic unless the task explicitly asks for it.
+**Current stage: Full Implementation.** Both services are fully active.
+The `detection/`, `intervention/`, and `audit/` packages are implemented, typed,
+and backed by deterministic policy gates, contract tests, and a 10% holdout control arm.
 
 ## Commands
 

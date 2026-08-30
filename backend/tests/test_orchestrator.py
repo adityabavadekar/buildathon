@@ -113,4 +113,6 @@ async def test_orchestrator_payment_captured_resolution() -> None:
     resolved = orchestrator.process_payment_captured("pay_orch_4", 500000)
     assert resolved is not None
     assert resolved.state == RecoveryState.RECOVERED
-    assert resolved.net_recovered_value_paise == 499750  # 500000 - 250 (gateway retry cost)
+    assert (
+        resolved.net_recovered_value_paise == 499750
+    )  # 500000 - 250 (gateway retry cost)
