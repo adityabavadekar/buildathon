@@ -1,14 +1,11 @@
 'use client'
 
 import React from 'react'
-import { ChevronDown } from 'lucide-react'
 import { RazorpaySymbol } from '@/components/ui/BrandIcons'
 import {
   MAIN_NAV_ITEMS,
   OPERATIONS_NAV_ITEMS,
-  SETTINGS_GROUP_ICON,
   SETTINGS_NAV_ITEMS,
-  SETTINGS_SECTIONS,
   type NavSection,
 } from '@/lib/navigation'
 
@@ -21,12 +18,11 @@ interface SidebarProps {
   escalatedCount?: number
 }
 
-function navButtonClass(isActive: boolean, nested = false): string {
-  const base = nested ? 'pl-9 pr-3 py-2 text-[13px]' : 'px-3.5 py-2.5 text-sm'
-  const state = isActive
-    ? 'border border-border/80 bg-surface-sunken font-bold text-ink'
-    : 'border border-transparent text-ink-muted hover:bg-surface-sunken/60 hover:text-ink'
-  return `group flex w-full cursor-pointer items-center justify-between rounded-control font-medium transition-colors ${base} ${state}`
+interface NavItemConfig {
+  id: NavSection
+  label: string
+  icon: React.ComponentType<{ className?: string }>
+  badgeKey?: 'cases' | 'escalated'
 }
 
 export function Sidebar({
@@ -35,27 +31,19 @@ export function Sidebar({
   casesCount = 0,
   escalatedCount = 0,
 }: SidebarProps) {
-  const settingsActive = SETTINGS_SECTIONS.includes(activeSection)
-  const [settingsExpanded, setSettingsExpanded] = React.useState(false)
-  const showSettingsItems = settingsActive || settingsExpanded
-
-  const SettingsGroupIcon = SETTINGS_GROUP_ICON
-
-  const renderNavItem = (
-    item: {
-      id: NavSection
-      label: string
-      icon: React.ComponentType<{ className?: string }>
-      badgeKey?: 'cases'
-    },
-    nested = false,
-  ) => {
+  const renderNavItem = (item: NavItemConfig, nested = false) => {
     const isActive = activeSection === item.id
     const Icon = item.icon
     const badge =
-      item.badgeKey === 'cases' && casesCount > 0 ? casesCount : undefined
+      item.badgeKey === 'cases' && casesCount > 0
+        ? casesCount
+        : item.badgeKey === 'escalated' && escalatedCount > 0
+          ? escalatedCount
+          : undefined
     const showEscalated =
-      (item.id === 'recovery' || item.id === 'transactions') &&
+      (item.id === 'recovery' ||
+        item.id === 'transactions' ||
+        item.id === 'approvals') &&
       escalatedCount > 0
 
     return (
@@ -65,23 +53,17 @@ export function Sidebar({
         onClick={() => {
           onSelectSection(item.id)
         }}
-        className={navButtonClass(isActive, nested)}
+        className={`sidebar-nav-item ${isActive ? 'sidebar-nav-item--active' : ''} ${nested ? 'sidebar-nav-item--nested' : ''}`}
       >
-        <div className="flex items-center gap-3">
+        <div className="flex min-w-0 items-center gap-3">
           <Icon
-            className={`${nested ? 'h-4 w-4' : 'h-4.5 w-4.5'} shrink-0 ${isActive ? 'text-accent' : 'text-ink-muted group-hover:text-ink'}`}
+            className="sidebar-nav-icon h-[1.125rem] w-[1.125rem] shrink-0"
           />
-          <span className={nested ? 'truncate font-medium' : 'font-semibold'}>
-            {item.label}
-          </span>
+          <span className="truncate">{item.label}</span>
         </div>
         {badge !== undefined ? (
           <span
-            className={`rounded-control px-2 py-0.5 font-mono text-xs font-bold ${
-              showEscalated
-                ? 'border border-escalated/30 bg-escalated-subtle text-escalated'
-                : 'border border-border bg-surface-sunken text-ink-muted'
-            }`}
+            className={`sidebar-nav-badge ${showEscalated ? 'sidebar-nav-badge--alert' : ''}`}
           >
             {badge.toString()}
           </span>
@@ -91,73 +73,43 @@ export function Sidebar({
   }
 
   return (
-    <aside className="flex h-screen w-64 shrink-0 flex-col border-r border-border bg-surface select-none">
-      <div className="flex h-16 items-center gap-3 border-b border-border px-5">
-        <div className="flex h-9 w-9 items-center justify-center rounded-control border border-accent/30 bg-accent/10 text-accent">
+    <aside className="app-sidebar flex h-screen w-[17.5rem] shrink-0 flex-col select-none">
+      <div className="flex h-16 items-center gap-3 border-b border-sidebar-border px-5">
+        <div className="sidebar-brand-logo flex h-9 w-9 items-center justify-center rounded-control border">
           <RazorpaySymbol className="h-5 w-5" />
         </div>
-        <div>
-          <span className="block text-base font-bold tracking-tight text-ink">
+        <div className="min-w-0">
+          <span className="sidebar-brand-title block text-[0.9375rem] font-semibold tracking-tight">
             FORTX
           </span>
-          <span className="block font-mono text-xs tracking-wider text-ink-subtle uppercase">
-            Flow Orchestration
+          <span className="sidebar-brand-tagline block truncate text-xs">
+            Revenue recovery
           </span>
         </div>
       </div>
 
-      <nav className="flex-1 space-y-1.5 overflow-y-auto p-3">
-        <div className="px-2 py-1.5 font-mono text-xs font-bold tracking-wider text-ink-subtle uppercase">
-          Main Navigation
-        </div>
-
+      <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 py-2">
+        <div className="sidebar-section-label">Main</div>
         {MAIN_NAV_ITEMS.map((item) => renderNavItem(item))}
 
-        <div className="pt-2">
-          <button
-            type="button"
-            onClick={() => {
-              setSettingsExpanded((open) => !open)
-            }}
-            className={navButtonClass(settingsActive)}
-            aria-expanded={showSettingsItems}
-          >
-            <div className="flex items-center gap-3">
-              <SettingsGroupIcon
-                className={`h-4.5 w-4.5 shrink-0 ${settingsActive ? 'text-accent' : 'text-ink-muted group-hover:text-ink'}`}
-              />
-              <span className="font-semibold">Settings</span>
-            </div>
-            <ChevronDown
-              className={`h-4 w-4 shrink-0 text-ink-subtle transition-transform ${showSettingsItems ? 'rotate-180' : ''}`}
-            />
-          </button>
+        <div className="sidebar-section-label">Settings</div>
+        {SETTINGS_NAV_ITEMS.map((item) => renderNavItem(item, true))}
 
-          {showSettingsItems ? (
-            <div className="mt-1 space-y-0.5">
-              {SETTINGS_NAV_ITEMS.map((item) => renderNavItem(item, true))}
-            </div>
-          ) : null}
-        </div>
-
-        <div className="px-2 py-1.5 pt-3 font-mono text-xs font-bold tracking-wider text-ink-subtle uppercase">
-          Operations
-        </div>
-
+        <div className="sidebar-section-label">Operations</div>
         {OPERATIONS_NAV_ITEMS.map((item) => renderNavItem(item))}
       </nav>
 
-      <div className="border-t border-border bg-surface-sunken/40 p-4">
+      <div className="sidebar-footer px-4 py-3.5">
         <button
           type="button"
           onClick={() => {
             onSelectSection('status')
           }}
-          className="flex w-full cursor-pointer items-center justify-between font-mono text-sm text-ink-muted transition-colors hover:text-ink"
+          className="sidebar-footer-button flex w-full cursor-pointer items-center justify-between text-sm transition-colors"
         >
-          <span className="font-semibold">Engine Health</span>
-          <span className="flex items-center gap-1.5 text-xs font-bold text-recovered">
-            <span className="h-2 w-2 rounded-full bg-recovered" />
+          <span className="font-medium">Engine health</span>
+          <span className="flex items-center gap-1.5 text-xs font-semibold text-recovered">
+            <span className="h-1.5 w-1.5 rounded-full bg-recovered" />
             Operational
           </span>
         </button>

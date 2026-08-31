@@ -10,6 +10,7 @@ import {
 } from 'lucide-react'
 import type { AnalyticsSummaryResponse, HealthResponse } from '@/lib/api'
 import { AutonomySwitcher } from '@/components/layout/AutonomySwitcher'
+import { formatINR } from '@/lib/format'
 
 interface TopNavProps {
   title: string
@@ -19,15 +20,6 @@ interface TopNavProps {
   lastRefreshedAt?: Date | null
   onRefresh: () => void
   onOpenCommand: () => void
-}
-
-function formatINR(paise: number): string {
-  const rupees = paise / 100
-  return new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: 'INR',
-    maximumFractionDigits: 0,
-  }).format(rupees)
 }
 
 function formatTimeAgo(date: Date | null | undefined): string {
@@ -50,7 +42,6 @@ export function TopNav({
 }: TopNavProps) {
   const [, setTick] = useState(0)
 
-  // Force re-render every 3 seconds to keep relative refresh timestamp live
   useEffect(() => {
     const timer = setInterval(() => {
       setTick((t) => t + 1)
@@ -61,79 +52,73 @@ export function TopNav({
   }, [])
 
   return (
-    <header className="flex h-16 items-center justify-between border-b border-border bg-surface px-6">
-      <div className="flex items-center gap-4">
-        <h1 className="text-base font-semibold tracking-tight text-ink capitalize">
-          {title}
-        </h1>
+    <header className="app-topbar flex h-[3.75rem] shrink-0 items-center justify-between gap-4 px-5 lg:px-6">
+      <div className="flex min-w-0 items-center gap-4 lg:gap-5">
+        <div className="min-w-0">
+          <h1 className="topbar-title truncate">{title}</h1>
+        </div>
 
-        {/* Global Autonomy Mode Control */}
+        <div className="topbar-divider hidden sm:block" />
+
         <AutonomySwitcher />
 
-        {/* Live Recovery Pulse Ticker */}
-        {analytics && analytics.net_recovered_value_paise > 0 && (
-          <div className="hidden items-center gap-2 rounded-control border border-recovered/30 bg-recovered-subtle/20 px-2.5 py-1 font-mono text-xs lg:flex">
-            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-recovered" />
-            <span className="font-bold text-recovered">
-              {formatINR(analytics.net_recovered_value_paise)} NRV
+        {analytics && analytics.net_recovered_value_paise > 0 ? (
+          <div className="topbar-chip topbar-chip--success hidden xl:flex">
+            <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+            <span>
+              <strong>{formatINR(analytics.net_recovered_value_paise)}</strong> NRV
             </span>
-            <span className="text-ink-muted">
-              · {analytics.treatment_recovered.toString()} resolved
+            <span className="text-sidebar-ink-subtle">
+              · {analytics.treatment_recovered.toString()} recovered
             </span>
           </div>
-        )}
+        ) : null}
       </div>
 
-      <div className="flex items-center gap-3">
-        {/* Command Palette Trigger */}
+      <div className="flex shrink-0 items-center gap-2">
         <button
           type="button"
           onClick={onOpenCommand}
-          className="flex cursor-pointer items-center gap-2 rounded-control border border-border bg-surface-sunken px-3 py-1.5 font-mono text-xs text-ink-muted transition-colors hover:border-border-strong hover:text-ink"
+          className="topbar-action"
         >
-          <Search className="h-3.5 w-3.5 text-ink-subtle" />
-          <span className="hidden sm:inline">Search & Actions</span>
-          <kbd className="rounded border border-border/80 bg-surface px-1 text-[10px] text-ink-subtle">
-            ⌘K
-          </kbd>
+          <Search className="h-3.5 w-3.5 shrink-0" />
+          <span className="hidden sm:inline">Search</span>
+          <kbd>⌘K</kbd>
         </button>
 
-        {/* Live Last Refreshed Indicator */}
-        <div className="hidden items-center gap-1.5 rounded-control border border-border/60 bg-surface-sunken px-2 py-1 font-mono text-[11px] text-ink-muted md:flex">
-          <Clock className="h-3 w-3 text-ink-subtle" />
-          <span>Last sync:</span>
-          <span className="font-semibold text-ink">
-            {formatTimeAgo(lastRefreshedAt)}
+        <div className="topbar-chip hidden md:inline-flex">
+          <Clock className="h-3.5 w-3.5 shrink-0" />
+          <span>
+            Synced <strong>{formatTimeAgo(lastRefreshedAt)}</strong>
           </span>
         </div>
 
-        {/* Backend Connectivity Status */}
         {healthLoading ? (
-          <span className="font-mono text-xs text-ink-muted">
-            Connecting...
-          </span>
+          <div className="topbar-chip">Connecting...</div>
         ) : health ? (
-          <div className="flex items-center gap-1.5 text-recovered">
-            <CheckCircle2 className="h-3.5 w-3.5" />
-            <span className="hidden font-mono text-xs text-ink-muted lg:inline">
-              v{health.version} ({health.env})
+          <div className="topbar-chip topbar-chip--success hidden lg:inline-flex">
+            <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+            <span>
+              <strong>Online</strong>
             </span>
           </div>
         ) : (
-          <div className="flex items-center gap-1.5 text-failed">
-            <AlertCircle className="h-3.5 w-3.5" />
-            <span className="font-mono text-xs">Offline</span>
+          <div className="topbar-chip hidden lg:inline-flex">
+            <AlertCircle className="h-3.5 w-3.5 shrink-0 text-failed" />
+            <span className="text-failed">
+              <strong>Offline</strong>
+            </span>
           </div>
         )}
 
         <button
           type="button"
           onClick={onRefresh}
-          className="flex cursor-pointer items-center gap-1.5 rounded-control border border-border bg-surface-sunken px-2.5 py-1.5 font-mono text-xs text-ink-muted transition-colors hover:bg-border/40 hover:text-ink"
-          title="Refresh Data"
+          className="topbar-action topbar-action--emphasis"
+          title="Refresh data"
         >
-          <RotateCcw className="h-3 w-3" />
-          <span>Sync</span>
+          <RotateCcw className="h-3.5 w-3.5 shrink-0" />
+          <span className="hidden sm:inline">Sync</span>
         </button>
       </div>
     </header>

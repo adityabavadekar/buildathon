@@ -425,9 +425,9 @@ export function SettingsView({ settings, loading }: SettingsViewProps) {
 
             {/* Per-Model Breakdown Table */}
             {llmReport.model_breakdown.length > 0 && (
-              <div className="overflow-hidden rounded-control border border-border">
-                <table className="w-full font-mono text-xs">
-                  <thead className="border-b border-border bg-surface-sunken text-[10px] text-ink-muted uppercase">
+              <div className="data-table-shell">
+                <table className="data-table w-full text-xs">
+                  <thead className="text-[10px] uppercase">
                     <tr>
                       <th className="p-2.5 text-left">Model</th>
                       <th className="p-2.5 text-left">Provider</th>
@@ -441,10 +441,7 @@ export function SettingsView({ settings, loading }: SettingsViewProps) {
                   </thead>
                   <tbody className="divide-y divide-border/60">
                     {llmReport.model_breakdown.map((row) => (
-                      <tr
-                        key={`${row.provider}-${row.model}`}
-                        className="hover:bg-surface-sunken/40"
-                      >
+                      <tr key={`${row.provider}-${row.model}`}>
                         <td className="p-2.5 font-semibold text-ink">
                           {row.model}
                         </td>
@@ -507,9 +504,9 @@ export function SettingsView({ settings, loading }: SettingsViewProps) {
               tags to compare models.
             </div>
           ) : (
-            <div className="overflow-hidden rounded-control border border-border">
-              <table className="w-full font-mono text-xs">
-                <thead className="border-b border-border bg-surface-sunken text-[10px] text-ink-muted uppercase">
+            <div className="data-table-shell">
+              <table className="data-table w-full text-xs">
+                <thead className="text-[10px] uppercase">
                   <tr>
                     <th className="p-2.5 text-left">Experiment Tag</th>
                     <th className="p-2.5 text-left">Model</th>

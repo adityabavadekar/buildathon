@@ -1,7 +1,12 @@
 'use client'
 
 import React, { useEffect, useState } from 'react'
-import { DollarSign, MessageSquare, ShieldCheck, X } from 'lucide-react'
+import {
+  DollarSign,
+  MessageSquare,
+  ShieldCheck,
+  X,
+} from 'lucide-react'
 import {
   approveCase,
   getPolicies,
@@ -14,6 +19,7 @@ import { Badge, type BadgeVariant } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { GlossaryTerm } from '@/components/ui/GlossaryTerm'
 import { STATE_READINGS } from '@/lib/glossary'
+import { formatCustomerName, formatINR } from '@/lib/format'
 import { RailBadge } from '@/components/ui/BrandIcons'
 import { WhatsAppPreview } from '@/components/whatsapp/WhatsAppPreview'
 
@@ -21,15 +27,6 @@ interface CaseDetailDrawerProps {
   caseItem: RecoveryCase | null
   onClose: () => void
   onActionComplete: () => void
-}
-
-function formatINR(paise: number): string {
-  const rupees = paise / 100
-  return new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: 'INR',
-    maximumFractionDigits: 2,
-  }).format(rupees)
 }
 
 function stateToVariant(state: RecoveryState): BadgeVariant {
@@ -50,6 +47,13 @@ function stateToVariant(state: RecoveryState): BadgeVariant {
   }
 }
 
+const TAB_LABELS = {
+  overview: 'Overview',
+  outreach: 'Outreach',
+  audit: 'Audit trail',
+  actions: 'Actions',
+} as const
+
 export function CaseDetailDrawer({
   caseItem,
   onClose,
@@ -57,7 +61,7 @@ export function CaseDetailDrawer({
 }: CaseDetailDrawerProps) {
   const [actionLoading, setActionLoading] = useState<boolean>(false)
   const [activeTab, setActiveTab] = useState<
-    'overview' | 'outreach' | 'audit' | 'actions'
+    keyof typeof TAB_LABELS
   >('overview')
   const [policy, setPolicy] = useState<PolicyResponse | null>(null)
 
@@ -73,11 +77,15 @@ export function CaseDetailDrawer({
 
   const maxTouches = policy?.max_touches ?? 3
   const stateDescription = STATE_READINGS[caseItem.state] || caseItem.state
+  const recoveredValue =
+    caseItem.state === 'RECOVERED'
+      ? caseItem.net_recovered_value_paise || caseItem.recovered_amount_paise
+      : null
 
   const handleApprove = async () => {
     try {
       setActionLoading(true)
-      await approveCase(caseItem.case_id, 'Approved via Operator Drawer')
+      await approveCase(caseItem.case_id, 'Approved via operator drawer')
       onActionComplete()
     } finally {
       setActionLoading(false)
@@ -96,289 +104,263 @@ export function CaseDetailDrawer({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/60 backdrop-blur-xs">
-      <div className="animate-in slide-in-from-right flex h-full w-full max-w-2xl flex-col border-l border-border bg-surface shadow-2xl duration-200">
-        {/* Drawer Header */}
-        <div className="flex items-center justify-between border-b border-border bg-surface-sunken/40 p-5">
-          <div>
-            <div className="flex items-center gap-2.5">
-              <span className="font-mono text-sm font-bold text-ink">
-                {caseItem.case_id}
-              </span>
-              <Badge variant={stateToVariant(caseItem.state)}>
-                {caseItem.state.replace('_', ' ')}
-              </Badge>
-              <Badge variant="outline">
-                {caseItem.experiment_arm === 'HOLDOUT_CONTROL'
-                  ? 'Holdout (10%)'
-                  : 'Treatment'}
-              </Badge>
+    <div className="fixed inset-0 z-50 flex justify-end bg-black/50">
+      <div className="flex h-full w-full max-w-3xl flex-col border-l border-border bg-surface">
+        <div className="border-b border-border bg-surface-sunken/50 px-5 py-4">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="truncate text-lg font-semibold text-ink">
+                  {caseItem.case_id}
+                </h2>
+                <Badge variant={stateToVariant(caseItem.state)}>
+                  {caseItem.state.replaceAll('_', ' ')}
+                </Badge>
+                <Badge variant="outline">
+                  {caseItem.experiment_arm === 'HOLDOUT_CONTROL'
+                    ? 'Holdout'
+                    : 'Treatment'}
+                </Badge>
+              </div>
+              <p className="mt-1 text-sm text-ink-muted">
+                Payment {caseItem.failure_event.payment_id} · Customer{' '}
+                {formatCustomerName(caseItem.failure_event.customer_id)}
+              </p>
+              <p className="mt-1 text-xs text-ink-subtle">{stateDescription}</p>
             </div>
-            <span className="mt-1 block font-mono text-[11px] text-ink-muted">
-              Payment ID: {caseItem.failure_event.payment_id} | Created:{' '}
-              {new Date(caseItem.created_at).toLocaleString()}
-            </span>
+            <button
+              type="button"
+              onClick={onClose}
+              className="cursor-pointer rounded-control p-1.5 text-ink-muted transition-colors hover:bg-surface hover:text-ink"
+              aria-label="Close transaction details"
+            >
+              <X className="h-4 w-4" />
+            </button>
           </div>
-          <button
-            onClick={onClose}
-            className="rounded-control p-1.5 text-ink-muted transition-colors hover:bg-surface hover:text-ink"
-          >
-            <X className="h-4 w-4" />
-          </button>
+
+          <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <div className="metric-tile">
+              <p className="metric-tile-label">At risk</p>
+              <p className="metric-tile-value money">
+                {formatINR(caseItem.amount_paise, { maximumFractionDigits: 2 })}
+              </p>
+            </div>
+            <div className="metric-tile border-recovered/30 bg-recovered-subtle/30">
+              <p className="metric-tile-label text-recovered">Recovered NRV</p>
+              <p className="metric-tile-value money text-recovered">
+                {recoveredValue !== null
+                  ? formatINR(recoveredValue, { maximumFractionDigits: 2 })
+                  : '--'}
+              </p>
+            </div>
+            <div className="metric-tile">
+              <p className="metric-tile-label">Touches used</p>
+              <p className="metric-tile-value">
+                {caseItem.touches_count.toString()} / {maxTouches.toString()}
+              </p>
+            </div>
+            <div className="metric-tile">
+              <p className="metric-tile-label">Discount granted</p>
+              <p className="metric-tile-value money">
+                {formatINR(caseItem.discount_paise_granted, {
+                  maximumFractionDigits: 2,
+                })}
+              </p>
+            </div>
+          </div>
         </div>
 
-        {/* State Explanation Banner */}
-        <div className="flex items-center justify-between border-b border-border bg-surface-sunken px-5 py-2.5 text-xs">
-          <span className="font-medium text-ink">{stateDescription}</span>
-          <span className="font-mono text-[10px] text-ink-subtle uppercase">
-            Lifecycle State
-          </span>
-        </div>
-
-        {/* Tabs */}
-        <div className="flex gap-6 border-b border-border px-5 font-mono text-xs">
-          {(['overview', 'outreach', 'audit', 'actions'] as const).map(
+        <div className="flex gap-5 border-b border-border px-5">
+          {(Object.keys(TAB_LABELS) as Array<keyof typeof TAB_LABELS>).map(
             (tab) => (
               <button
                 key={tab}
+                type="button"
                 onClick={() => {
                   setActiveTab(tab)
                 }}
-                className={`border-b-2 py-3 font-medium capitalize transition-colors ${
-                  activeTab === tab
-                    ? 'border-accent text-accent'
-                    : 'border-transparent text-ink-muted hover:text-ink'
-                }`}
+                className={`drawer-tab ${activeTab === tab ? 'drawer-tab--active' : ''}`}
               >
-                {tab}
+                {TAB_LABELS[tab]}
               </button>
             ),
           )}
         </div>
 
-        {/* Drawer Body */}
-        <div className="flex-1 space-y-6 overflow-y-auto p-5">
+        <div className="flex-1 space-y-5 overflow-y-auto p-5">
           {activeTab === 'overview' && (
             <>
-              {/* Financial Breakdown */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1 rounded-panel border border-border bg-surface-sunken p-4">
-                  <span className="flex items-center justify-between font-mono text-[11px] text-ink-muted">
-                    <GlossaryTerm termKey="AT_RISK_REVENUE" showIcon={false}>
-                      At-Risk Amount
-                    </GlossaryTerm>
-                  </span>
-                  <div className="font-mono text-lg font-bold text-ink">
-                    {formatINR(caseItem.amount_paise)}
-                  </div>
-                  <p className="text-[11px] leading-relaxed text-ink-subtle">
-                    The money behind the failed payment. This is what was at
-                    stake.
-                  </p>
-                </div>
-
-                <div className="space-y-1 rounded-panel border border-border bg-surface-sunken p-4">
-                  <span className="flex items-center justify-between font-mono text-[11px] text-ink-muted">
-                    <GlossaryTerm termKey="RECOVERED_NRV" showIcon={false}>
-                      Net Recovered Value (NRV)
-                    </GlossaryTerm>
-                  </span>
-                  <div className="font-mono text-lg font-bold text-recovered">
-                    {caseItem.state === 'RECOVERED'
-                      ? formatINR(
-                          caseItem.net_recovered_value_paise ||
-                            caseItem.recovered_amount_paise,
-                        )
-                      : '--'}
-                  </div>
-                  <p className="text-[11px] leading-relaxed text-ink-subtle">
-                    {caseItem.state === 'RECOVERED'
-                      ? 'Money actually recovered, minus the cost of retries, messages, and any discount given. This is the real win.'
-                      : 'Will show here once this payment is recovered.'}
-                  </p>
-                </div>
-              </div>
-
-              {/* Ingestion & Telemetry */}
-              <div className="space-y-2">
-                <div className="space-y-0.5">
-                  <span className="font-mono text-xs font-semibold tracking-wider text-ink-muted uppercase">
-                    Failure Telemetry & Ingestion
-                  </span>
-                  <p className="text-[11px] leading-relaxed text-ink-subtle">
-                    The raw details of the failed payment that started this
-                    case: which payment method failed, the error the bank or
-                    gateway returned, and who the customer is.
-                  </p>
-                </div>
-                <div className="space-y-2 rounded-panel border border-border bg-surface-sunken/60 p-4 font-mono text-xs">
-                  <div className="flex items-center justify-between">
-                    <span className="text-ink-muted">Payment Rail:</span>
+              <section className="space-y-3">
+                <h3 className="text-sm font-semibold text-ink">
+                  Failure details
+                </h3>
+                <div className="grid gap-3 rounded-panel border border-border bg-surface-sunken/40 p-4 text-sm">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-ink-muted">Payment rail</span>
                     <RailBadge rail={caseItem.failure_event.payment_rail} />
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-ink-muted">Error Category:</span>
-                    <span className="font-semibold text-ink">
+                  <div className="flex justify-between gap-3">
+                    <span className="text-ink-muted">Failure category</span>
+                    <span className="font-medium text-ink">
                       {caseItem.failure_event.category || 'TRANSIENT'}
                     </span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-ink-muted">Error Code / Reason:</span>
-                    <span className="text-ink">
-                      {caseItem.failure_event.error_code} -{' '}
+                  <div className="flex justify-between gap-3">
+                    <span className="text-ink-muted">Error</span>
+                    <span className="text-right text-ink">
+                      <span className="font-mono font-medium">
+                        {caseItem.failure_event.error_code}
+                      </span>
+                      {' · '}
                       {caseItem.failure_event.error_reason}
                     </span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-ink-muted">Customer ID:</span>
-                    <span className="text-ink">
-                      {caseItem.failure_event.customer_id}
+                  <div className="flex justify-between gap-3">
+                    <span className="text-ink-muted">Created</span>
+                    <span className="font-medium text-ink">
+                      {new Date(caseItem.created_at).toLocaleString()}
                     </span>
                   </div>
                 </div>
-              </div>
+              </section>
 
-              {/* Guardrails & Touch Status */}
-              <div className="space-y-2">
-                <div className="space-y-0.5">
-                  <div className="flex items-center gap-1.5 font-mono text-xs font-semibold tracking-wider text-ink-muted uppercase">
-                    <ShieldCheck className="h-3.5 w-3.5 text-recovered" />
-                    <span>
-                      <GlossaryTerm termKey="POLICY_GATE" showIcon={false}>
-                        Policy Guardrail Status
-                      </GlossaryTerm>
-                    </span>
-                  </div>
-                  <p className="text-[11px] leading-relaxed text-ink-subtle">
-                    The safety limits applied to this case: how many attempts
-                    are still allowed, and whether a discount has been granted
-                    to get the payment through.
-                  </p>
+              <section className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <ShieldCheck className="h-4 w-4 text-recovered" />
+                  <h3 className="text-sm font-semibold text-ink">
+                    <GlossaryTerm termKey="POLICY_GATE" showIcon={false}>
+                      Policy guardrails
+                    </GlossaryTerm>
+                  </h3>
                 </div>
-                <div className="grid grid-cols-2 gap-3 font-mono text-xs">
-                  <div className="flex items-center justify-between rounded-control border border-border bg-surface-sunken p-3">
-                    <span className="text-ink-muted">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="metric-tile">
+                    <p className="metric-tile-label">
                       <GlossaryTerm termKey="TOUCHES" showIcon={false}>
-                        Touches Count
+                        Touch limit
                       </GlossaryTerm>
-                    </span>
-                    <span className="font-semibold text-ink">
-                      {caseItem.touches_count.toString()} /{' '}
-                      {maxTouches.toString()} Max
-                    </span>
+                    </p>
+                    <p className="metric-tile-value">
+                      {caseItem.touches_count.toString()} of {maxTouches.toString()}
+                    </p>
+                    <p className="metric-tile-hint">
+                      Remaining attempts before escalation or stop.
+                    </p>
                   </div>
-                  <div className="flex items-center justify-between rounded-control border border-border bg-surface-sunken p-3">
-                    <span className="text-ink-muted">
+                  <div className="metric-tile">
+                    <p className="metric-tile-label">
                       <GlossaryTerm termKey="DISCOUNT_GRANTED" showIcon={false}>
-                        Discount Granted
+                        Discount used
                       </GlossaryTerm>
-                    </span>
-                    <span className="font-semibold text-ink">
-                      {formatINR(caseItem.discount_paise_granted)}
-                    </span>
+                    </p>
+                    <p className="metric-tile-value money">
+                      {formatINR(caseItem.discount_paise_granted, {
+                        maximumFractionDigits: 2,
+                      })}
+                    </p>
+                    <p className="metric-tile-hint">
+                      Concession already applied on this case.
+                    </p>
                   </div>
                 </div>
-              </div>
+              </section>
             </>
           )}
 
           {activeTab === 'outreach' && (
-            <div className="space-y-4">
-              <div className="space-y-0.5">
-                <div className="flex items-center gap-1.5 font-mono text-xs font-semibold tracking-wider text-ink-muted uppercase">
-                  <MessageSquare className="h-3.5 w-3.5 text-accent" />
-                  <span>Live Customer Outreach Preview</span>
-                </div>
-                <p className="text-[11px] leading-relaxed text-ink-subtle">
-                  A preview of the WhatsApp message the customer would receive
-                  if the engine reached out about this failed payment. It shows
-                  the message text, the payment link, and any discount offered.
-                </p>
+            <section className="space-y-3">
+              <div className="flex items-center gap-2">
+                <MessageSquare className="h-4 w-4 text-accent" />
+                <h3 className="text-sm font-semibold text-ink">
+                  Customer outreach preview
+                </h3>
               </div>
+              <p className="text-sm text-ink-muted">
+                Message the customer would receive for this failed payment,
+                including any payment link or discount.
+              </p>
               <WhatsAppPreview caseItem={caseItem} />
-            </div>
+            </section>
           )}
 
           {activeTab === 'audit' && (
-            <div className="space-y-4">
-              <span className="font-mono text-xs font-semibold tracking-wider text-ink-muted uppercase">
-                Immutable State Machine Chronology
-              </span>
+            <section className="space-y-4">
+              <h3 className="text-sm font-semibold text-ink">
+                Immutable state machine chronology
+              </h3>
               {caseItem.audit_trail.map((entry) => (
                 <div
                   key={entry.entry_id}
                   className="relative border-l-2 border-border pb-4 pl-5 last:pb-0"
                 >
                   <div className="absolute top-1 -left-[5px] h-2 w-2 rounded-full bg-accent" />
-                  <div className="flex items-center justify-between font-mono text-xs text-ink-muted">
+                  <div className="flex items-center justify-between text-xs text-ink-muted">
                     <div className="flex items-center gap-2">
-                      <span className="font-semibold text-ink">
-                        {entry.event_name}
+                      <span className="font-medium text-ink">
+                        {entry.event_name.replaceAll('_', ' ')}
                       </span>
                       <Badge variant="outline">{entry.actor}</Badge>
                     </div>
                     <span>
-                      {new Date(entry.timestamp).toLocaleTimeString()}
+                      {new Date(entry.timestamp).toLocaleString()}
                     </span>
                   </div>
-                  <p className="mt-1.5 text-xs text-ink">{entry.reason}</p>
-                  {entry.cost_incurred_paise > 0 && (
-                    <span className="mt-0.5 block font-mono text-[10px] text-failed">
-                      Cost Incurred: -{formatINR(entry.cost_incurred_paise)}
+                  {entry.reason ? (
+                    <p className="mt-1.5 text-sm text-ink">{entry.reason}</p>
+                  ) : null}
+                  {entry.cost_incurred_paise > 0 ? (
+                    <span className="mt-0.5 block text-xs font-medium text-failed">
+                      Cost incurred: -
+                      {formatINR(entry.cost_incurred_paise, {
+                        maximumFractionDigits: 2,
+                      })}
                     </span>
-                  )}
-                  {Object.keys(entry.decision_inputs).length > 0 && (
+                  ) : null}
+                  {Object.keys(entry.decision_inputs).length > 0 ? (
                     <pre className="mt-2 overflow-x-auto rounded-control border border-border/60 bg-surface-sunken p-2 font-mono text-[10px] text-ink-muted">
                       {JSON.stringify(entry.decision_inputs, null, 2)}
                     </pre>
-                  )}
+                  ) : null}
                 </div>
               ))}
-            </div>
+            </section>
           )}
 
           {activeTab === 'actions' && (
-            <div className="space-y-4">
-              <div className="space-y-2 rounded-panel border border-border bg-surface-sunken p-4">
-                <span className="font-mono text-xs font-bold text-ink">
-                  Operator Actions
-                </span>
-                <p className="text-xs text-ink-muted">
-                  Approve an escalated case or simulate a customer payment
-                  completion against the Razorpay webhook pipeline.
-                </p>
-                <div className="flex flex-wrap gap-2 pt-2">
-                  {caseItem.state === 'ESCALATED' && (
-                    <Button
-                      size="sm"
-                      onClick={() => {
-                        void handleApprove()
-                      }}
-                      disabled={actionLoading}
-                      className="font-mono text-xs"
-                    >
-                      {actionLoading ? 'Approving...' : 'Approve Case'}
-                    </Button>
-                  )}
-                  {caseItem.state !== 'RECOVERED' && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => {
-                        void handleSimulatePayment()
-                      }}
-                      disabled={actionLoading}
-                      className="flex items-center gap-1.5 font-mono text-xs"
-                    >
-                      <DollarSign className="h-3.5 w-3.5 text-recovered" />
-                      {actionLoading
-                        ? 'Processing...'
-                        : 'Simulate Customer Payment'}
-                    </Button>
-                  )}
-                </div>
+            <section className="space-y-3 rounded-panel border border-border bg-surface-sunken/40 p-4">
+              <h3 className="text-sm font-semibold text-ink">Operator actions</h3>
+              <p className="text-sm text-ink-muted">
+                Approve an escalated case or simulate a successful customer
+                payment through the webhook pipeline.
+              </p>
+              <div className="flex flex-wrap gap-2 pt-1">
+                {caseItem.state === 'ESCALATED' ? (
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      void handleApprove()
+                    }}
+                    disabled={actionLoading}
+                  >
+                    {actionLoading ? 'Approving...' : 'Approve case'}
+                  </Button>
+                ) : null}
+                {caseItem.state !== 'RECOVERED' ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      void handleSimulatePayment()
+                    }}
+                    disabled={actionLoading}
+                    className="gap-1.5"
+                  >
+                    <DollarSign className="h-3.5 w-3.5 text-recovered" />
+                    {actionLoading ? 'Processing...' : 'Simulate payment'}
+                  </Button>
+                ) : null}
               </div>
-            </div>
+            </section>
           )}
         </div>
       </div>

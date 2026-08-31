@@ -2,22 +2,17 @@
 
 import React, { useMemo, useState } from 'react'
 import {
-  Bot,
-  CheckCircle2,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   ChevronUp,
-  FileText,
-  Radio,
   RefreshCw,
   Search,
-  ShieldAlert,
   Sparkles,
-  Zap,
 } from 'lucide-react'
 import { seedSimulation, type RecoveryCase } from '@/lib/api'
 import { Button } from '@/components/ui/button'
+import { formatCustomerName, formatDateTime, formatTime, humanizeToken } from '@/lib/format'
 
 interface AuditViewProps {
   cases: RecoveryCase[]
@@ -40,6 +35,67 @@ interface EnrichedAuditEntry {
   to_state?: string | null
 }
 
+function actionPillClass(eventName: string): string {
+  const lower = eventName.toLowerCase()
+  if (lower.includes('plan') || lower.includes('ai') || lower.includes('llm')) {
+    return 'audit-pill audit-pill--ai'
+  }
+  if (
+    lower.includes('executed') ||
+    lower.includes('dispatch') ||
+    lower.includes('retry') ||
+    lower.includes('link')
+  ) {
+    return 'audit-pill audit-pill--action'
+  }
+  if (lower.includes('recovered') || lower.includes('captured')) {
+    return 'audit-pill audit-pill--success'
+  }
+  if (lower.includes('escalat') || lower.includes('breach') || lower.includes('failed')) {
+    return 'audit-pill audit-pill--danger'
+  }
+  return 'audit-pill'
+}
+
+function actionLabel(eventName: string): string {
+  const lower = eventName.toLowerCase()
+  if (lower.includes('plan') || lower.includes('llm')) return 'AI plan'
+  if (lower.includes('executed') || lower.includes('dispatch')) return 'Dispatch'
+  if (lower.includes('recovered') || lower.includes('captured')) return 'Recovered'
+  if (lower.includes('escalat')) return 'Escalated'
+  if (lower.includes('holdout')) return 'Holdout'
+  if (lower.includes('ingest') || lower.includes('created')) return 'Ingested'
+  return humanizeToken(eventName)
+}
+
+function actorLabel(actor: string): string {
+  return formatActorBadge(actor).label
+}
+
+function formatActorBadge(actor: string): {
+  label: string
+  sub: string
+} {
+  switch (actor) {
+    case 'AGENT_LLM':
+      return { label: 'AI planner', sub: 'Autonomous engine' }
+    case 'ORCHESTRATOR':
+    case 'SYSTEM':
+      return { label: 'System engine', sub: 'State machine' }
+    case 'POLICY_GATE':
+      return { label: 'Policy gate', sub: 'Invariant guardrail' }
+    case 'GATEWAY_WEBHOOK':
+      return { label: 'Razorpay webhook', sub: 'Event relay' }
+    case 'HUMAN_OPERATOR':
+      return { label: 'Ops operator', sub: 'HITL reviewer' }
+    default:
+      return {
+        label: humanizeToken(actor),
+        sub: 'System entity',
+      }
+  }
+}
+
 export function AuditView({
   cases,
   onRefresh,
@@ -52,9 +108,8 @@ export function AuditView({
   const [expandedEntryId, setExpandedEntryId] = useState<string | null>(null)
   const [page, setPage] = useState<number>(1)
   const [isSeeding, setIsSeeding] = useState<boolean>(false)
-  const perPage = 15
+  const perPage = 25
 
-  // Flatten all case audit trails chronologically
   const allEntries: EnrichedAuditEntry[] = useMemo(() => {
     const list: EnrichedAuditEntry[] = []
     for (const c of cases) {
@@ -81,16 +136,16 @@ export function AuditView({
     )
   }, [cases])
 
-  // Extract dynamic action and actor lists from real ingested data (NO hardcoding)
-  const availableActions = useMemo(() => {
-    return Array.from(new Set(allEntries.map((e) => e.event_name))).sort()
-  }, [allEntries])
+  const availableActions = useMemo(
+    () => Array.from(new Set(allEntries.map((e) => e.event_name))).sort(),
+    [allEntries],
+  )
 
-  const availableActors = useMemo(() => {
-    return Array.from(new Set(allEntries.map((e) => e.actor))).sort()
-  }, [allEntries])
+  const availableActors = useMemo(
+    () => Array.from(new Set(allEntries.map((e) => e.actor))).sort(),
+    [allEntries],
+  )
 
-  // Filtered dataset
   const filteredEntries = useMemo(() => {
     return allEntries.filter((entry) => {
       if (actionFilter && entry.event_name !== actionFilter) return false
@@ -104,7 +159,8 @@ export function AuditView({
           entry.case_id.toLowerCase().includes(q) ||
           entry.payment_id.toLowerCase().includes(q) ||
           entry.customer_id.toLowerCase().includes(q) ||
-          entry.entry_id.toLowerCase().includes(q)
+          entry.entry_id.toLowerCase().includes(q) ||
+          entry.reason.toLowerCase().includes(q)
         if (!matchId) return false
       }
       return true
@@ -118,259 +174,142 @@ export function AuditView({
     return filteredEntries.slice(start, start + perPage)
   }, [filteredEntries, page, perPage])
 
-  const formatActionBadge = (eventName: string) => {
-    const lower = eventName.toLowerCase()
-    if (
-      lower.includes('plan') ||
-      lower.includes('ai') ||
-      lower.includes('llm')
-    ) {
-      return (
-        <span className="inline-flex items-center gap-1 rounded-md border border-purple-500/30 bg-purple-500/15 px-2.5 py-1 text-[11px] font-bold text-purple-600">
-          <Bot className="h-3 w-3" />
-          AI STRATEGY PLAN
-        </span>
-      )
-    }
-    if (
-      lower.includes('executed') ||
-      lower.includes('dispatch') ||
-      lower.includes('retry') ||
-      lower.includes('link')
-    ) {
-      return (
-        <span className="inline-flex items-center gap-1 rounded-md border border-emerald-500/30 bg-emerald-500/15 px-2.5 py-1 text-[11px] font-bold text-emerald-600">
-          <Zap className="h-3 w-3" />
-          INTERVENTION DISPATCH
-        </span>
-      )
-    }
-    if (lower.includes('recovered') || lower.includes('captured')) {
-      return (
-        <span className="inline-flex items-center gap-1 rounded-md border border-green-500/30 bg-green-500/15 px-2.5 py-1 text-[11px] font-bold text-recovered">
-          <CheckCircle2 className="h-3 w-3" />
-          PAYMENT RECOVERED
-        </span>
-      )
-    }
-    if (lower.includes('escalat') || lower.includes('breach')) {
-      return (
-        <span className="inline-flex items-center gap-1 rounded-md border border-rose-500/30 bg-rose-500/15 px-2.5 py-1 text-[11px] font-bold text-rose-600">
-          <ShieldAlert className="h-3 w-3" />
-          SAFETY ESCALATION
-        </span>
-      )
-    }
-    if (lower.includes('holdout')) {
-      return (
-        <span className="inline-flex items-center gap-1 rounded-md border border-slate-500/30 bg-slate-500/15 px-2.5 py-1 text-[11px] font-bold text-slate-500">
-          <Radio className="h-3 w-3" />
-          HOLDOUT CONTROL
-        </span>
-      )
-    }
-    if (
-      lower.includes('ingest') ||
-      lower.includes('created') ||
-      lower.includes('failed')
-    ) {
-      return (
-        <span className="inline-flex items-center gap-1 rounded-md border border-blue-500/30 bg-blue-500/15 px-2.5 py-1 text-[11px] font-bold text-blue-600">
-          <FileText className="h-3 w-3" />
-          FAILURE INGESTED
-        </span>
-      )
-    }
-    return (
-      <span className="inline-flex items-center gap-1 rounded-md border border-border bg-surface-sunken px-2.5 py-1 font-mono text-[11px] font-medium text-ink">
-        {eventName.replace(/[._]/g, ' ').toUpperCase()}
-      </span>
-    )
-  }
-
-  const formatActorBadge = (actor: string) => {
-    switch (actor) {
-      case 'AGENT_LLM':
-        return { label: 'AI Planner', sub: 'Autonomous Engine', type: 'ai' }
-      case 'ORCHESTRATOR':
-      case 'SYSTEM':
-        return { label: 'System Engine', sub: 'State Machine', type: 'system' }
-      case 'POLICY_GATE':
-        return {
-          label: 'Policy Gate',
-          sub: 'Invariant Guardrail',
-          type: 'policy',
-        }
-      case 'GATEWAY_WEBHOOK':
-        return {
-          label: 'Razorpay Webhook',
-          sub: 'Event Relay',
-          type: 'webhook',
-        }
-      case 'HUMAN_OPERATOR':
-        return { label: 'Ops Operator', sub: 'HITL Reviewer', type: 'human' }
-      default:
-        return {
-          label: actor.replace('_', ' '),
-          sub: 'System Entity',
-          type: 'default',
-        }
-    }
-  }
-
   const handleSearchSubmit = (e: React.SyntheticEvent) => {
     e.preventDefault()
     setPage(1)
   }
 
   return (
-    <div className="mx-auto h-full max-w-7xl space-y-6 overflow-y-auto">
-      {/* 1. Header with Forensic Tag & Live Refresh */}
-      <div className="flex flex-col justify-between gap-4 border-b border-border pb-5 sm:flex-row sm:items-center">
+    <div className="h-full w-full min-w-0 space-y-5 overflow-y-auto">
+      <div className="flex flex-col justify-between gap-3 border-b border-border pb-4 sm:flex-row sm:items-end">
         <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-bold tracking-tight text-ink">
-              Operational Forensic Audit Trail
-            </h1>
-            <span className="rounded-full border border-accent/20 bg-accent-subtle px-2.5 py-0.5 font-mono text-xs font-semibold text-accent">
-              Immutable Forensic Log
-            </span>
-          </div>
+          <h1 className="text-2xl font-semibold tracking-tight text-ink">
+            Audit Log
+          </h1>
           <p className="mt-1 text-sm text-ink-muted">
-            Tamper-evident record of all AI diagnosis formulations, state
-            transitions, policy evaluations, and payment captures.
+            Immutable record of state changes, policy checks, outreach, and
+            payment outcomes.
           </p>
         </div>
 
-        {onRefresh && (
-          <button
+        {onRefresh ? (
+          <Button
             type="button"
+            variant="outline"
+            size="sm"
             onClick={onRefresh}
             disabled={refreshing}
-            className="inline-flex cursor-pointer items-center gap-2 self-start rounded-xl border border-border bg-surface px-3.5 py-2 text-xs font-semibold shadow-sm transition-colors hover:bg-surface-sunken sm:self-auto"
+            className="gap-2 self-start sm:self-auto"
           >
             <RefreshCw
               className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`}
             />
-            <span>Refresh</span>
-          </button>
-        )}
+            Refresh
+          </Button>
+        ) : null}
       </div>
 
-      {/* 2. Filter Matrix */}
-      <div className="space-y-3 rounded-2xl border border-border bg-surface p-4 shadow-sm">
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-4">
-          {/* Action Filter */}
-          <div>
-            <label className="mb-1.5 block text-[11px] font-bold tracking-wider text-ink-muted uppercase">
-              Action Type
-            </label>
-            <select
-              value={actionFilter}
-              onChange={(e) => {
-                setActionFilter(e.target.value)
-                setPage(1)
-              }}
-              className="w-full rounded-xl border border-border bg-surface-sunken px-3 py-2 text-xs text-ink focus:ring-1 focus:ring-accent focus:outline-none"
-            >
-              <option value="">
-                All Actions ({allEntries.length.toString()})
+      <div className="grid grid-cols-1 gap-3 rounded-panel border border-border bg-surface p-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div>
+          <label className="mb-1 block text-xs font-medium text-ink-muted">
+            Action
+          </label>
+          <select
+            value={actionFilter}
+            onChange={(e) => {
+              setActionFilter(e.target.value)
+              setPage(1)
+            }}
+            className="field-input text-sm"
+          >
+            <option value="">All ({allEntries.length.toString()})</option>
+            {availableActions.map((act) => (
+              <option key={act} value={act}>
+                {actionLabel(act)}
               </option>
-              {availableActions.map((act) => (
-                <option key={act} value={act}>
-                  {act}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Entity Scope Filter */}
-          <div>
-            <label className="mb-1.5 block text-[11px] font-bold tracking-wider text-ink-muted uppercase">
-              Entity Scope
-            </label>
-            <select
-              value={entityFilter}
-              onChange={(e) => {
-                setEntityFilter(e.target.value)
-                setPage(1)
-              }}
-              className="w-full rounded-xl border border-border bg-surface-sunken px-3 py-2 text-xs text-ink focus:ring-1 focus:ring-accent focus:outline-none"
-            >
-              <option value="">All Entities</option>
-              <option value="case">Cases Only</option>
-              <option value="payment">Payments Only</option>
-            </select>
-          </div>
-
-          {/* Actor Role Filter */}
-          <div>
-            <label className="mb-1.5 block text-[11px] font-bold tracking-wider text-ink-muted uppercase">
-              Executing Actor
-            </label>
-            <select
-              value={actorFilter}
-              onChange={(e) => {
-                setActorFilter(e.target.value)
-                setPage(1)
-              }}
-              className="w-full rounded-xl border border-border bg-surface-sunken px-3 py-2 text-xs text-ink focus:ring-1 focus:ring-accent focus:outline-none"
-            >
-              <option value="">All Actors</option>
-              {availableActors.map((act) => (
-                <option key={act} value={act}>
-                  {act.replace('_', ' ')}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Search Entity ID Form */}
-          <form onSubmit={handleSearchSubmit}>
-            <label className="mb-1.5 block text-[11px] font-bold tracking-wider text-ink-muted uppercase">
-              Entity ID Search
-            </label>
-            <div className="flex gap-1.5">
-              <input
-                type="text"
-                placeholder="e.g. case_... or pay_..."
-                value={searchQuery}
-                onChange={(e) => {
-                  setSearchQuery(e.target.value)
-                }}
-                className="w-full rounded-xl border border-border bg-surface-sunken px-3 py-2 font-mono text-xs text-ink focus:ring-1 focus:ring-accent focus:outline-none"
-              />
-              <button
-                type="submit"
-                className="cursor-pointer rounded-xl bg-accent px-3 text-xs font-bold text-white transition-colors hover:bg-accent-hover"
-              >
-                <Search className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          </form>
+            ))}
+          </select>
         </div>
+
+        <div>
+          <label className="mb-1 block text-xs font-medium text-ink-muted">
+            Entity
+          </label>
+          <select
+            value={entityFilter}
+            onChange={(e) => {
+              setEntityFilter(e.target.value)
+              setPage(1)
+            }}
+            className="field-input text-sm"
+          >
+            <option value="">All entities</option>
+            <option value="case">Cases</option>
+            <option value="payment">Payments</option>
+          </select>
+        </div>
+
+        <div>
+          <label className="mb-1 block text-xs font-medium text-ink-muted">
+            Actor
+          </label>
+          <select
+            value={actorFilter}
+            onChange={(e) => {
+              setActorFilter(e.target.value)
+              setPage(1)
+            }}
+            className="field-input text-sm"
+          >
+            <option value="">All actors</option>
+            {availableActors.map((act) => (
+              <option key={act} value={act}>
+                {actorLabel(act)}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <form onSubmit={handleSearchSubmit}>
+          <label className="mb-1 block text-xs font-medium text-ink-muted">
+            Search
+          </label>
+          <div className="flex gap-1.5">
+            <input
+              type="text"
+              placeholder="Case, payment, customer..."
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value)
+              }}
+              className="field-input text-sm"
+            />
+            <Button type="submit" size="sm" variant="primary" className="px-3">
+              <Search className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </form>
       </div>
 
-      {/* 3. Audit Log Table */}
-      <div className="overflow-hidden rounded-2xl border border-border bg-surface shadow-sm">
+      <div className="data-table-shell">
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead className="border-b border-border bg-surface-sunken/60 text-[10px] font-bold tracking-wider text-ink-muted uppercase">
+          <table className="data-table w-full text-left">
+            <thead className="audit-table-head">
               <tr>
-                <th className="px-4 py-3">Timestamp</th>
-                <th className="px-4 py-3">Action</th>
-                <th className="px-4 py-3">Entity</th>
-                <th className="px-4 py-3">Entity ID</th>
-                <th className="px-4 py-3">Actor</th>
-                <th className="px-4 py-3">Details</th>
+                <th>Time</th>
+                <th>Action</th>
+                <th>Case / Payment</th>
+                <th>Actor</th>
+                <th>Summary</th>
+                <th className="w-16 text-right">More</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-border">
+            <tbody className="divide-y divide-border/50 bg-surface">
               {paginatedEntries.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-12 text-center text-ink-muted">
-                    <div className="flex flex-col items-center justify-center gap-3">
-                      <p>No audit records match the current filter criteria.</p>
+                  <td colSpan={6} className="px-4 py-10 text-center text-sm text-ink-muted">
+                    <div className="flex flex-col items-center gap-3">
+                      <p>No audit records match the current filters.</p>
                       <Button
                         variant="outline"
                         size="sm"
@@ -385,13 +324,11 @@ export function AuditView({
                               setIsSeeding(false)
                             })
                         }}
-                        className="cursor-pointer gap-2 font-mono text-xs"
+                        className="gap-2"
                       >
                         <Sparkles className="h-3.5 w-3.5 text-accent" />
                         <span>
-                          {isSeeding
-                            ? 'Seeding Batch...'
-                            : 'Seed Recovery Batch'}
+                          {isSeeding ? 'Seeding...' : 'Seed recovery batch'}
                         </span>
                       </Button>
                     </div>
@@ -401,87 +338,90 @@ export function AuditView({
                 paginatedEntries.map((entry) => {
                   const isExpanded = expandedEntryId === entry.entry_id
                   const actorInfo = formatActorBadge(entry.actor)
+                  const stateTransition =
+                    entry.from_state && entry.to_state
+                      ? `${entry.from_state} -> ${entry.to_state}`
+                      : null
 
                   return (
                     <React.Fragment key={entry.entry_id}>
-                      <tr className="transition-colors hover:bg-surface-sunken/40">
-                        {/* Timestamp */}
-                        <td className="px-4 py-3.5 font-mono text-[11px] whitespace-nowrap text-ink-muted">
-                          {new Date(entry.timestamp).toLocaleString()}
+                      <tr className="audit-row audit-row-compact transition-colors">
+                        <td className="whitespace-nowrap text-ink-muted">
+                          <div className="font-medium text-ink">
+                            {formatTime(entry.timestamp)}
+                          </div>
+                          <div className="text-[11px]">
+                            {formatDateTime(entry.timestamp).split(',')[0]}
+                          </div>
                         </td>
 
-                        {/* Action Badge */}
-                        <td className="px-4 py-3.5 whitespace-nowrap">
-                          {formatActionBadge(entry.event_name)}
+                        <td>
+                          <span className={actionPillClass(entry.event_name)}>
+                            {actionLabel(entry.event_name)}
+                          </span>
                         </td>
 
-                        {/* Entity */}
-                        <td className="px-4 py-3.5 font-semibold text-ink capitalize">
-                          Case Entry
+                        <td className="min-w-[10rem]">
+                          <div className="font-medium text-ink">{entry.case_id}</div>
+                          <div className="text-[11px] text-ink-muted">
+                            {entry.payment_id}
+                          </div>
                         </td>
 
-                        {/* Entity ID */}
-                        <td className="px-4 py-3.5 font-mono text-[11px] text-ink-muted">
-                          #{entry.case_id.slice(0, 10)}...
-                        </td>
-
-                        {/* Actor with Floating User Tooltip */}
-                        <td className="px-4 py-3.5 whitespace-nowrap">
-                          <div className="group relative inline-flex cursor-pointer items-center gap-1.5">
-                            <span className="font-semibold text-ink underline decoration-ink-muted decoration-dotted underline-offset-4">
+                        <td className="whitespace-nowrap text-ink">
+                          <div className="group/actor relative inline-flex cursor-default items-center gap-1.5">
+                            <span className="font-medium text-ink underline decoration-ink-muted decoration-dotted underline-offset-4">
                               {actorInfo.label}
                             </span>
-                            <span className="rounded border border-border bg-surface-sunken px-1.5 py-0.5 text-[10px] font-bold text-ink-muted uppercase">
+                            <span className="rounded border border-border bg-surface-sunken px-1.5 py-0.5 text-[10px] font-semibold text-ink-muted uppercase">
                               {actorInfo.sub}
                             </span>
 
-                            {/* Floating User / System Tooltip */}
-                            <div className="animate-in fade-in pointer-events-none absolute bottom-full left-0 z-50 mb-2 hidden w-64 flex-col gap-1 rounded-xl border border-border bg-surface p-3 text-xs text-ink shadow-2xl duration-150 group-hover:flex">
+                            <div className="pointer-events-none absolute bottom-full left-0 z-50 mb-2 hidden w-64 flex-col gap-1 rounded-panel border border-border bg-surface p-3 text-xs text-ink shadow-lg group-hover/actor:flex">
                               <div className="flex items-center justify-between border-b border-border pb-1.5">
-                                <span className="truncate text-xs font-bold text-ink">
+                                <span className="truncate text-xs font-semibold text-ink">
                                   {actorInfo.label}
                                 </span>
-                                <span className="rounded border border-accent/20 bg-accent-subtle px-1.5 py-0.5 font-mono text-[9px] font-black text-accent uppercase">
+                                <span className="rounded border border-accent/20 bg-accent-subtle px-1.5 py-0.5 font-mono text-[9px] font-bold text-accent uppercase">
                                   {entry.actor}
                                 </span>
                               </div>
                               <div className="space-y-0.5 pt-0.5 text-[11px] text-ink-muted">
                                 <p>
-                                  <strong className="text-ink">
-                                    Component:
-                                  </strong>{' '}
+                                  <strong className="text-ink">Component:</strong>{' '}
                                   {actorInfo.sub}
                                 </p>
                                 <p>
-                                  <strong className="text-ink">
-                                    Audit ID:
-                                  </strong>{' '}
-                                  #{entry.entry_id.slice(0, 12)}
+                                  <strong className="text-ink">Audit ID:</strong>{' '}
+                                  {entry.entry_id.slice(0, 12)}
                                 </p>
                                 <p>
-                                  <strong className="text-ink">
-                                    Case Scope:
-                                  </strong>{' '}
-                                  #{entry.case_id.slice(0, 8)}
+                                  <strong className="text-ink">Case scope:</strong>{' '}
+                                  {entry.case_id.slice(0, 8)}
                                 </p>
-                                {entry.cost_incurred_paise > 0 && (
+                                {entry.cost_incurred_paise > 0 ? (
                                   <p className="text-failed">
-                                    <strong className="text-ink">
-                                      Cost Incurred:
-                                    </strong>{' '}
-                                    INR{' '}
-                                    {(entry.cost_incurred_paise / 100).toFixed(
-                                      2,
-                                    )}
+                                    <strong className="text-ink">Cost incurred:</strong>{' '}
+                                    INR {(entry.cost_incurred_paise / 100).toFixed(2)}
                                   </p>
-                                )}
+                                ) : null}
                               </div>
                             </div>
                           </div>
                         </td>
 
-                        {/* Details Toggle */}
-                        <td className="px-4 py-3.5">
+                        <td className="max-w-md">
+                          <p className="line-clamp-2 text-[13px] text-ink-muted">
+                            {entry.reason || stateTransition || entry.event_name}
+                          </p>
+                          {entry.cost_incurred_paise > 0 ? (
+                            <p className="mt-0.5 text-[11px] font-medium text-failed">
+                              Cost INR {(entry.cost_incurred_paise / 100).toFixed(2)}
+                            </p>
+                          ) : null}
+                        </td>
+
+                        <td className="text-right">
                           <button
                             type="button"
                             onClick={() => {
@@ -489,16 +429,16 @@ export function AuditView({
                                 isExpanded ? null : entry.entry_id,
                               )
                             }}
-                            className="inline-flex cursor-pointer items-center gap-1 text-[11px] font-semibold text-accent hover:underline"
+                            className="inline-flex cursor-pointer items-center gap-0.5 text-xs font-medium text-accent hover:underline"
                           >
                             {isExpanded ? (
                               <>
-                                <span>Hide Payload</span>
+                                Hide
                                 <ChevronUp className="h-3.5 w-3.5" />
                               </>
                             ) : (
                               <>
-                                <span>View Payload</span>
+                                View
                                 <ChevronDown className="h-3.5 w-3.5" />
                               </>
                             )}
@@ -506,18 +446,33 @@ export function AuditView({
                         </td>
                       </tr>
 
-                      {/* Expandable Payload Row */}
-                      {isExpanded && (
-                        <tr className="bg-surface-sunken/40">
-                          <td colSpan={6} className="px-6 py-3">
-                            <div className="space-y-1 overflow-x-auto rounded-xl border border-border bg-surface p-3 font-mono text-[11px] text-ink">
-                              <pre>
+                      {isExpanded ? (
+                        <tr className="bg-surface-sunken/50">
+                          <td colSpan={6} className="px-3 py-2">
+                            <div className="rounded-control border border-border bg-surface p-3 text-xs text-ink">
+                              <div className="mb-2 grid gap-2 sm:grid-cols-3">
+                                <div>
+                                  <span className="text-ink-muted">Customer</span>
+                                  <p className="font-medium">{formatCustomerName(entry.customer_id)}</p>
+                                </div>
+                                <div>
+                                  <span className="text-ink-muted">Audit ID</span>
+                                  <p className="font-medium">{entry.entry_id}</p>
+                                </div>
+                                <div>
+                                  <span className="text-ink-muted">Transition</span>
+                                  <p className="font-medium">
+                                    {stateTransition ?? 'N/A'}
+                                  </p>
+                                </div>
+                              </div>
+                              <pre className="overflow-x-auto rounded-control bg-surface-sunken p-2 text-[11px] text-ink-muted">
                                 {JSON.stringify(entry.decision_inputs, null, 2)}
                               </pre>
                             </div>
                           </td>
                         </tr>
-                      )}
+                      ) : null}
                     </React.Fragment>
                   )
                 })
@@ -526,36 +481,38 @@ export function AuditView({
           </table>
         </div>
 
-        {/* 4. Pagination Bar */}
-        <div className="flex items-center justify-between border-t border-border bg-surface-sunken/20 px-4 py-3">
-          <p className="text-xs font-medium text-ink-muted">
-            Showing {paginatedEntries.length.toString()} of {total.toString()}{' '}
-            audit records
+        <div className="flex items-center justify-between border-t border-border bg-surface-sunken/30 px-3 py-2">
+          <p className="text-xs text-ink-muted">
+            Showing {paginatedEntries.length.toString()} of {total.toString()} records
           </p>
           <div className="flex items-center gap-2">
-            <button
+            <Button
               type="button"
+              variant="outline"
+              size="sm"
+              className="px-2"
               onClick={() => {
                 setPage((p) => Math.max(1, p - 1))
               }}
               disabled={page <= 1}
-              className="cursor-pointer rounded-lg border border-border bg-surface p-1.5 text-ink transition-colors hover:bg-surface-sunken disabled:cursor-not-allowed disabled:opacity-40"
             >
               <ChevronLeft className="h-4 w-4" />
-            </button>
-            <span className="px-2 text-xs font-semibold text-ink">
-              Page {page.toString()} of {totalPages.toString()}
+            </Button>
+            <span className="text-xs font-medium text-ink">
+              {page.toString()} / {totalPages.toString()}
             </span>
-            <button
+            <Button
               type="button"
+              variant="outline"
+              size="sm"
+              className="px-2"
               onClick={() => {
                 setPage((p) => Math.min(totalPages, p + 1))
               }}
               disabled={page >= totalPages}
-              className="cursor-pointer rounded-lg border border-border bg-surface p-1.5 text-ink transition-colors hover:bg-surface-sunken disabled:cursor-not-allowed disabled:opacity-40"
             >
               <ChevronRight className="h-4 w-4" />
-            </button>
+            </Button>
           </div>
         </div>
       </div>

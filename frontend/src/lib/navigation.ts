@@ -3,8 +3,7 @@ import {
   Activity,
   BarChart3,
   Bot,
-  Coins,
-  GitBranch,
+  ClipboardCheck,
   History,
   LayoutDashboard,
   Radio,
@@ -26,6 +25,7 @@ export type NavSection =
   | 'pipeline'
   | 'workflows'
   | 'recovery'
+  | 'approvals'
   | 'agent'
   | 'policies'
   | 'status'
@@ -54,6 +54,7 @@ export const NAV_SECTION_LABELS: Record<NavSection, string> = {
   pipeline: 'Data Pipeline',
   workflows: 'Workflows',
   recovery: 'Recovery Cases',
+  approvals: 'Awaiting Approval',
   agent: 'AI Agent Telemetry',
   policies: 'Merchant Policies',
   status: 'System Status',
@@ -64,7 +65,7 @@ export const MAIN_NAV_ITEMS: {
   id: NavSection
   label: string
   icon: LucideIcon
-  badgeKey?: 'cases'
+  badgeKey?: 'cases' | 'escalated'
 }[] = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
   { id: 'analytics', label: 'Analytics', icon: BarChart3 },
@@ -74,6 +75,12 @@ export const MAIN_NAV_ITEMS: {
     icon: Receipt,
     badgeKey: 'cases',
   },
+  {
+    id: 'approvals',
+    label: 'Awaiting Approval',
+    icon: ClipboardCheck,
+    badgeKey: 'escalated',
+  },
   { id: 'audit', label: 'Audit Log', icon: History },
 ]
 
@@ -81,10 +88,10 @@ export const OPERATIONS_NAV_ITEMS: {
   id: NavSection
   label: string
   icon: LucideIcon
-  badgeKey?: 'cases'
+  badgeKey?: 'cases' | 'escalated'
 }[] = [
   { id: 'pipeline', label: 'Data Pipeline', icon: Radio },
-  { id: 'agent', label: 'Agent Telemetry', icon: Bot },
+  { id: 'agent', label: 'AI Agent Telemetry', icon: Bot },
   { id: 'status', label: 'System Status', icon: Activity },
 ]
 

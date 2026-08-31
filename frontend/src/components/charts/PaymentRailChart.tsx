@@ -45,14 +45,13 @@ export function PaymentRailChart({ railPerformance }: PaymentRailChartProps) {
       <CardHeader>
         <div className="flex items-center gap-2">
           <Landmark className="h-4 w-4 text-accent" />
-          <CardTitle>Payment Rail Recovery Efficiency</CardTitle>
+          <CardTitle className="text-base">Payment rail performance</CardTitle>
         </div>
         <CardDescription>
-          Multi-rail performance across UPI Intent, AutoPay mandates, e-NACH,
-          and Cards
+          Recovery efficiency by rail with at-risk and captured amounts.
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-4 font-mono text-xs">
+      <CardContent className="space-y-3 text-sm">
         {railPerformance.length === 0 ? (
           <div className="py-8 text-center text-ink-muted">
             No payment rail telemetry available.
@@ -66,14 +65,14 @@ export function PaymentRailChart({ railPerformance }: PaymentRailChartProps) {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   {getRailIcon(item.rail)}
-                  <span className="font-bold text-ink uppercase">
+                  <span className="font-semibold text-ink uppercase">
                     {item.rail.replace('_', ' ')}
                   </span>
-                  <span className="text-[10px] text-ink-muted">
+                  <span className="text-xs text-ink-muted">
                     ({item.total_cases.toString()} cases)
                   </span>
                 </div>
-                <span className="font-bold text-recovered">
+                <span className="font-semibold text-recovered">
                   {item.recovery_rate_pct.toFixed(1)}% Recovery
                 </span>
               </div>
@@ -87,9 +86,9 @@ export function PaymentRailChart({ railPerformance }: PaymentRailChartProps) {
                 />
               </div>
 
-              <div className="flex items-center justify-between pt-0.5 text-[10px] text-ink-subtle">
-                <span>At Risk: {formatINR(item.at_risk_paise)}</span>
-                <span className="font-semibold text-ink">
+              <div className="flex items-center justify-between pt-0.5 text-xs text-ink-subtle">
+                <span>At risk: {formatINR(item.at_risk_paise)}</span>
+                <span className="font-medium text-ink">
                   Recovered: {formatINR(item.recovered_paise)}
                 </span>
               </div>

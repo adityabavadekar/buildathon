@@ -36,23 +36,20 @@ export function CategoryDistributionChart({
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <AlertCircle className="h-4 w-4 text-accent" />
-            <CardTitle className="font-mono text-base">
-              Root Cause Failure Diagnosis
-            </CardTitle>
+          <CardTitle className="text-base">Failure root causes</CardTitle>
           </div>
-          <span className="font-mono text-xs text-ink-muted">
-            {totalDiagnosed.toString()} Classified Events
+          <span className="text-xs text-ink-muted">
+            {totalDiagnosed.toString()} classified events
           </span>
         </div>
-        <CardDescription className="mt-0.5 text-xs">
-          Semantic root cause classification across payment rails and gateway
-          error signatures.
+        <CardDescription className="mt-0.5">
+          Distribution of diagnosed failure categories across ingested cases.
         </CardDescription>
       </CardHeader>
 
       <CardContent className="space-y-4 pt-4">
         {categories.length === 0 ? (
-          <div className="py-10 text-center font-mono text-xs text-ink-muted">
+          <div className="py-10 text-center text-sm text-ink-muted">
             No diagnosed failure categories available.
           </div>
         ) : (
@@ -74,7 +71,7 @@ export function CategoryDistributionChart({
             </div>
 
             {/* List breakdown */}
-            <div className="space-y-2 font-mono text-xs">
+            <div className="space-y-2 text-sm">
               {categories.map((cat) => {
                 const color = CATEGORY_COLORS[cat.category] || 'bg-accent'
                 return (

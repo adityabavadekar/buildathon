@@ -3,6 +3,7 @@
 import React, { useState } from 'react'
 import { CheckCheck, ExternalLink, ShieldCheck } from 'lucide-react'
 import type { RecoveryCase } from '@/lib/api'
+import { formatCustomerName } from '@/lib/format'
 import { RazorpaySymbol, WhatsAppIcon } from '@/components/ui/BrandIcons'
 
 interface WhatsAppPreviewProps {
@@ -24,6 +25,7 @@ export function WhatsAppPreview({ caseItem }: WhatsAppPreviewProps) {
   const amountPaise = caseItem.amount_paise
   const discountPaise = caseItem.discount_paise_granted
   const payablePaise = amountPaise - discountPaise
+  const customerName = formatCustomerName(caseItem.failure_event.customer_id)
 
   const isMandate =
     caseItem.failure_event.payment_rail === 'UPI_AUTOPAY' ||
@@ -31,13 +33,13 @@ export function WhatsAppPreview({ caseItem }: WhatsAppPreviewProps) {
 
   const defaultMsgEn =
     discountPaise > 0
-      ? `Hi ${caseItem.failure_event.customer_id}, your recent payment of ${formatINR(amountPaise)} was interrupted. Complete your payment now with an instant ${formatINR(discountPaise)} discount!`
-      : `Hi ${caseItem.failure_event.customer_id}, we noticed your payment of ${formatINR(amountPaise)} was delayed. Please click below to securely complete your payment.`
+      ? `Hi ${customerName}, your recent payment of ${formatINR(amountPaise)} was interrupted. Complete your payment now with an instant ${formatINR(discountPaise)} discount!`
+      : `Hi ${customerName}, we noticed your payment of ${formatINR(amountPaise)} was delayed. Please click below to securely complete your payment.`
 
   const defaultMsgHi =
     discountPaise > 0
-      ? `Namaste ${caseItem.failure_event.customer_id}, aapka ${formatINR(amountPaise)} ka payment complete nahi ho paya. Abhi pay karein aur payein instant ${formatINR(discountPaise)} discount!`
-      : `Namaste ${caseItem.failure_event.customer_id}, aapka ${formatINR(amountPaise)} ka payment process nahi ho paya. Kripya neeche diye link se turant payment complete karein.`
+      ? `Namaste ${customerName}, aapka ${formatINR(amountPaise)} ka payment complete nahi ho paya. Abhi pay karein aur payein instant ${formatINR(discountPaise)} discount!`
+      : `Namaste ${customerName}, aapka ${formatINR(amountPaise)} ka payment process nahi ho paya. Kripya neeche diye link se turant payment complete karein.`
 
   const messageText = lang === 'en' ? defaultMsgEn : defaultMsgHi
 

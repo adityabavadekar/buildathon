@@ -25,6 +25,7 @@ import {
 } from '@/components/ui/card'
 import { RailBadge } from '@/components/ui/BrandIcons'
 import { SkeletonRow } from '@/components/ui/skeleton'
+import { formatCustomerName } from '@/lib/format'
 
 interface EscalationsQueuePanelProps {
   onSelectCase?: (caseId: string) => void
@@ -106,7 +107,7 @@ export function EscalationsQueuePanel({
             <div className="flex items-center gap-2">
               <ShieldAlert className="h-5 w-5 text-escalated" />
               <CardTitle className="font-mono text-lg text-ink">
-                Operator Escalation Queue (EV-Prioritized)
+                Awaiting Approval (EV-Prioritized)
               </CardTitle>
             </div>
             <CardDescription className="mt-1 text-xs">
@@ -195,7 +196,7 @@ export function EscalationsQueuePanel({
                       <RailBadge rail={item.payment_rail} />
                       <span className="text-ink-subtle">{item.payment_id}</span>
                       <span className="text-ink-muted">
-                        ({item.customer_id})
+                        ({formatCustomerName(item.customer_id)})
                       </span>
                     </div>
 

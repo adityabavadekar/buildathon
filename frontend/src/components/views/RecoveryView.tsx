@@ -41,19 +41,11 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { formatCustomerName, formatINR, humanizeToken } from '@/lib/format'
 
 interface RecoveryViewProps {
   onSelectCase: (c: RecoveryCase) => void
   initialSubTab?: string
-}
-
-function formatINR(paise: number): string {
-  const rupees = paise / 100
-  return new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: 'INR',
-    maximumFractionDigits: 0,
-  }).format(rupees)
 }
 
 function stateToVariant(
@@ -328,7 +320,7 @@ export function RecoveryView({
             </div>
 
             {/* State Tabs */}
-            <div className="flex items-center rounded-control border border-border bg-surface-sunken p-1 font-mono text-xs">
+            <div className="flex items-center rounded-control border border-border bg-surface-sunken p-1 text-xs">
               {['ALL', 'ACTIVE', 'AT_RISK', 'RECOVERED', 'ESCALATED'].map(
                 (t) => (
                   <button
@@ -337,13 +329,13 @@ export function RecoveryView({
                     onClick={() => {
                       handleTabSelect(t)
                     }}
-                    className={`cursor-pointer rounded-control px-3 py-1 transition-all ${
+                    className={`cursor-pointer rounded-control px-3 py-1 transition-colors ${
                       activeTab === t
-                        ? 'bg-surface font-bold text-ink shadow-xs'
+                        ? 'bg-surface font-semibold text-ink'
                         : 'text-ink-muted hover:text-ink'
                     }`}
                   >
-                    {t.replace('_', ' ')}
+                    {humanizeToken(t)}
                   </button>
                 ),
               )}
@@ -363,7 +355,7 @@ export function RecoveryView({
                   setSearchQuery(e.target.value)
                   setPage(0)
                 }}
-                className="w-full rounded-control border border-border bg-surface-sunken py-2 pr-4 pl-9 font-mono text-xs text-ink placeholder:text-ink-subtle focus:border-accent focus:outline-hidden"
+                className="w-full rounded-control border border-border bg-surface-sunken py-2 pr-4 pl-9 text-sm text-ink placeholder:text-ink-subtle focus:border-accent focus:outline-hidden"
               />
               {searchQuery && (
                 <button
@@ -381,7 +373,7 @@ export function RecoveryView({
 
             {/* Sort & Advanced Toggle Controls */}
             <div className="flex items-center gap-2">
-              <div className="flex items-center gap-1 rounded-control border border-border bg-surface-sunken px-2 py-1 font-mono text-xs">
+              <div className="flex items-center gap-1 rounded-control border border-border bg-surface-sunken px-2 py-1 text-xs">
                 <ArrowUpDown className="h-3 w-3 text-ink-subtle" />
                 <select
                   value={sortBy}
@@ -417,7 +409,7 @@ export function RecoveryView({
                 onClick={() => {
                   setShowAdvanced(!showAdvanced)
                 }}
-                className="cursor-pointer gap-1.5 font-mono text-xs"
+                className="cursor-pointer gap-1.5 text-xs"
               >
                 <SlidersHorizontal className="h-3.5 w-3.5" />
                 <span>Filters</span>
@@ -433,7 +425,7 @@ export function RecoveryView({
                   void fetchCases()
                 }}
                 disabled={loading}
-                className="cursor-pointer gap-1.5 font-mono text-xs"
+                className="cursor-pointer gap-1.5 text-xs"
               >
                 <RefreshCw
                   className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`}
@@ -448,8 +440,8 @@ export function RecoveryView({
             <div className="mt-3 space-y-3 rounded-control border border-border bg-surface-sunken p-3">
               {/* Payment Rail Filter Chips */}
               <div className="flex flex-wrap items-center gap-2">
-                <span className="font-mono text-[11px] text-ink-muted uppercase">
-                  Payment Rails:
+                <span className="text-[11px] font-medium text-ink-muted uppercase">
+                  Payment rails
                 </span>
                 {RAILS.map((rail) => {
                   const isSelected = selectedRails.includes(rail)
@@ -460,7 +452,7 @@ export function RecoveryView({
                       onClick={() => {
                         toggleRail(rail)
                       }}
-                      className={`cursor-pointer rounded-control border px-2 py-0.5 font-mono text-xs transition-colors ${
+                      className={`cursor-pointer rounded-control border px-2 py-0.5 text-xs transition-colors ${
                         isSelected
                           ? 'border-ink bg-ink font-bold text-surface'
                           : 'border-border bg-surface text-ink-muted hover:border-ink-muted'
@@ -475,8 +467,8 @@ export function RecoveryView({
               {/* Amount and Model Specific Filters */}
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                 <div>
-                  <label className="mb-1 block font-mono text-[10px] text-ink-muted">
-                    MIN AMOUNT (INR)
+                  <label className="mb-1 block text-[10px] font-medium text-ink-muted uppercase">
+                    Min amount (INR)
                   </label>
                   <input
                     type="number"
@@ -486,13 +478,13 @@ export function RecoveryView({
                       setMinAmount(e.target.value)
                       setPage(0)
                     }}
-                    className="w-full rounded-control border border-border bg-surface px-2 py-1 font-mono text-xs text-ink"
+                    className="w-full rounded-control border border-border bg-surface px-2 py-1 text-sm text-ink"
                   />
                 </div>
 
                 <div>
-                  <label className="mb-1 block font-mono text-[10px] text-ink-muted">
-                    MAX AMOUNT (INR)
+                  <label className="mb-1 block text-[10px] font-medium text-ink-muted uppercase">
+                    Max amount (INR)
                   </label>
                   <input
                     type="number"
@@ -502,13 +494,13 @@ export function RecoveryView({
                       setMaxAmount(e.target.value)
                       setPage(0)
                     }}
-                    className="w-full rounded-control border border-border bg-surface px-2 py-1 font-mono text-xs text-ink"
+                    className="w-full rounded-control border border-border bg-surface px-2 py-1 text-sm text-ink"
                   />
                 </div>
 
                 <div>
-                  <label className="mb-1 block font-mono text-[10px] text-ink-muted">
-                    ERROR CODE
+                  <label className="mb-1 block text-[10px] font-medium text-ink-muted uppercase">
+                    Error code
                   </label>
                   <input
                     type="text"
@@ -518,13 +510,13 @@ export function RecoveryView({
                       setErrorCode(e.target.value)
                       setPage(0)
                     }}
-                    className="w-full rounded-control border border-border bg-surface px-2 py-1 font-mono text-xs text-ink uppercase"
+                    className="w-full rounded-control border border-border bg-surface px-2 py-1 text-sm text-ink uppercase"
                   />
                 </div>
 
                 <div>
-                  <label className="mb-1 block font-mono text-[10px] text-ink-muted">
-                    MODEL IDENTIFIER
+                  <label className="mb-1 block text-[10px] font-medium text-ink-muted uppercase">
+                    Model identifier
                   </label>
                   <input
                     type="text"
@@ -534,14 +526,14 @@ export function RecoveryView({
                       setModelFilter(e.target.value)
                       setPage(0)
                     }}
-                    className="w-full rounded-control border border-border bg-surface px-2 py-1 font-mono text-xs text-ink"
+                    className="w-full rounded-control border border-border bg-surface px-2 py-1 text-sm text-ink"
                   />
                 </div>
               </div>
 
               {/* Experiment Arm & Flags */}
               <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/40 pt-1">
-                <div className="flex items-center gap-4 font-mono text-xs">
+                <div className="flex items-center gap-4 text-xs">
                   <label className="flex cursor-pointer items-center gap-1.5 text-ink">
                     <input
                       type="radio"
@@ -627,7 +619,7 @@ export function RecoveryView({
                 <TableRow>
                   <TableCell
                     colSpan={8}
-                    className="h-32 text-center font-mono text-sm text-ink-muted"
+                    className="h-32 text-center text-sm text-ink-muted"
                   >
                     No recovery cases matched the current search filters.
                   </TableCell>
@@ -647,8 +639,8 @@ export function RecoveryView({
                       className="cursor-pointer transition-colors hover:bg-surface-sunken/60"
                     >
                       {/* Case ID */}
-                      <TableCell className="font-mono text-xs">
-                        <div className="flex items-center gap-1.5 font-bold text-ink">
+                      <TableCell className="text-xs">
+                        <div className="flex items-center gap-1.5 font-semibold text-ink">
                           <span>{c.case_id.slice(0, 8)}...</span>
                           {isHoldout && (
                             <Badge
@@ -679,17 +671,17 @@ export function RecoveryView({
                       </TableCell>
 
                       {/* Customer */}
-                      <TableCell className="font-mono text-xs text-ink-muted">
-                        {c.failure_event.customer_id}
+                      <TableCell className="text-xs text-ink-muted">
+                        {formatCustomerName(c.failure_event.customer_id)}
                       </TableCell>
 
                       {/* Amount */}
-                      <TableCell className="text-right font-mono text-xs font-semibold text-ink">
+                      <TableCell className="money text-right text-xs font-semibold text-ink">
                         {formatINR(c.amount_paise)}
                       </TableCell>
 
                       {/* Net Recovered Value */}
-                      <TableCell className="text-right font-mono text-xs">
+                      <TableCell className="money text-right text-xs">
                         {isRecovered ? (
                           <span className="font-bold text-recovered">
                             +
@@ -705,16 +697,13 @@ export function RecoveryView({
 
                       {/* Lifecycle Stage Badge */}
                       <TableCell>
-                        <Badge
-                          variant={stateToVariant(c.state)}
-                          className="font-mono text-xs"
-                        >
-                          {c.state.replace('_', ' ')}
+                        <Badge variant={stateToVariant(c.state)} className="text-xs">
+                          {humanizeToken(c.state)}
                         </Badge>
                       </TableCell>
 
                       {/* Touches */}
-                      <TableCell className="text-center font-mono text-xs text-ink">
+                      <TableCell className="text-center text-xs text-ink">
                         <span
                           className={
                             c.touches_count >= maxTouches
@@ -736,7 +725,7 @@ export function RecoveryView({
                             onClick={(e) => {
                               void handleApprove(e, c)
                             }}
-                            className="h-7 gap-1 bg-accent font-mono text-xs text-white hover:bg-accent/90"
+                            className="h-7 gap-1 bg-accent text-xs text-white hover:bg-accent/90"
                           >
                             <UserCheck className="h-3 w-3" />
                             <span>
@@ -746,7 +735,7 @@ export function RecoveryView({
                             </span>
                           </Button>
                         ) : isRecovered ? (
-                          <span className="inline-flex items-center gap-1 font-mono text-[11px] font-bold text-recovered">
+                          <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-recovered">
                             <CheckCircle2 className="h-3.5 w-3.5" />
                             Recovered
                           </span>
@@ -758,7 +747,7 @@ export function RecoveryView({
                               e.stopPropagation()
                               onSelectCase(c)
                             }}
-                            className="h-7 font-mono text-xs text-ink-muted hover:text-ink"
+                            className="h-7 text-xs text-ink-muted hover:text-ink"
                           >
                             Details
                           </Button>
@@ -772,7 +761,7 @@ export function RecoveryView({
           </Table>
 
           {/* Server-Side Pagination Bar */}
-          <div className="flex items-center justify-between border-t border-border/40 bg-surface-sunken/40 px-6 py-3 font-mono text-xs text-ink-muted">
+          <div className="flex items-center justify-between border-t border-border/40 bg-surface-sunken/40 px-6 py-3 text-xs text-ink-muted">
             <div className="flex items-center gap-2">
               <span>Rows per page:</span>
               <select
@@ -804,7 +793,7 @@ export function RecoveryView({
                 onClick={() => {
                   setPage((p) => Math.max(0, p - 1))
                 }}
-                className="h-7 cursor-pointer px-3 font-mono text-xs"
+                className="h-7 cursor-pointer px-3 text-xs"
               >
                 Previous
               </Button>
@@ -818,7 +807,7 @@ export function RecoveryView({
                 onClick={() => {
                   setPage((p) => p + 1)
                 }}
-                className="h-7 cursor-pointer px-3 font-mono text-xs"
+                className="h-7 cursor-pointer px-3 text-xs"
               >
                 Next
               </Button>

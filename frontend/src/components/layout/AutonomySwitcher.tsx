@@ -58,27 +58,23 @@ export function AutonomySwitcher({ onModeChange }: AutonomySwitcherProps) {
   }
 
   return (
-    <div className="relative flex items-center">
-      <div className="flex items-center rounded-control border border-border bg-surface-sunken p-0.5 font-mono text-xs">
+    <div className="relative hidden sm:block">
+      <div className="autonomy-switcher">
         <button
           type="button"
           disabled={isUpdating}
           onClick={() => {
             void handleSelect('FULL_AUTONOMY')
           }}
-          className={`flex cursor-pointer items-center gap-1.5 rounded-control px-2.5 py-1 transition-all ${
-            currentMode === 'FULL_AUTONOMY'
-              ? 'bg-recovered font-bold text-white shadow-xs'
-              : 'text-ink-muted hover:text-ink disabled:opacity-50'
-          }`}
+          className={`autonomy-switcher-btn ${currentMode === 'FULL_AUTONOMY' ? 'autonomy-switcher-btn--active autonomy-switcher-btn--recovered' : ''}`}
           title="Full autonomous dunning and smart retries active"
         >
           {isUpdating && currentMode === 'FULL_AUTONOMY' ? (
-            <Loader2 className="h-3 w-3 animate-spin" />
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
           ) : (
-            <Bot className="h-3 w-3" />
+            <Bot className="h-3.5 w-3.5" />
           )}
-          <span className="hidden sm:inline">Autonomous</span>
+          <span className="hidden lg:inline">Autonomous</span>
         </button>
 
         <button
@@ -87,19 +83,15 @@ export function AutonomySwitcher({ onModeChange }: AutonomySwitcherProps) {
           onClick={() => {
             void handleSelect('HUMAN_IN_THE_LOOP')
           }}
-          className={`flex cursor-pointer items-center gap-1.5 rounded-control px-2.5 py-1 transition-all ${
-            currentMode === 'HUMAN_IN_THE_LOOP'
-              ? 'bg-accent font-bold text-white shadow-xs'
-              : 'text-ink-muted hover:text-ink disabled:opacity-50'
-          }`}
+          className={`autonomy-switcher-btn ${currentMode === 'HUMAN_IN_THE_LOOP' ? 'autonomy-switcher-btn--active autonomy-switcher-btn--accent' : ''}`}
           title="AI plans strategy; operator approval required"
         >
           {isUpdating && currentMode === 'HUMAN_IN_THE_LOOP' ? (
-            <Loader2 className="h-3 w-3 animate-spin" />
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
           ) : (
-            <UserCheck className="h-3 w-3" />
+            <UserCheck className="h-3.5 w-3.5" />
           )}
-          <span className="hidden sm:inline">HITL Mode</span>
+          <span className="hidden lg:inline">HITL</span>
         </button>
 
         <button
@@ -108,27 +100,23 @@ export function AutonomySwitcher({ onModeChange }: AutonomySwitcherProps) {
           onClick={() => {
             void handleSelect('MONITORING_ONLY')
           }}
-          className={`flex cursor-pointer items-center gap-1.5 rounded-control px-2.5 py-1 transition-all ${
-            currentMode === 'MONITORING_ONLY'
-              ? 'bg-failed font-bold text-white shadow-xs'
-              : 'text-ink-muted hover:text-ink disabled:opacity-50'
-          }`}
-          title="Global Circuit Breaker: Outbound interventions paused"
+          className={`autonomy-switcher-btn ${currentMode === 'MONITORING_ONLY' ? 'autonomy-switcher-btn--active autonomy-switcher-btn--failed' : ''}`}
+          title="Global circuit breaker: outbound interventions paused"
         >
           {isUpdating && currentMode === 'MONITORING_ONLY' ? (
-            <Loader2 className="h-3 w-3 animate-spin" />
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
           ) : (
-            <AlertOctagon className="h-3 w-3" />
+            <AlertOctagon className="h-3.5 w-3.5" />
           )}
-          <span className="hidden sm:inline">Paused (Circuit Breaker)</span>
+          <span className="hidden xl:inline">Paused</span>
         </button>
       </div>
 
-      {errorMessage && (
-        <span className="absolute right-0 -bottom-5 font-mono text-[10px] whitespace-nowrap text-failed">
+      {errorMessage ? (
+        <span className="absolute right-0 -bottom-5 text-[10px] whitespace-nowrap text-failed">
           {errorMessage}
         </span>
-      )}
+      ) : null}
     </div>
   )
 }

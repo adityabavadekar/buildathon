@@ -744,7 +744,7 @@ export function WorkflowView() {
                     key={node.id}
                     type="button"
                     onClick={() => setSelectedNode(node)}
-                    className="flex items-center gap-1 rounded-control border border-accent/30 bg-surface px-2 py-1 font-mono text-[10px] text-ink"
+                    className="flex cursor-pointer items-center gap-1 rounded-control border border-accent/30 bg-surface px-2 py-1 font-mono text-[10px] text-ink"
                   >
                     {iconForNodeType(node.type ?? 'action')}
                     {node.label ?? node.id}

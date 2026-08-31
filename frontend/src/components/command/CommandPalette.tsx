@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react'
 import type { RecoveryCase } from '@/lib/api'
 import type { NavSection } from '@/lib/navigation'
+import { formatCustomerName } from '@/lib/format'
 import {
   MAIN_NAV_ITEMS,
   NAV_SECTION_LABELS,
@@ -199,7 +200,7 @@ export function CommandPalette({
                   <div>
                     <span className="block font-semibold">{c.case_id}</span>
                     <span className="block text-[10px] text-ink-muted">
-                      {c.failure_event.customer_id} ·{' '}
+                      {formatCustomerName(c.failure_event.customer_id)} ·{' '}
                       {c.failure_event.payment_rail} · INR{' '}
                       {(c.amount_paise / 100).toFixed(0)}
                     </span>

@@ -35,7 +35,7 @@ export function Dialog({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-ink/40 backdrop-blur-xs transition-opacity"
+        className="fixed inset-0 cursor-pointer bg-ink/40 backdrop-blur-xs transition-opacity"
         onClick={onClose}
         aria-hidden="true"
       />

@@ -37,14 +37,13 @@ export function RecoveryVelocityChart({
         <div>
           <div className="flex items-center gap-2">
             <Activity className="h-4 w-4 text-accent" />
-            <CardTitle>Recovery Velocity & Time Horizon</CardTitle>
+            <CardTitle className="text-base">Recovery velocity</CardTitle>
           </div>
           <CardDescription>
-            Cumulative revenue at risk vs autonomous net recoveries across
-            rolling time horizons
+            Revenue at risk versus net recoveries across time horizons.
           </CardDescription>
         </div>
-        <div className="flex items-center gap-3 font-mono text-[11px] text-ink-muted">
+        <div className="flex items-center gap-3 text-xs text-ink-muted">
           <span className="flex items-center gap-1">
             <span className="h-2 w-2 rounded-xs bg-ink/50" /> At Risk
           </span>
@@ -55,7 +54,7 @@ export function RecoveryVelocityChart({
       </CardHeader>
       <CardContent className="pt-4">
         {timeSeries.length === 0 ? (
-          <div className="py-12 text-center font-mono text-xs text-ink-muted">
+          <div className="py-12 text-center text-sm text-ink-muted">
             No time-series telemetry available.
           </div>
         ) : (
@@ -90,11 +89,11 @@ export function RecoveryVelocityChart({
                       />
                       {/* Recovered Bar */}
                       <div
-                        className="group-hover:bg-recovered-strong w-full max-w-4 rounded-t-xs bg-recovered shadow-xs transition-all duration-300"
+                        className="w-full max-w-4 rounded-t-xs bg-recovered transition-all duration-300 group-hover:opacity-90"
                         style={{ height: `${recHeightPct.toString()}%` }}
                       />
                     </div>
-                    <span className="font-mono text-[10px] text-ink-muted group-hover:text-ink">
+                    <span className="text-[11px] text-ink-muted group-hover:text-ink">
                       {pt.label}
                     </span>
                   </div>
@@ -103,7 +102,7 @@ export function RecoveryVelocityChart({
             </div>
 
             {/* Context Tooltip / Active Point Details */}
-            <div className="flex min-h-8 items-center justify-between rounded-control bg-surface-sunken p-2 font-mono text-xs">
+            <div className="flex min-h-8 items-center justify-between rounded-panel bg-surface-sunken p-2 text-xs">
               {hoveredPoint ? (
                 <>
                   <span className="font-semibold text-ink">

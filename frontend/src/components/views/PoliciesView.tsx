@@ -366,15 +366,10 @@ export function PoliciesView({
   }
   return (
     <div className="space-y-6">
-      <div className="border-b border-border pb-4">
-        <h1 className="font-mono text-2xl font-bold text-ink">
-          Policies & Guardrails
-        </h1>
-        <p className="mt-0.5 text-sm text-ink-muted">
-          Configure deterministic recovery limits and approved customer outreach
-          channels.
-        </p>
-      </div>
+      <p className="border-b border-border pb-4 text-sm text-ink-muted">
+        Configure deterministic recovery limits and approved customer outreach
+        channels.
+      </p>
       <PolicyEditor
         key={policySignature(policies)}
         initial={policies}

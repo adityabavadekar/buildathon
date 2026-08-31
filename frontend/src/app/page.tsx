@@ -20,6 +20,7 @@ import { Sidebar, type NavSection } from '@/components/layout/Sidebar'
 import { TopNav } from '@/components/layout/TopNav'
 import { AgentView } from '@/components/views/AgentView'
 import { AnalyticsView } from '@/components/views/AnalyticsView'
+import { ApprovalsView } from '@/components/views/ApprovalsView'
 import { AuditView } from '@/components/views/AuditView'
 import { IntegrationsView } from '@/components/views/IntegrationsView'
 import { OverviewView } from '@/components/views/OverviewView'
@@ -28,7 +29,6 @@ import { PoliciesView } from '@/components/views/PoliciesView'
 import { RecoveryView } from '@/components/views/RecoveryView'
 import { SettingsView } from '@/components/views/SettingsView'
 import { StatusView } from '@/components/views/StatusView'
-import { WorkflowView } from '@/components/views/WorkflowView'
 import { NAV_SECTION_LABELS } from '@/lib/navigation'
 import { CaseDetailDrawer } from '@/components/cases/CaseDetailDrawer'
 import { CommandPalette } from '@/components/command/CommandPalette'
@@ -198,7 +198,7 @@ export default function DashboardPage() {
           />
 
           <main className="flex-1 overflow-y-auto p-6 lg:p-8">
-            <div className="mx-auto max-w-7xl">
+            <div className="w-full min-w-0">
               {activeSection === 'overview' && (
                 <OverviewView
                   cases={cases}
@@ -218,8 +218,6 @@ export default function DashboardPage() {
 
               {activeSection === 'pipeline' && <PipelineView />}
 
-              {activeSection === 'workflows' && <WorkflowView />}
-
               {(activeSection === 'transactions' ||
                 activeSection === 'recovery') && (
                 <RecoveryView
@@ -229,10 +227,21 @@ export default function DashboardPage() {
                 />
               )}
 
+              {activeSection === 'approvals' && (
+                <ApprovalsView
+                  cases={cases}
+                  onSelectCase={(c) => {
+                    setSelectedCase(c)
+                  }}
+                  onActionComplete={() => {
+                    void fetchData()
+                  }}
+                />
+              )}
+
               {activeSection === 'analytics' && (
                 <AnalyticsView
                   analytics={analytics}
-                  policies={policies}
                   loading={casesLoading}
                 />
               )}
@@ -262,6 +271,7 @@ export default function DashboardPage() {
               {activeSection === 'audit' && (
                 <AuditView
                   cases={cases}
+                  refreshing={casesLoading}
                   onRefresh={() => {
                     void fetchData()
                   }}

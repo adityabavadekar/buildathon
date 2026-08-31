@@ -41,6 +41,7 @@ import { LatencyDistributionChart } from '@/components/charts/LatencyDistributio
 import { PaymentRailChart } from '@/components/charts/PaymentRailChart'
 import { RecoveryVelocityChart } from '@/components/charts/RecoveryVelocityChart'
 import { HealthScoreCard } from '@/components/charts/HealthScoreCard'
+import { formatINR, humanizeToken } from '@/lib/format'
 
 interface OverviewViewProps {
   cases: RecoveryCase[]
@@ -49,15 +50,6 @@ interface OverviewViewProps {
   onSelectCase: (c: RecoveryCase) => void
   onNavigateToRecovery: (subTab?: string) => void
   onRefresh: () => void
-}
-
-function formatINR(paise: number): string {
-  const rupees = paise / 100
-  return new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: 'INR',
-    maximumFractionDigits: 0,
-  }).format(rupees)
 }
 
 export function OverviewView({
@@ -146,10 +138,10 @@ export function OverviewView({
       {/* View Header with Plain-Language Context */}
       <div className="flex flex-col gap-3 border-b border-border pb-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="font-mono text-2xl font-bold text-ink">
+          <h1 className="text-2xl font-semibold tracking-tight text-ink">
             Revenue Recovery Control Center
           </h1>
-          <p className="mt-0.5 text-sm text-ink-muted">
+          <p className="mt-1 text-sm text-ink-muted">
             Autonomous intervention lifecycle for failed payments, abandoned
             checkouts, and overdue receivables.
           </p>
@@ -162,7 +154,6 @@ export function OverviewView({
               void handleResetData()
             }}
             disabled={seeding}
-            className="font-mono text-xs"
           >
             Reset Test Cohort
           </Button>
@@ -172,7 +163,6 @@ export function OverviewView({
               void handleSeedBatch(50)
             }}
             disabled={seeding}
-            className="font-mono text-xs"
           >
             {seeding ? 'Generating...' : 'Seed 50 Failures'}
           </Button>
@@ -266,7 +256,7 @@ export function OverviewView({
           <div className="space-y-1">
             <div className="flex items-center gap-2">
               <TrendingUp className="h-4 w-4 text-accent" />
-              <span className="font-mono text-xs font-bold tracking-wider text-ink uppercase">
+              <span className="text-xs font-semibold tracking-wide text-ink uppercase">
                 <GlossaryTerm termKey="HOLDOUT_ARM" showIcon={false}>
                   Counterfactual Recovery Lift (vs. 10% Control Arm)
                 </GlossaryTerm>
@@ -274,14 +264,14 @@ export function OverviewView({
             </div>
             <p className="text-xs text-ink-muted">
               The AI engine achieved{' '}
-              <strong className="font-mono text-recovered">
+              <strong className="money text-recovered">
                 +{analytics.attributable_lift_pct.toFixed(1)}% lift
               </strong>{' '}
               in net recovery over natural recovery in uncontacted holdout
               cases.
             </p>
           </div>
-          <div className="flex items-center gap-4 border-t border-border pt-3 font-mono text-xs md:border-t-0 md:border-l md:pt-0 md:pl-6">
+          <div className="flex items-center gap-4 border-t border-border pt-3 text-xs md:border-t-0 md:border-l md:pt-0 md:pl-6">
             <div>
               <span className="block text-[11px] text-ink-muted">
                 <GlossaryTerm termKey="TREATMENT_ARM" showIcon={false}>
@@ -317,7 +307,7 @@ export function OverviewView({
         >
           <CardHeader className="p-4 pb-2 sm:p-5">
             <div className="flex items-center justify-between">
-              <CardTitle className="font-mono text-sm text-ink">
+              <CardTitle className="text-sm font-semibold text-ink">
                 In-Flight Queue
               </CardTitle>
               <RotateCcw className="h-4 w-4 text-accent" />
@@ -327,7 +317,7 @@ export function OverviewView({
             </CardDescription>
           </CardHeader>
           <CardContent className="p-4 pt-0 sm:p-5">
-            <div className="mt-2 flex items-baseline justify-between font-mono">
+            <div className="mt-2 flex items-baseline justify-between">
               <span className="text-2xl font-bold text-ink">
                 {activeCount.toString()}
               </span>
@@ -350,7 +340,7 @@ export function OverviewView({
         >
           <CardHeader className="p-4 pb-2 sm:p-5">
             <div className="flex items-center justify-between">
-              <CardTitle className="font-mono text-sm text-ink">
+              <CardTitle className="text-sm font-semibold text-ink">
                 Manual Approvals
               </CardTitle>
               <ShieldAlert className="h-4 w-4 text-escalated" />
@@ -360,7 +350,7 @@ export function OverviewView({
             </CardDescription>
           </CardHeader>
           <CardContent className="p-4 pt-0 sm:p-5">
-            <div className="mt-2 flex items-baseline justify-between font-mono">
+            <div className="mt-2 flex items-baseline justify-between">
               <span
                 className={`text-2xl font-bold ${escalatedCount > 0 ? 'text-escalated' : 'text-ink'}`}
               >
@@ -381,7 +371,7 @@ export function OverviewView({
         >
           <CardHeader className="p-4 pb-2 sm:p-5">
             <div className="flex items-center justify-between">
-              <CardTitle className="font-mono text-sm text-ink">
+              <CardTitle className="text-sm font-semibold text-ink">
                 Recovered Volume
               </CardTitle>
               <CheckCircle2 className="h-4 w-4 text-recovered" />
@@ -391,7 +381,7 @@ export function OverviewView({
             </CardDescription>
           </CardHeader>
           <CardContent className="p-4 pt-0 sm:p-5">
-            <div className="mt-2 flex items-baseline justify-between font-mono">
+            <div className="mt-2 flex items-baseline justify-between">
               <span className="text-2xl font-bold text-recovered">
                 {recoveredCount.toString()}
               </span>
@@ -443,7 +433,7 @@ export function OverviewView({
             onClick={() => {
               onNavigateToRecovery('ALL')
             }}
-            className="font-mono text-xs"
+            className="text-xs"
           >
             View All Cases ({cases.length.toString()})
           </Button>
@@ -472,7 +462,7 @@ export function OverviewView({
                 <TableRow>
                   <TableCell
                     colSpan={6}
-                    className="h-24 text-center font-mono text-xs text-ink-muted"
+                    className="h-24 text-center text-sm text-ink-muted"
                   >
                     No recovery cases found. Click &quot;Seed 50 Failures&quot;
                     to generate synthetic cases.
@@ -487,21 +477,18 @@ export function OverviewView({
                       onSelectCase(c)
                     }}
                   >
-                    <TableCell className="font-mono text-xs font-semibold text-ink">
+                    <TableCell className="text-xs font-semibold text-ink">
                       {c.case_id}
                     </TableCell>
                     <TableCell>
                       <RailBadge rail={c.failure_event.payment_rail} />
                     </TableCell>
-                    <TableCell className="font-mono text-xs font-medium text-ink">
+                    <TableCell className="money text-xs font-medium text-ink">
                       {formatINR(c.amount_paise)}
                     </TableCell>
                     <TableCell>
-                      <Badge
-                        variant="outline"
-                        className="font-mono text-[10px]"
-                      >
-                        {c.experiment_arm}
+                      <Badge variant="outline" className="text-[10px]">
+                        {humanizeToken(c.experiment_arm)}
                       </Badge>
                     </TableCell>
                     <TableCell>
@@ -514,14 +501,14 @@ export function OverviewView({
                               : 'pending'
                         }
                       >
-                        {c.state.replace('_', ' ')}
+                        {humanizeToken(c.state)}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right">
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="font-mono text-xs text-ink-muted hover:text-ink"
+                        className="text-xs text-ink-muted hover:text-ink"
                         onClick={(e) => {
                           e.stopPropagation()
                           onSelectCase(c)

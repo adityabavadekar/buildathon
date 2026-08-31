@@ -46,13 +46,12 @@ export function DailyVolumeTrendsChart({
         <div>
           <div className="flex items-center gap-2">
             <BarChart3 className="h-4 w-4 text-accent" />
-            <CardTitle className="font-mono text-base">
-              Transaction Volume & Recovery Trajectory
+            <CardTitle className="text-base">
+              Transaction volume and recovery
             </CardTitle>
           </div>
-          <CardDescription className="mt-0.5 text-xs">
-            Historical transaction breakdown per day/month across failed,
-            recovered, and human-escalated states.
+          <CardDescription className="mt-0.5">
+            Failed, recovered, and escalated cases by day or month.
           </CardDescription>
         </div>
 
@@ -89,7 +88,7 @@ export function DailyVolumeTrendsChart({
 
       <CardContent className="space-y-4 pt-4">
         {/* Legend & Hovered Detail Strip */}
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-control border border-border/50 bg-surface-sunken/40 p-3 font-mono text-xs">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-panel border border-border/50 bg-surface-sunken/40 p-3 text-xs">
           <div className="flex items-center gap-4">
             <span className="flex items-center gap-1.5 text-ink">
               <span className="h-2.5 w-2.5 rounded-xs bg-ink/70" /> Total
@@ -128,7 +127,7 @@ export function DailyVolumeTrendsChart({
         </div>
 
         {items.length === 0 ? (
-          <div className="py-16 text-center font-mono text-xs text-ink-muted">
+          <div className="py-16 text-center text-sm text-ink-muted">
             No chronological transaction telemetry recorded yet. Seed a recovery
             batch to populate volume graphs.
           </div>
@@ -198,8 +197,8 @@ export function DailyVolumeTrendsChart({
                       )}
                     </div>
                     <span
-                      className={`font-mono text-[10px] whitespace-nowrap ${
-                        isHovered ? 'font-bold text-ink' : 'text-ink-muted'
+                      className={`text-[11px] whitespace-nowrap ${
+                        isHovered ? 'font-semibold text-ink' : 'text-ink-muted'
                       }`}
                     >
                       {label}
@@ -210,7 +209,7 @@ export function DailyVolumeTrendsChart({
             </div>
 
             {/* Summary KPI Strip */}
-            <div className="grid grid-cols-2 gap-3 pt-2 font-mono text-xs sm:grid-cols-4">
+            <div className="grid grid-cols-2 gap-3 pt-2 text-xs sm:grid-cols-4">
               <div className="rounded-control border border-border bg-surface-sunken p-3">
                 <span className="block text-[11px] text-ink-muted">
                   Total Transactions
