@@ -1,10 +1,14 @@
 'use client'
 
-import React from 'react'
+import React, { useEffect, useState } from 'react'
+import Link from 'next/link'
 import {
+  BrainCircuit,
   TrendingUp,
 } from 'lucide-react'
-import type { AnalyticsSummaryResponse, PolicyResponse } from '@/lib/api'
+import { getPatternAlerts, getRecoveryModel, trainRecoveryModel, type AnalyticsSummaryResponse, type PatternAlert, type PolicyResponse, type RecoveryModelStatus } from '@/lib/api'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import {
   Card,
   CardContent,
@@ -13,6 +17,7 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { GlossaryTerm } from '@/components/ui/GlossaryTerm'
+import { MetricBar } from '@/components/ui/MetricBar'
 import { SkeletonCard } from '@/components/ui/skeleton'
 import { CategoryDistributionChart } from '@/components/charts/CategoryDistributionChart'
 import { DailyVolumeTrendsChart } from '@/components/charts/DailyVolumeTrendsChart'
@@ -36,7 +41,46 @@ function formatINR(paise: number): string {
   }).format(rupees)
 }
 
+function metricValue(
+  metrics: Record<string, unknown> | null | undefined,
+  key: string,
+): number {
+  const raw = metrics?.[key]
+  return typeof raw === 'number' ? raw : 0
+}
+
 export function AnalyticsView({ analytics, loading }: AnalyticsViewProps) {
+  const [patterns, setPatterns] = useState<PatternAlert[]>([])
+  const [recoveryModel, setRecoveryModel] = useState<RecoveryModelStatus | null>(null)
+  const [trainMessage, setTrainMessage] = useState<string | null>(null)
+  const [training, setTraining] = useState(false)
+  const loadRecoveryModel = () => {
+    void getRecoveryModel().then((model) => {
+      setRecoveryModel(model)
+      setTrainMessage(null)
+    }).catch(() => {
+      setRecoveryModel(null)
+      setTrainMessage('Unable to load model status.')
+    })
+  }
+  const handleTrain = () => {
+    setTraining(true)
+    setTrainMessage(null)
+    void trainRecoveryModel().then((model) => {
+      setRecoveryModel(model)
+      setTrainMessage(`Retrained ${model.version} on ${model.trained_count.toString()} treatment cases.`)
+    }).catch((err: unknown) => {
+      setTrainMessage(err instanceof Error ? `Train failed: ${err.message}` : 'Train failed')
+    }).finally(() => {
+      setTraining(false)
+    })
+  }
+  useEffect(() => {
+    void getPatternAlerts().then(setPatterns).catch(() => {
+      setPatterns([])
+    })
+    loadRecoveryModel()
+  }, [])
   if (loading || !analytics) {
     return (
       <div className="space-y-6">
@@ -257,6 +301,95 @@ export function AnalyticsView({ analytics, loading }: AnalyticsViewProps) {
           recoveryStreak={analytics.recovery_streak}
         />
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Recovery Model</CardTitle>
+          <CardDescription>How likely each pending case is to recover, and how much money is at stake. The numbers below show how accurately the model has predicted past outcomes.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {recoveryModel ? (
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant={recoveryModel.trained_count > 0 ? 'recovered' : 'default'}>
+                  {recoveryModel.status}
+                </Badge>
+                <span className="font-mono text-sm text-ink">{recoveryModel.version}</span>
+                <span className="text-xs text-ink-muted">{recoveryModel.trained_count.toString()} training cases</span>
+              </div>
+
+              <div className="rounded-control border border-border p-3 space-y-3">
+                <p className="text-[11px] font-mono uppercase tracking-wider text-ink-muted">Accuracy on past cases</p>
+                <MetricBar
+                  label="Cross-validated accuracy"
+                  value={metricValue(recoveryModel.cv_metrics, 'mean_accuracy')}
+                  hint="How often the model's recovery prediction was right on the training data, checked several ways."
+                />
+                <MetricBar
+                  label="Cross-validated precision (AUC)"
+                  value={metricValue(recoveryModel.cv_metrics, 'mean_auc')}
+                  hint="How well the model separates cases that recover from ones that don't."
+                />
+                <MetricBar
+                  label="Accuracy on untouched cases"
+                  value={metricValue(recoveryModel.holdout_metrics, 'accuracy')}
+                  hint="Accuracy on a test group the model never trained on, so the number is honest."
+                />
+              </div>
+
+              <div className="rounded-control border border-border p-3 space-y-2">
+                <p className="text-[11px] font-mono uppercase tracking-wider text-ink-muted">What it predicts per case</p>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {recoveryModel.expected_outputs && recoveryModel.expected_outputs.length > 0 ? (
+                    recoveryModel.expected_outputs.map((output) => (
+                      <span key={output} className="rounded-full border border-border px-2 py-0.5 font-mono text-[10px] text-ink-muted">
+                        {output}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-xs text-ink-muted">Waiting for trained data.</span>
+                  )}
+                </div>
+                <p className="text-[11px] text-ink-subtle">
+                  Likelihood of recovery, expected money recoverable, and days to recovery for each open case.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-ink-muted">No recovery model trained yet. Train it to see live recovery estimates.</p>
+          )}
+          <div className="flex items-center gap-3">
+            <Button variant="secondary" onClick={handleTrain} disabled={training}>
+              <BrainCircuit className="h-4 w-4" />
+              {training ? 'Training...' : 'Train Model'}
+            </Button>
+            <Button variant="ghost" onClick={loadRecoveryModel}>Refresh</Button>
+            {trainMessage ? <span className="text-sm text-ink-muted">{trainMessage}</span> : null}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Recovery Patterns</CardTitle>
+          <CardDescription>Descriptive clusters only. They do not change policy or recovery decisions.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {patterns.map((pattern) => (
+            <div key={pattern.alert_id} className="rounded-control border border-border p-3 text-sm">
+              <div className="flex flex-wrap justify-between gap-2 font-mono text-ink">
+                <span>{pattern.dominant_category}</span>
+                <span>{pattern.dominant_intervention}</span>
+              </div>
+              <p className="mt-1 text-xs text-ink-muted">{pattern.member_count.toString()} cases | Mean INR {(pattern.mean_amount_paise / 100).toFixed(2)}</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {pattern.example_case_ids.map((caseId) => <Link key={caseId} href={`/recovery?case_id=${encodeURIComponent(caseId)}`} className="font-mono text-xs text-accent">{caseId}</Link>)}
+              </div>
+            </div>
+          ))}
+          {patterns.length === 0 && <p className="text-sm text-ink-muted">No persisted pattern alerts are available.</p>}
+        </CardContent>
+      </Card>
     </div>
   )
 }

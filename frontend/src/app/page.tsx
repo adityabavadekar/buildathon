@@ -21,13 +21,15 @@ import { TopNav } from '@/components/layout/TopNav'
 import { AgentView } from '@/components/views/AgentView'
 import { AnalyticsView } from '@/components/views/AnalyticsView'
 import { AuditView } from '@/components/views/AuditView'
+import { IntegrationsView } from '@/components/views/IntegrationsView'
 import { OverviewView } from '@/components/views/OverviewView'
 import { PipelineView } from '@/components/views/PipelineView'
-import { WorkflowView } from '@/components/views/WorkflowView'
 import { PoliciesView } from '@/components/views/PoliciesView'
 import { RecoveryView } from '@/components/views/RecoveryView'
 import { SettingsView } from '@/components/views/SettingsView'
 import { StatusView } from '@/components/views/StatusView'
+import { WorkflowView } from '@/components/views/WorkflowView'
+import { NAV_SECTION_LABELS } from '@/lib/navigation'
 import { CaseDetailDrawer } from '@/components/cases/CaseDetailDrawer'
 import { CommandPalette } from '@/components/command/CommandPalette'
 
@@ -49,7 +51,6 @@ export default function DashboardPage() {
   const [commandOpen, setCommandOpen] = useState<boolean>(false)
   const [lastRefreshedAt, setLastRefreshedAt] = useState<Date | null>(null)
 
-  // API Offline & Connection Failure Tracking
   const [isOffline, setIsOffline] = useState<boolean>(false)
   const [connectionError, setConnectionError] = useState<string | null>(null)
 
@@ -144,7 +145,6 @@ export default function DashboardPage() {
 
   return (
     <div className="flex h-screen w-full flex-col overflow-hidden bg-surface-sunken">
-      {/* High-Visibility Red Bold Top Banner when API Offline or Connection Issue */}
       {isOffline && (
         <div className="z-50 flex w-full animate-pulse flex-col justify-between gap-3 border-b-4 border-red-950 bg-[#dc2626] px-6 py-3 font-mono text-sm font-extrabold tracking-wide text-white uppercase shadow-2xl sm:flex-row sm:items-center">
           <div className="flex items-center gap-3">
@@ -173,7 +173,6 @@ export default function DashboardPage() {
       )}
 
       <div className="flex flex-1 overflow-hidden">
-        {/* 1. Left Sidebar */}
         <Sidebar
           activeSection={activeSection}
           onSelectSection={(section) => {
@@ -183,10 +182,9 @@ export default function DashboardPage() {
           escalatedCount={escalatedCount}
         />
 
-        {/* 2. Main Content Area */}
         <div className="flex flex-1 flex-col overflow-hidden">
           <TopNav
-            title={activeSection === 'status' ? 'System Status' : activeSection}
+            title={NAV_SECTION_LABELS[activeSection]}
             health={health}
             analytics={analytics}
             healthLoading={healthLoading}
@@ -222,7 +220,7 @@ export default function DashboardPage() {
 
               {activeSection === 'workflows' && <WorkflowView />}
 
-              {activeSection === 'recovery' && (
+              {(activeSection === 'transactions' || activeSection === 'recovery') && (
                 <RecoveryView
                   onSelectCase={(c) => {
                     setSelectedCase(c)
@@ -249,8 +247,14 @@ export default function DashboardPage() {
                 />
               )}
 
-              {activeSection === 'policies' && (
-                <PoliciesView policies={policies} loading={casesLoading} />
+              {(activeSection === 'policies' || activeSection === 'settings-policies') && (
+                <PoliciesView
+                  policies={policies}
+                  loading={casesLoading}
+                  onSaved={(updated) => {
+                    setPolicies(updated)
+                  }}
+                />
               )}
 
               {activeSection === 'audit' && (
@@ -272,15 +276,25 @@ export default function DashboardPage() {
                 />
               )}
 
-              {activeSection === 'settings' && (
+              {(activeSection === 'settings' || activeSection === 'settings-general') && (
                 <SettingsView settings={settings} loading={casesLoading} />
+              )}
+
+              {activeSection === 'settings-integrations' && (
+                <IntegrationsView
+                  settings={settings}
+                  status={systemStatus}
+                  loading={casesLoading}
+                  onRefresh={() => {
+                    void fetchData()
+                  }}
+                />
               )}
             </div>
           </main>
         </div>
       </div>
 
-      {/* 3. Global Slide-Over Case Detail Drawer */}
       {selectedCase && (
         <CaseDetailDrawer
           caseItem={selectedCase}
@@ -293,7 +307,6 @@ export default function DashboardPage() {
         />
       )}
 
-      {/* 4. Keyboard Command Palette */}
       <CommandPalette
         open={commandOpen}
         onClose={() => {

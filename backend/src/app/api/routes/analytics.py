@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 from app.audit.repository import get_case_repository
 from app.core.enums import AuditActor, ExperimentArm, PaymentRail, RecoveryState
 from app.detection.classifier import classify_failure
+from app.detection.clustering import recompute_patterns
 from app.detection.customer_profile import get_customer_profile_registry
 from app.detection.ml import get_recovery_model, train_recovery_model
 from app.detection.rail_health import get_rail_health_registry
@@ -28,16 +29,54 @@ if TYPE_CHECKING:
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 
 
+@router.get("/patterns")
+async def get_patterns() -> list[dict[str, object]]:
+    return get_case_repository().list_pattern_alerts()
+
+
+@router.post("/patterns/recompute")
+async def recompute_pattern_alerts() -> list[dict[str, object]]:
+    return recompute_patterns()
+
+
 @router.get("/recovery-model")
 async def recovery_model_status() -> dict[str, object]:
     model = get_recovery_model()
-    return {"status": "trained" if model.trained_count else "untrained", "version": model.version, "trained_count": model.trained_count}
+    return {
+        "status": "trained" if model.trained_count else "untrained",
+        "version": model.version,
+        "arch": "ensemble(logistic+naive-bayes) + intervention-scorer + recovery-time",
+        "trained_count": model.trained_count,
+        "cv_metrics": model.cv_metrics,
+        "recovery_time_trained": model.recovery_time.trained,
+        "expected_outputs": [
+            "recovery_probability",
+            "expected_recovery_value_paise",
+            "expected_recovery_days",
+            "intervention_scores",
+        ],
+        "holdout_metrics": model.holdout_metrics,
+    }
 
 
 @router.post("/recovery-model/train")
 async def train_recovery_model_endpoint() -> dict[str, object]:
     model = train_recovery_model()
-    return {"status": "trained", "version": model.version, "trained_count": model.trained_count}
+    return {
+        "status": "trained",
+        "version": model.version,
+        "arch": "ensemble(logistic+naive-bayes) + intervention-scorer + recovery-time",
+        "trained_count": model.trained_count,
+        "cv_metrics": model.cv_metrics,
+        "recovery_time_trained": model.recovery_time.trained,
+        "expected_outputs": [
+            "recovery_probability",
+            "expected_recovery_value_paise",
+            "expected_recovery_days",
+            "intervention_scores",
+        ],
+        "holdout_metrics": model.holdout_metrics,
+    }
 
 DEFAULT_MAX_TOUCHES = 3
 HIGH_VALUE_THRESHOLD_PAISE = 500_000

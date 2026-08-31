@@ -253,7 +253,18 @@ export interface PolicyResponse {
   max_discount_bps: number
   holdout_percentage: number
   require_human_above_paise: number
+  allowed_channels: string[]
   rules: PolicyRuleDetail[]
+}
+
+export interface MerchantPolicyPayload {
+  merchant_id: string
+  max_touches: number
+  min_cooldown_hours: number
+  max_discount_bps: number
+  holdout_percentage: number
+  require_human_above_paise: number
+  allowed_channels: string[]
 }
 
 export interface SystemSettingsResponse {
@@ -404,6 +415,8 @@ export interface SystemStatusResponse {
 export interface PipelineOverviewResponse {
   counts: {
     QUEUED: number
+    QUEUED_DUE_NOW: number
+    QUEUED_FUTURE: number
     PROCESSING: number
     DONE: number
     FAILED: number
@@ -604,6 +617,19 @@ export interface WorkflowOptionsResponse {
   signal_types: WorkflowSignalType[]
 }
 
+export interface PatternAlert {
+  alert_id: string
+  run_id: string
+  seed: number
+  feature_scope: string
+  dominant_category: string
+  dominant_intervention: string
+  member_count: number
+  mean_amount_paise: number
+  example_case_ids: string[]
+  created_at: string
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const url = `${API_BASE_URL}${path}`
   const response = await fetch(url, options)
@@ -613,6 +639,10 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     throw new Error(
       `API error ${response.status.toString()} from ${path}: ${body || response.statusText}`,
     )
+  }
+
+  if (response.status === 204) {
+    return undefined as T
   }
 
   return response.json() as Promise<T>
@@ -664,12 +694,45 @@ export function getAnalytics(): Promise<AnalyticsSummaryResponse> {
   return request<AnalyticsSummaryResponse>('/analytics')
 }
 
+export function getPatternAlerts(): Promise<PatternAlert[]> {
+  return request<PatternAlert[]>('/analytics/patterns')
+}
+
+export interface RecoveryModelStatus {
+  status: string
+  version: string
+  arch?: string
+  trained_count: number
+  cv_metrics: Record<string, unknown> | null
+  recovery_time_trained?: boolean
+  expected_outputs?: string[]
+  holdout_metrics: Record<string, unknown> | null
+}
+
+export function getRecoveryModel(): Promise<RecoveryModelStatus> {
+  return request<RecoveryModelStatus>('/analytics/recovery-model')
+}
+
+export function trainRecoveryModel(): Promise<RecoveryModelStatus> {
+  return request<RecoveryModelStatus>('/analytics/recovery-model/train', {
+    method: 'POST',
+  })
+}
+
 export function getEscalationQueue(): Promise<EscalationQueueItem[]> {
   return request<EscalationQueueItem[]>('/analytics/escalations')
 }
 
 export function getPolicies(): Promise<PolicyResponse> {
   return request<PolicyResponse>('/policies')
+}
+
+export function updatePolicies(policy: MerchantPolicyPayload): Promise<PolicyResponse> {
+  return request<PolicyResponse>('/policies', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(policy),
+  })
 }
 
 export function getSettings(): Promise<SystemSettingsResponse> {
@@ -901,8 +964,8 @@ export function updateWorkflowTemplate(
   )
 }
 
-export function deleteWorkflowTemplate(templateId: string): Promise<void> {
-  return request<void>(
+export function deleteWorkflowTemplate(templateId: string): Promise<undefined> {
+  return request<undefined>(
     `/workflows/templates/${encodeURIComponent(templateId)}`,
     { method: 'DELETE' },
   )

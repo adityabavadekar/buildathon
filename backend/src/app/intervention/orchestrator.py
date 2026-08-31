@@ -129,6 +129,7 @@ class RecoveryOrchestrator:
 
         # 1. Formulate recovery plan with LLM & fallback
         diagnosis, metadata = await self.planner.plan_recovery(failure_event)
+        case.diagnosed_category = diagnosis.category
 
         discount_paise = 0
         if diagnosis.discount_bps_suggested > 0:

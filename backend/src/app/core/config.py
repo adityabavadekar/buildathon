@@ -88,6 +88,18 @@ class Settings(BaseSettings):
         default=None, validation_alias="WHATSAPP_API_TOKEN"
     )
 
+    # Durable merchant policy store
+    policy_config_path: str = Field(
+        default="data/policy_config.json",
+        description="File path for the persisted active MerchantPolicy.",
+    )
+
+    # ACID case storage database
+    database_path: str = Field(
+        default="data/recovery_engine.db",
+        description="File path for the relational case engine database.",
+    )
+
     @property
     def is_production(self) -> bool:
         return self.env == "production"

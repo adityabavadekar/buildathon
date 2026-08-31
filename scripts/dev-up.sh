@@ -27,6 +27,7 @@ LAPTOP_IP="$(hostname -I 2>/dev/null | awk '{print $1}' || ip route get 1.1.1.1 
 
 BACKEND_PID=""
 FRONTEND_PID=""
+WORKER_PID=""
 
 cleanup() {
   warn "Received stop signal. Terminating development servers..."
@@ -44,12 +45,20 @@ cleanup() {
     kill -TERM "${FRONTEND_PID}" 2>/dev/null || true
   fi
 
+  if [ -n "${WORKER_PID}" ] && kill -0 "${WORKER_PID}" 2>/dev/null; then
+    log "Stopping recovery worker (PID: ${WORKER_PID})..."
+    kill -TERM "${WORKER_PID}" 2>/dev/null || true
+  fi
+
   # Wait for both processes to terminate
   if [ -n "${BACKEND_PID}" ]; then
     wait "${BACKEND_PID}" 2>/dev/null || true
   fi
   if [ -n "${FRONTEND_PID}" ]; then
     wait "${FRONTEND_PID}" 2>/dev/null || true
+  fi
+  if [ -n "${WORKER_PID}" ]; then
+    wait "${WORKER_PID}" 2>/dev/null || true
   fi
 
   # Force kill any lingering processes on the ports if still listening
@@ -90,7 +99,19 @@ FRONTEND_PID=$!
 ok "Backend API running on http://${LAPTOP_IP}:${BACKEND_PORT}"
 ok "Frontend UI running on http://${LAPTOP_IP}:${FRONTEND_PORT}"
 ok "Base URL configured: http://${LAPTOP_IP}:${FRONTEND_PORT} -> http://${LAPTOP_IP}:${BACKEND_PORT}/api"
+
+# Start Recovery Worker daemon draining the durable queue. Without it, jobs
+# enqueued by the fleet sim stay QUEUED forever and the queue count grows
+# misleadingly even when the fleet is stopped.
+log "Launching recovery worker daemon..."
+(
+  cd "${BACKEND_DIR}"
+  exec uv run python -m app.worker.main
+) &
+WORKER_PID=$!
+ok "Recovery worker running (PID: ${WORKER_PID})"
+
 log "Press Ctrl+C to stop both services."
 
 # Wait for both servers
-wait "${BACKEND_PID}" "${FRONTEND_PID}"
+wait "${BACKEND_PID}" "${FRONTEND_PID}" "${WORKER_PID}"

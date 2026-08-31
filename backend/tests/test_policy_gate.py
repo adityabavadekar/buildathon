@@ -134,3 +134,40 @@ def test_policy_gate_clamps_excessive_discount() -> None:
     assert evaluation.modified_plan is not None
     assert evaluation.modified_plan.discount_bps == 1000
     assert evaluation.modified_plan.discount_paise == 10000
+
+
+def test_policy_gate_blocks_disallowed_outreach_channel() -> None:
+    gate = PolicyGate()
+    case = create_sample_case()
+    policy = MerchantPolicy(allowed_channels=[OutreachChannel.WHATSAPP])
+    plan = InterventionPlan(
+        plan_id="plan_6",
+        case_id=case.case_id,
+        intervention_type=InterventionType.CUSTOMER_NUDGE,
+        channel=OutreachChannel.SMS,
+        scheduled_at=datetime.now(UTC),
+        idempotency_key="idem_6",
+        rationale="SMS nudge",
+    )
+
+    evaluation = gate.evaluate(case, plan, policy)
+    assert evaluation.result == PolicyCheckResult.BLOCKED_CHANNEL
+    assert not evaluation.is_allowed
+
+
+def test_policy_gate_allows_configured_outreach_channel() -> None:
+    gate = PolicyGate()
+    case = create_sample_case()
+    policy = MerchantPolicy(allowed_channels=[OutreachChannel.WHATSAPP])
+    plan = InterventionPlan(
+        plan_id="plan_7",
+        case_id=case.case_id,
+        intervention_type=InterventionType.CUSTOMER_NUDGE,
+        channel=OutreachChannel.WHATSAPP,
+        scheduled_at=datetime.now(UTC),
+        idempotency_key="idem_7",
+        rationale="WhatsApp nudge",
+    )
+
+    evaluation = gate.evaluate(case, plan, policy)
+    assert evaluation.is_allowed

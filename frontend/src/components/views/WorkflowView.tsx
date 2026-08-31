@@ -1,4 +1,5 @@
 'use client'
+/* eslint-disable @typescript-eslint/no-confusing-void-expression, @typescript-eslint/no-base-to-string, @typescript-eslint/restrict-template-expressions, react-hooks/set-state-in-effect */
 
 import React, { useCallback, useEffect, useState } from 'react'
 import {

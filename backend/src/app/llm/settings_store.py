@@ -27,7 +27,6 @@ DEFAULT_MODELS: dict[str, list[str]] = {
         "meta-llama/llama-3.3-70b-instruct",
     ],
     "anthropic": [
-        "anthropic/claude-3-7-sonnet-20250219",
         "anthropic/claude-3-5-sonnet-20241022",
         "anthropic/claude-3-5-haiku-20241022",
     ],
@@ -79,6 +78,8 @@ class LLMSettingsStore:
 
     def _default_state(self) -> LLMSettingsState:
         settings = get_settings()
+        primary_active_model = settings.openrouter_model or DEFAULT_MODELS["openrouter"][0]
+        anthropic_available = [primary_active_model, *DEFAULT_MODELS["anthropic"]]
         has_openrouter = bool(
             settings.openrouter_api_key
             and settings.openrouter_api_key.get_secret_value().strip()
@@ -102,8 +103,7 @@ class LLMSettingsStore:
                     label="OpenRouter (Multi-Model Gateway)",
                     enabled=True,
                     priority=1,
-                    active_model=settings.openrouter_model
-                    or DEFAULT_MODELS["openrouter"][0],
+                    active_model=primary_active_model,
                     available_models=DEFAULT_MODELS["openrouter"],
                     has_api_key=has_openrouter,
                 ),
@@ -112,8 +112,8 @@ class LLMSettingsStore:
                     label="Anthropic Claude API",
                     enabled=True,
                     priority=2,
-                    active_model="anthropic/claude-3-7-sonnet-20250219",
-                    available_models=DEFAULT_MODELS["anthropic"],
+                    active_model=primary_active_model,
+                    available_models=anthropic_available,
                     has_api_key=has_anthropic,
                 ),
                 ProviderSetting(

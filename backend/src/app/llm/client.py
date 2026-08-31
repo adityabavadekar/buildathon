@@ -28,9 +28,18 @@ logger = get_logger(__name__)
 litellm.suppress_debug_info = True
 litellm.drop_params = True
 
-DEFAULT_MODEL = "anthropic/claude-3.7-sonnet"
 DEFAULT_TIMEOUT_SECONDS = 30
 DEFAULT_MAX_RETRIES = 2
+
+
+def default_model() -> str:
+    """Return the configured primary model, never a hardcoded provider id.
+
+    The store's model ids are set by configuration (settings.openrouter_model)
+    or the persisted settings file; a literal here would quickly rot into a
+    nonexistent id and produce silent fallback failures in telemetry.
+    """
+    return get_settings().openrouter_model
 
 
 @dataclass(frozen=True, slots=True)

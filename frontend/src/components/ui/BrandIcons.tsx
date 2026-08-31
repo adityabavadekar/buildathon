@@ -1,7 +1,8 @@
 'use client'
 
 import React from 'react'
-import { Building2, CreditCard, RefreshCw, FileText } from 'lucide-react'
+import { Building2, CreditCard, FileText, Mail, MessageSquareText, Phone, RefreshCw } from 'lucide-react'
+import type { OutreachChannelValue } from '@/lib/constants'
 
 interface BrandIconProps {
   className?: string
@@ -127,6 +128,26 @@ export function RuPayIcon({ className = 'h-4 w-4' }: BrandIconProps) {
       <path d="M25 6h4l3.5 12h-3.8L27 12h-2V6z" fill="#ED1C24" />
     </svg>
   )
+}
+
+/** Outreach channel icon with official WhatsApp branding where applicable. */
+export function OutreachChannelIcon({
+  channel,
+  className = 'h-4 w-4',
+}: {
+  channel: OutreachChannelValue
+  className?: string
+}) {
+  switch (channel) {
+    case 'WHATSAPP':
+      return <WhatsAppIcon className={className} />
+    case 'SMS':
+      return <MessageSquareText className={`text-accent ${className}`} aria-hidden />
+    case 'EMAIL':
+      return <Mail className={`text-ink-muted ${className}`} aria-hidden />
+    case 'VOICE_CALL':
+      return <Phone className={`text-recovered ${className}`} aria-hidden />
+  }
 }
 
 /** Unified Brand Badge for Payment Rails */

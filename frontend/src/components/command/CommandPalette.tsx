@@ -2,7 +2,13 @@
 
 import React, { useEffect, useState } from 'react'
 import type { RecoveryCase } from '@/lib/api'
-import type { NavSection } from '@/components/layout/Sidebar'
+import type { NavSection } from '@/lib/navigation'
+import {
+  MAIN_NAV_ITEMS,
+  NAV_SECTION_LABELS,
+  OPERATIONS_NAV_ITEMS,
+  SETTINGS_NAV_ITEMS,
+} from '@/lib/navigation'
 
 interface CommandPaletteProps {
   open: boolean
@@ -12,6 +18,23 @@ interface CommandPaletteProps {
   onNavigate: (section: NavSection) => void
   onSeed: () => void
   onReset: () => void
+}
+
+const NAV_DESCRIPTIONS: Partial<Record<NavSection, string>> = {
+  overview: 'Executive KPI dashboard and opportunity matrix',
+  analytics: 'Counterfactual proof and NRV accounting',
+  transactions: 'Active recovery queue and operational table',
+  audit: 'System-wide immutable chronology',
+  'settings-policies': 'Guardrails, touch limits, and discount caps',
+  'settings-general': 'LLM provider hierarchy and experiment evaluation',
+  'settings-integrations': 'Razorpay gateway, webhooks, and subsystem health',
+  pipeline: 'Ingestion queue, fleet control, and worker telemetry',
+  workflows: 'Durable recovery workflows and decision history',
+  recovery: 'Active dunning queue and operational table',
+  agent: 'Live decision stream and model token metrics',
+  policies: 'Guardrails, touch limits, and discount caps',
+  status: 'Telemetry, gateway health, and active queues',
+  settings: 'Razorpay webhook URLs and integration config',
 }
 
 export function CommandPalette({
@@ -30,9 +53,6 @@ export function CommandPalette({
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault()
         if (open) onClose()
-        else {
-          // Open trigger handled by parent or shortcut
-        }
       }
       if (e.key === 'Escape' && open) {
         onClose()
@@ -46,32 +66,36 @@ export function CommandPalette({
 
   if (!open) return null
 
-  const navOptions: { id: NavSection; label: string; desc: string }[] = [
-    { id: 'overview', label: 'Go to Overview', desc: 'Executive KPI dashboard and opportunity matrix' },
-    { id: 'recovery', label: 'Go to Recovery Cases', desc: 'Active dunning queue and operational table' },
-    { id: 'analytics', label: 'Go to Analytics & Lift', desc: 'Counterfactual proof and NRV accounting' },
-    { id: 'agent', label: 'Go to AI Agent Telemetry', desc: 'Live decision stream and model token metrics' },
-    { id: 'policies', label: 'Go to Merchant Policies', desc: 'Guardrails, touch limits, and discount caps' },
-    { id: 'audit', label: 'Go to Audit Trail', desc: 'System-wide immutable chronology' },
-    { id: 'status', label: 'Go to System Status', desc: 'Telemetry, gateway health, and active queues' },
-    { id: 'settings', label: 'Go to Settings', desc: 'Razorpay webhook URLs and integration config' },
-  ]
+  const navOptions = [
+    ...MAIN_NAV_ITEMS.map((item) => item.id),
+    ...SETTINGS_NAV_ITEMS.map((item) => item.id),
+    ...OPERATIONS_NAV_ITEMS.map((item) => item.id),
+    'policies' as const,
+    'settings' as const,
+  ].map((id) => ({
+    id,
+    label: `Go to ${NAV_SECTION_LABELS[id]}`,
+    desc: NAV_DESCRIPTIONS[id] ?? '',
+  }))
 
   const filteredNav = navOptions.filter(
-    (n) => n.label.toLowerCase().includes(query.toLowerCase()) || n.desc.toLowerCase().includes(query.toLowerCase())
+    (n) =>
+      n.label.toLowerCase().includes(query.toLowerCase()) ||
+      n.desc.toLowerCase().includes(query.toLowerCase()),
   )
 
-  const filteredCases = cases.filter(
-    (c) =>
-      c.case_id.toLowerCase().includes(query.toLowerCase()) ||
-      c.failure_event.payment_id.toLowerCase().includes(query.toLowerCase()) ||
-      c.failure_event.customer_id.toLowerCase().includes(query.toLowerCase())
-  ).slice(0, 5)
+  const filteredCases = cases
+    .filter(
+      (c) =>
+        c.case_id.toLowerCase().includes(query.toLowerCase()) ||
+        c.failure_event.payment_id.toLowerCase().includes(query.toLowerCase()) ||
+        c.failure_event.customer_id.toLowerCase().includes(query.toLowerCase()),
+    )
+    .slice(0, 5)
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-20 bg-black/60 backdrop-blur-xs p-4">
       <div className="w-full max-w-xl rounded-panel bg-surface border border-border shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-        {/* Search Input */}
         <div className="flex items-center border-b border-border px-4 py-3 bg-surface-sunken/40">
           <span className="text-xs font-mono text-ink-subtle mr-2 font-bold">[⌘K]</span>
           <input
@@ -93,11 +117,11 @@ export function CommandPalette({
           </button>
         </div>
 
-        {/* Results Stream */}
         <div className="max-h-96 overflow-y-auto p-2 space-y-3 font-mono text-xs">
-          {/* Quick Actions */}
           <div className="space-y-1">
-            <div className="px-2 py-1 text-[10px] uppercase tracking-wider text-ink-subtle">Quick Actions</div>
+            <div className="px-2 py-1 text-[10px] uppercase tracking-wider text-ink-subtle">
+              Quick Actions
+            </div>
             <button
               type="button"
               onClick={() => {
@@ -122,10 +146,11 @@ export function CommandPalette({
             </button>
           </div>
 
-          {/* Navigation */}
           {filteredNav.length > 0 && (
             <div className="space-y-1 pt-1 border-t border-border/50">
-              <div className="px-2 py-1 text-[10px] uppercase tracking-wider text-ink-subtle">Navigation</div>
+              <div className="px-2 py-1 text-[10px] uppercase tracking-wider text-ink-subtle">
+                Navigation
+              </div>
               {filteredNav.map((item) => (
                 <button
                   key={item.id}
@@ -146,10 +171,11 @@ export function CommandPalette({
             </div>
           )}
 
-          {/* Matching Cases */}
           {filteredCases.length > 0 && (
             <div className="space-y-1 pt-1 border-t border-border/50">
-              <div className="px-2 py-1 text-[10px] uppercase tracking-wider text-ink-subtle">Matching Cases</div>
+              <div className="px-2 py-1 text-[10px] uppercase tracking-wider text-ink-subtle">
+                Matching Cases
+              </div>
               {filteredCases.map((c) => (
                 <button
                   key={c.case_id}
@@ -163,7 +189,8 @@ export function CommandPalette({
                   <div>
                     <span className="font-semibold block">{c.case_id}</span>
                     <span className="text-[10px] text-ink-muted block">
-                      {c.failure_event.customer_id} · {c.failure_event.payment_rail} · INR {(c.amount_paise / 100).toFixed(0)}
+                      {c.failure_event.customer_id} · {c.failure_event.payment_rail} · INR{' '}
+                      {(c.amount_paise / 100).toFixed(0)}
                     </span>
                   </div>
                   <span className="text-[10px] text-recovered">{c.state}</span>

@@ -165,6 +165,9 @@ export function CaseDetailDrawer({
                   <div className="text-lg font-mono font-bold text-ink">
                     {formatINR(caseItem.amount_paise)}
                   </div>
+                  <p className="text-[11px] text-ink-subtle leading-relaxed">
+                    The money behind the failed payment. This is what was at stake.
+                  </p>
                 </div>
 
                 <div className="p-4 rounded-panel bg-surface-sunken border border-border space-y-1">
@@ -178,14 +181,24 @@ export function CaseDetailDrawer({
                       ? formatINR(caseItem.net_recovered_value_paise || caseItem.recovered_amount_paise)
                       : '--'}
                   </div>
+                  <p className="text-[11px] text-ink-subtle leading-relaxed">
+                    {caseItem.state === 'RECOVERED'
+                      ? 'Money actually recovered, minus the cost of retries, messages, and any discount given. This is the real win.'
+                      : 'Will show here once this payment is recovered.'}
+                  </p>
                 </div>
               </div>
 
               {/* Ingestion & Telemetry */}
               <div className="space-y-2">
-                <span className="text-xs font-mono font-semibold uppercase tracking-wider text-ink-muted">
-                  Failure Telemetry & Ingestion
-                </span>
+                <div className="space-y-0.5">
+                  <span className="text-xs font-mono font-semibold uppercase tracking-wider text-ink-muted">
+                    Failure Telemetry & Ingestion
+                  </span>
+                  <p className="text-[11px] text-ink-subtle leading-relaxed">
+                    The raw details of the failed payment that started this case: which payment method failed, the error the bank or gateway returned, and who the customer is.
+                  </p>
+                </div>
                 <div className="p-4 rounded-panel bg-surface-sunken/60 border border-border space-y-2 font-mono text-xs">
                   <div className="flex justify-between items-center">
                     <span className="text-ink-muted">Payment Rail:</span>
@@ -208,13 +221,18 @@ export function CaseDetailDrawer({
 
               {/* Guardrails & Touch Status */}
               <div className="space-y-2">
-                <div className="flex items-center gap-1.5 text-xs font-mono font-semibold uppercase tracking-wider text-ink-muted">
-                  <ShieldCheck className="h-3.5 w-3.5 text-recovered" />
-                  <span>
-                    <GlossaryTerm termKey="POLICY_GATE" showIcon={false}>
-                      Policy Guardrail Status
-                    </GlossaryTerm>
-                  </span>
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-1.5 text-xs font-mono font-semibold uppercase tracking-wider text-ink-muted">
+                    <ShieldCheck className="h-3.5 w-3.5 text-recovered" />
+                    <span>
+                      <GlossaryTerm termKey="POLICY_GATE" showIcon={false}>
+                        Policy Guardrail Status
+                      </GlossaryTerm>
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-ink-subtle leading-relaxed">
+                    The safety limits applied to this case: how many attempts are still allowed, and whether a discount has been granted to get the payment through.
+                  </p>
                 </div>
                 <div className="grid grid-cols-2 gap-3 font-mono text-xs">
                   <div className="p-3 rounded-control bg-surface-sunken border border-border flex justify-between items-center">
@@ -242,9 +260,14 @@ export function CaseDetailDrawer({
 
           {activeTab === 'outreach' && (
             <div className="space-y-4">
-              <div className="flex items-center gap-1.5 text-xs font-mono font-semibold uppercase tracking-wider text-ink-muted">
-                <MessageSquare className="h-3.5 w-3.5 text-accent" />
-                <span>Live Customer Outreach Preview</span>
+              <div className="space-y-0.5">
+                <div className="flex items-center gap-1.5 text-xs font-mono font-semibold uppercase tracking-wider text-ink-muted">
+                  <MessageSquare className="h-3.5 w-3.5 text-accent" />
+                  <span>Live Customer Outreach Preview</span>
+                </div>
+                <p className="text-[11px] text-ink-subtle leading-relaxed">
+                  A preview of the WhatsApp message the customer would receive if the engine reached out about this failed payment. It shows the message text, the payment link, and any discount offered.
+                </p>
               </div>
               <WhatsAppPreview caseItem={caseItem} />
             </div>

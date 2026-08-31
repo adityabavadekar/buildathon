@@ -29,6 +29,7 @@ interface StatusViewProps {
   status: SystemStatusResponse | null
   loading: boolean
   onRefresh: () => void
+  showPageHeader?: boolean
 }
 
 function formatUptime(seconds: number): string {
@@ -40,7 +41,12 @@ function formatUptime(seconds: number): string {
   return `${secs.toString()}s`
 }
 
-export function StatusView({ status, loading, onRefresh }: StatusViewProps) {
+export function StatusView({
+  status,
+  loading,
+  onRefresh,
+  showPageHeader = true,
+}: StatusViewProps) {
   const [elapsedSeconds, setElapsedSeconds] = useState<number>(0)
   const [testingGateway, setTestingGateway] = useState<boolean>(false)
   const [gatewayTestResult, setGatewayTestResult] = useState<GatewayTestResponse | null>(null)
@@ -83,32 +89,45 @@ export function StatusView({ status, loading, onRefresh }: StatusViewProps) {
 
   return (
     <div className="space-y-6">
-      {/* View Header with Plain-Language Context */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border pb-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <RazorpaySymbol className="h-5 w-5" />
-            <h1 className="text-xl font-bold font-mono text-ink">
-              System Subsystems & Operational Health
-            </h1>
+      {showPageHeader ? (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border pb-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <RazorpaySymbol className="h-5 w-5" />
+              <h1 className="text-xl font-bold font-mono text-ink">
+                System Subsystems & Operational Health
+              </h1>
+            </div>
+            <p className="text-xs text-ink-muted mt-0.5">
+              Real-time health and diagnostics for Razorpay webhooks, AI models, and deterministic policy subsystems.
+            </p>
           </div>
-          <p className="text-xs text-ink-muted mt-0.5">
-            Real-time health and diagnostics for Razorpay webhooks, AI models, and deterministic policy subsystems.
-          </p>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                void handleTestGateway()
+              }}
+              disabled={testingGateway}
+              className="font-mono text-xs flex items-center gap-1.5"
+            >
+              <Zap className="h-3.5 w-3.5 text-accent" />
+              {testingGateway ? 'Probing Gateway...' : 'Test Razorpay Connection'}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onRefresh}
+              className="font-mono text-xs flex items-center gap-1.5"
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+              Refresh
+            </Button>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              void handleTestGateway()
-            }}
-            disabled={testingGateway}
-            className="font-mono text-xs flex items-center gap-1.5"
-          >
-            <Zap className="h-3.5 w-3.5 text-accent" />
-            {testingGateway ? 'Probing Gateway...' : 'Test Razorpay Connection'}
-          </Button>
+      ) : (
+        <div className="flex items-center justify-end">
           <Button
             variant="outline"
             size="sm"
@@ -119,7 +138,7 @@ export function StatusView({ status, loading, onRefresh }: StatusViewProps) {
             Refresh
           </Button>
         </div>
-      </div>
+      )}
 
       {/* Gateway Probe Diagnostic Result (if run) */}
       {gatewayTestResult && (

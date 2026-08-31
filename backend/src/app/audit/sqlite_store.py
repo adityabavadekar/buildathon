@@ -41,6 +41,28 @@ class RelationalCaseStore:
             cur = self._conn.cursor()
             cur.execute("PRAGMA journal_mode = WAL;")
             cur.execute("PRAGMA synchronous = NORMAL;")
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS pattern_alerts (
+                    alert_id TEXT PRIMARY KEY, run_id TEXT NOT NULL, seed INTEGER NOT NULL,
+                    feature_scope TEXT NOT NULL, dominant_category TEXT, dominant_intervention TEXT,
+                    member_count INTEGER NOT NULL, mean_amount_paise INTEGER NOT NULL,
+                    example_case_ids_json TEXT NOT NULL, created_at TEXT NOT NULL
+                );
+            """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS ml_models (
+                    model_id TEXT PRIMARY KEY, version TEXT NOT NULL, artifact_json TEXT NOT NULL,
+                    feature_schema_json TEXT NOT NULL, train_arm TEXT NOT NULL, seed INTEGER NOT NULL,
+                    holdout_metrics_json TEXT NOT NULL, trained_at TEXT NOT NULL
+                );
+            """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS ml_predictions (
+                    prediction_id TEXT PRIMARY KEY, case_id TEXT NOT NULL, model_id TEXT NOT NULL,
+                    prediction_type TEXT NOT NULL, score REAL NOT NULL, inputs_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
+            """)
 
             # 1. Cases Table
             cur.execute("""
@@ -1214,6 +1236,7 @@ class RelationalCaseStore:
     def get_pipeline_overview(self) -> dict[str, Any]:
         """Fetch live queue counts and processing rates."""
         now = datetime.now(UTC)
+        now_str = now.isoformat()
         one_min_ago = (now - timedelta(minutes=1)).isoformat()
         with self._lock:
             cur = self._conn.cursor()
@@ -1231,6 +1254,20 @@ class RelationalCaseStore:
                     status_counts[st] = int(row["count"])
                 elif st == "PENDING":
                     status_counts["QUEUED"] += int(row["count"])
+
+            # Ready-to-process jobs are those due now; the rest of QUEUED are
+            # future-scheduled touch/retry jobs and are not an active backlog.
+            cur.execute(
+                """
+                SELECT COUNT(*) as count FROM jobs
+                WHERE status IN ('QUEUED', 'PENDING') AND due_at <= ?;
+                """,
+                (now_str,),
+            )
+            queues_due_now = int(cur.fetchone()["count"])
+            queues_total = status_counts["QUEUED"]
+            status_counts["QUEUED_DUE_NOW"] = queues_due_now
+            status_counts["QUEUED_FUTURE"] = queues_total - queues_due_now
 
             cur.execute("SELECT COUNT(*) as count FROM cases;")
             total_received = int(cur.fetchone()["count"])
@@ -1268,12 +1305,14 @@ class RelationalCaseStore:
 
             return {
                 "counts": status_counts,
+                # Backlog is work the worker could pick up right now; future-scheduled
+                # touches are not an acute queue.
+                "backlog_depth": queues_due_now + status_counts["PROCESSING"],
                 "events_received_total": total_received,
                 "events_received_last_minute": received_last_min,
                 "events_processed_total": total_processed,
                 "events_processed_last_minute": processed_last_min,
                 "current_processing_rate_per_min": processed_last_min,
-                "backlog_depth": status_counts["QUEUED"] + status_counts["PROCESSING"],
                 "oldest_queued_age_seconds": oldest_age_sec,
                 "last_event_timestamp": last_event,
             }
@@ -1393,4 +1432,74 @@ class RelationalCaseStore:
             cur.execute("DELETE FROM jobs;")
             cur.execute("DELETE FROM cases;")
             cur.execute("DELETE FROM model_telemetry;")
+            cur.execute("DELETE FROM ml_models;")
+            cur.execute("DELETE FROM ml_predictions;")
+            cur.execute("DELETE FROM pattern_alerts;")
             self._conn.commit()
+
+    def save_ml_model(self, model: dict[str, Any]) -> None:
+        with self._lock:
+            self._conn.execute(
+                "INSERT OR REPLACE INTO ml_models VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    model["model_id"],
+                    model["version"],
+                    json.dumps(model["artifact"]),
+                    json.dumps(model["feature_schema"]),
+                    model["train_arm"],
+                    model["seed"],
+                    json.dumps(model["holdout_metrics"]),
+                    model["trained_at"],
+                ),
+            )
+
+    def get_ml_model(self) -> dict[str, Any] | None:
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT * FROM ml_models ORDER BY trained_at DESC LIMIT 1"
+            ).fetchone()
+        if row is None:
+            return None
+        return {
+            "model_id": row["model_id"],
+            "version": row["version"],
+            "artifact": json.loads(row["artifact_json"]),
+            "feature_schema": json.loads(row["feature_schema_json"]),
+            "train_arm": row["train_arm"],
+            "seed": row["seed"],
+            "holdout_metrics": json.loads(row["holdout_metrics_json"]),
+            "trained_at": row["trained_at"],
+        }
+
+    def save_ml_predictions(self, predictions: list[dict[str, Any]]) -> None:
+        with self._lock:
+            self._conn.executemany(
+                "INSERT INTO ml_predictions VALUES (?, ?, ?, ?, ?, ?, ?)",
+                [
+                    (
+                        item["prediction_id"],
+                        item["case_id"],
+                        item["model_id"],
+                        item["prediction_type"],
+                        item["score"],
+                        json.dumps(item["inputs"]),
+                        item["created_at"],
+                    )
+                    for item in predictions
+                ],
+            )
+
+    def save_pattern_alerts(self, alerts: list[dict[str, Any]]) -> None:
+        with self._lock:
+            self._conn.executemany(
+                "INSERT OR REPLACE INTO pattern_alerts VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                [
+                    (item["alert_id"], item["run_id"], item["seed"], item["feature_scope"], item["dominant_category"], item["dominant_intervention"], item["member_count"], item["mean_amount_paise"], json.dumps(item["example_case_ids"]), item["created_at"])
+                    for item in alerts
+                ],
+            )
+
+    def list_pattern_alerts(self) -> list[dict[str, Any]]:
+        with self._lock:
+            rows = self._conn.execute("SELECT * FROM pattern_alerts ORDER BY created_at DESC").fetchall()
+        return [{**dict(row), "example_case_ids": json.loads(row["example_case_ids_json"])} for row in rows]

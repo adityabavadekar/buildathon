@@ -31,6 +31,7 @@ class PolicyResponse(BaseModel):
     max_discount_bps: int
     holdout_percentage: int
     require_human_above_paise: int
+    allowed_channels: list[str]
     rules: list[PolicyRuleDetail]
 
 
@@ -83,6 +84,7 @@ async def get_active_policies() -> PolicyResponse:
         max_discount_bps=_ACTIVE_POLICY.max_discount_bps,
         holdout_percentage=_ACTIVE_POLICY.holdout_percentage,
         require_human_above_paise=_ACTIVE_POLICY.require_human_above_paise,
+        allowed_channels=[channel.value for channel in _ACTIVE_POLICY.allowed_channels],
         rules=rules,
     )
 

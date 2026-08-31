@@ -9,7 +9,13 @@ from uuid import uuid4
 from pydantic import BaseModel, Field
 
 from app.core.constants import DEFAULT_CURRENCY
-from app.core.enums import AuditActor, ExperimentArm, JobStatus, RecoveryState
+from app.core.enums import (
+    AuditActor,
+    ExperimentArm,
+    FailureCategory,
+    JobStatus,
+    RecoveryState,
+)
 from app.core.money import calculate_net_recovered_value_paise
 from app.detection.models import RawFailureEvent  # noqa: TC001
 
@@ -73,6 +79,7 @@ class RecoveryCase(BaseModel):
     merchant_id: str = "default_merchant"
     state: RecoveryState = RecoveryState.ANALYSIS_QUEUED
     experiment_arm: ExperimentArm = ExperimentArm.TREATMENT
+    diagnosed_category: FailureCategory = FailureCategory.UNCLASSIFIED
     amount_paise: int = Field(gt=0)
     currency: str = Field(default=DEFAULT_CURRENCY)
     failure_event: RawFailureEvent

@@ -1,6 +1,8 @@
 """Tests for end-to-end recovery orchestration."""
 
+import tempfile
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
 
@@ -10,9 +12,20 @@ from app.detection.models import RawFailureEvent
 from app.intervention.orchestrator import RecoveryOrchestrator
 
 
+def _isolated_repo() -> CaseRepository:
+    """Return a CaseRepository backed by a fresh temp DB per test.
+
+    Using the shared default ``data/recovery_engine.db`` makes these tests
+    non-reproducible on re-runs: a fixed payment_id persists its terminal state
+    (e.g. RECOVERED) and is returned on the next run, breaking the state
+    assertion. A temp store starts empty every time.
+    """
+    return CaseRepository(storage_path=Path(tempfile.mkdtemp(prefix="orch_test_")) / "test.db")
+
+
 @pytest.mark.anyio
 async def test_orchestrator_transient_window_passive_retry() -> None:
-    repo = CaseRepository()
+    repo = _isolated_repo()
     orchestrator = RecoveryOrchestrator(repository=repo)
 
     event = RawFailureEvent(
@@ -38,7 +51,7 @@ async def test_orchestrator_transient_window_passive_retry() -> None:
 
 @pytest.mark.anyio
 async def test_orchestrator_checkout_dropoff_incentivized_link() -> None:
-    repo = CaseRepository()
+    repo = _isolated_repo()
     orchestrator = RecoveryOrchestrator(repository=repo)
 
     event = RawFailureEvent(
@@ -63,7 +76,7 @@ async def test_orchestrator_checkout_dropoff_incentivized_link() -> None:
 
 @pytest.mark.anyio
 async def test_orchestrator_idempotency_returns_existing_case() -> None:
-    repo = CaseRepository()
+    repo = _isolated_repo()
     orchestrator = RecoveryOrchestrator(repository=repo)
 
     event = RawFailureEvent(
@@ -89,7 +102,7 @@ async def test_orchestrator_idempotency_returns_existing_case() -> None:
 
 @pytest.mark.anyio
 async def test_orchestrator_payment_captured_resolution() -> None:
-    repo = CaseRepository()
+    repo = _isolated_repo()
     orchestrator = RecoveryOrchestrator(repository=repo)
 
     event = RawFailureEvent(

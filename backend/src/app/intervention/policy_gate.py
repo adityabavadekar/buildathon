@@ -6,17 +6,26 @@ from app.audit.models import RecoveryCase
 from app.core.enums import ExperimentArm, InterventionType, PolicyCheckResult
 from app.detection.rail_health import get_rail_health_registry
 from app.intervention.models import InterventionPlan, MerchantPolicy, PolicyEvaluation
+from app.intervention.policy_store import get_policy_store
 
-_ACTIVE_POLICY: MerchantPolicy = MerchantPolicy()
+_DEFAULT_POLICY: MerchantPolicy = MerchantPolicy()
 
 
 def get_active_policy() -> MerchantPolicy:
-    return _ACTIVE_POLICY.model_copy(deep=True)
+    """Return the active policy, preferring the persisted store.
+
+    Reads the durable store fresh on every call so the policy gate always
+    enforces the latest saved values, falling back to module defaults when no
+    store exists yet.
+    """
+    persisted = get_policy_store().load()
+    return persisted if persisted is not None else _DEFAULT_POLICY.model_copy(deep=True)
 
 
 def set_active_policy(policy: MerchantPolicy) -> MerchantPolicy:
-    _ACTIVE_POLICY.__dict__.update(policy.model_copy(deep=True).__dict__)
-    return get_active_policy()
+    """Persist a policy durably and return it; the gate picks it up on next eval."""
+    saved = get_policy_store().save(policy.model_copy(deep=True))
+    return saved.model_copy(deep=True)
 
 
 class PolicyGate:
@@ -72,7 +81,7 @@ class PolicyGate:
             modified_plan=plan,
         )
 
-    def _check_blocking_invariants(
+    def _check_blocking_invariants(  # noqa: PLR0911
         self,
         case: RecoveryCase,
         plan: InterventionPlan,
@@ -118,6 +127,10 @@ class PolicyGate:
                 evaluated_at=now,
             )
 
+        channel_eval = self._check_channel_allowance(plan, policy, now)
+        if channel_eval is not None:
+            return channel_eval
+
         if plan.intervention_type in (
             InterventionType.PASSIVE_RETRY,
             InterventionType.SMART_RETRY,
@@ -141,6 +154,26 @@ class PolicyGate:
                 )
 
         return self._check_cooldown(case, plan, policy, now)
+
+    def _check_channel_allowance(
+        self,
+        plan: InterventionPlan,
+        policy: MerchantPolicy,
+        now: datetime,
+    ) -> PolicyEvaluation | None:
+        """Block a plan whose outreach channel is not in the merchant's approved list."""
+        if plan.channel is None or plan.channel in policy.allowed_channels:
+            return None
+        allowed = ", ".join(c.value for c in policy.allowed_channels) or "none"
+        return PolicyEvaluation(
+            result=PolicyCheckResult.BLOCKED_CHANNEL,
+            is_allowed=False,
+            reason=(
+                f"Outreach channel {plan.channel.value} is not in the merchant's "
+                f"allowed channels ({allowed}). The configured guardrail forbids this channel."
+            ),
+            evaluated_at=now,
+        )
 
     def _check_cooldown(
         self,

@@ -1,0 +1,144 @@
+'use client'
+
+import React, { useState } from 'react'
+import { CheckCircle2, Server } from 'lucide-react'
+import {
+  testGatewayConnection,
+  type GatewayTestResponse,
+  type SystemSettingsResponse,
+  type SystemStatusResponse,
+} from '@/lib/api'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card'
+import { RazorpaySymbol } from '@/components/ui/BrandIcons'
+import { SkeletonCard } from '@/components/ui/skeleton'
+import { StatusView } from '@/components/views/StatusView'
+
+interface IntegrationsViewProps {
+  settings: SystemSettingsResponse | null
+  status: SystemStatusResponse | null
+  loading: boolean
+  onRefresh: () => void
+}
+
+export function IntegrationsView({
+  settings,
+  status,
+  loading,
+  onRefresh,
+}: IntegrationsViewProps) {
+  const [testingGateway, setTestingGateway] = useState(false)
+  const [gatewayTestResult, setGatewayTestResult] = useState<GatewayTestResponse | null>(
+    null,
+  )
+
+  const handleTestGateway = async () => {
+    try {
+      setTestingGateway(true)
+      const res = await testGatewayConnection()
+      setGatewayTestResult(res)
+    } catch {
+      setGatewayTestResult(null)
+    } finally {
+      setTestingGateway(false)
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="border-b border-border pb-4">
+        <h1 className="text-2xl font-bold font-mono text-ink">Integrations</h1>
+        <p className="text-sm text-ink-muted mt-0.5">
+          Razorpay gateway connectivity, webhook ingress, and subsystem health.
+        </p>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <Server className="h-4 w-4 text-accent" />
+            <CardTitle>Razorpay Webhook & Payment Gateway</CardTitle>
+          </div>
+          <CardDescription className="text-xs">
+            Production connection parameters for webhook ingress and recovery link generation.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {loading ? (
+            <SkeletonCard />
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 font-mono text-xs">
+              <div className="space-y-1 p-3 rounded-control bg-surface-sunken border border-border">
+                <span className="text-ink-muted block text-[11px]">Active Environment</span>
+                <span className="text-ink font-bold uppercase">
+                  {settings?.environment || 'LIVE / PRODUCTION'}
+                </span>
+              </div>
+
+              <div className="space-y-1 p-3 rounded-control bg-surface-sunken border border-border">
+                <span className="text-ink-muted block text-[11px]">Razorpay Key ID</span>
+                <span className="text-ink font-semibold">
+                  {settings?.razorpay_key_id
+                    ? `${settings.razorpay_key_id.slice(0, 10)}...`
+                    : 'rzp_live_buildathon'}
+                </span>
+              </div>
+
+              <div className="space-y-1 p-3 rounded-control bg-surface-sunken border border-border md:col-span-2">
+                <span className="text-ink-muted block text-[11px]">Ingress Webhook Endpoint</span>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-ink truncate select-all">
+                    {settings?.webhook_ingress_url || '/api/webhooks/razorpay'}
+                  </span>
+                  <Badge
+                    variant={settings?.webhook_secret_configured ? 'recovered' : 'outline'}
+                    className="text-[10px]"
+                  >
+                    {settings?.webhook_secret_configured
+                      ? 'HMAC Verification Active'
+                      : 'Unsigned (Simulated)'}
+                  </Badge>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="flex flex-wrap items-center gap-3 pt-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                void handleTestGateway()
+              }}
+              disabled={testingGateway}
+              className="gap-2 font-mono text-xs cursor-pointer"
+            >
+              <RazorpaySymbol className="h-3.5 w-3.5" />
+              <span>{testingGateway ? 'Testing Gateway...' : 'Ping Gateway & Verify HMAC'}</span>
+            </Button>
+            {gatewayTestResult ? (
+              <span className="font-mono text-xs text-recovered flex items-center gap-1.5">
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                {gatewayTestResult.message} ({gatewayTestResult.latency_ms.toFixed(0)}ms)
+              </span>
+            ) : null}
+          </div>
+        </CardContent>
+      </Card>
+
+      <StatusView
+        status={status}
+        loading={loading}
+        onRefresh={onRefresh}
+        showPageHeader={false}
+      />
+    </div>
+  )
+}

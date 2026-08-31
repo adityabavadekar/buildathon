@@ -170,6 +170,14 @@ async def test_pipeline_observability_endpoints() -> None:
         assert "counts" in overview
         assert "events_received_total" in overview
         assert "backlog_depth" in overview
+        # The queue split must always be present; due-now plus future-scheduled
+        # equals the total QUEUED count.
+        counts = overview["counts"]
+        assert {
+            "QUEUED_DUE_NOW",
+            "QUEUED_FUTURE",
+        } <= set(counts)
+        assert counts["QUEUED"] == counts["QUEUED_DUE_NOW"] + counts["QUEUED_FUTURE"]
 
         # Timeseries
         ts_res = await client.get("/api/pipeline/timeseries?bucket_minutes=60&hours=24")

@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field
 
 from app.audit.models import ModelTelemetryEntry
 from app.audit.repository import get_case_repository
+from app.core.config import get_settings
 from app.core.constants import MIN_CONFIDENCE_THRESHOLD
 from app.core.enums import (  # noqa: TC001
     FailureCategory,
@@ -255,9 +256,9 @@ class RecoveryPlanner:
         attempted_model = target_model or (
             state.providers[0].active_model
             if state.providers
-            else "anthropic/claude-3.7-sonnet"
+            else get_settings().openrouter_model
         )
-        attempted_provider = state.providers[0].name if state.providers else "anthropic"
+        attempted_provider = state.providers[0].name if state.providers else "openrouter"
 
         # Deterministic rule fallback with structured audit metadata and telemetry
         fallback_res = self.fallback_classifier.classify(event)

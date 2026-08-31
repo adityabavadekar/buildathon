@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from app.audit.sqlite_store import RelationalCaseStore
+from app.core.config import get_settings
 from app.core.logging import get_logger
 
 if TYPE_CHECKING:
@@ -248,8 +249,23 @@ class CaseRepository:
         """Clear repository contents (used for test teardown)."""
         self._store.clear()
 
+    def save_pattern_alerts(self, alerts: list[dict[str, Any]]) -> None:
+        self._store.save_pattern_alerts(alerts)
+
+    def list_pattern_alerts(self) -> list[dict[str, Any]]:
+        return self._store.list_pattern_alerts()
+
+    def save_ml_model(self, model: dict[str, Any]) -> None:
+        self._store.save_ml_model(model)
+
+    def get_ml_model(self) -> dict[str, Any] | None:
+        return self._store.get_ml_model()
+
+    def save_ml_predictions(self, predictions: list[dict[str, Any]]) -> None:
+        self._store.save_ml_predictions(predictions)
+
 
 @functools.lru_cache(maxsize=1)
 def get_case_repository() -> CaseRepository:
     """Return singleton instance of CaseRepository with ACID database storage."""
-    return CaseRepository(storage_path=Path("data/recovery_engine.db"))
+    return CaseRepository(storage_path=Path(get_settings().database_path))
