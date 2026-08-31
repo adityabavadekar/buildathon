@@ -12,6 +12,7 @@ import re
 from decimal import Decimal
 from typing import Any, cast
 
+from json_repair import loads as repair_json
 from pydantic import BaseModel, Field
 
 from app.audit.models import ModelTelemetryEntry
@@ -91,6 +92,9 @@ def _extract_json_block(text: str) -> dict[str, Any]:
     try:
         return parse(clean)
     except (json.JSONDecodeError, TypeError, ValueError):
+        repaired_value: Any = repair_json(clean)
+        if isinstance(repaired_value, dict):
+            return cast("dict[str, Any]", repaired_value)
         match = re.search(r"\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}", clean, re.DOTALL)
         if match:
             return parse(match.group(0))

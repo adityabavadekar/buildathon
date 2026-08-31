@@ -17,6 +17,7 @@ from app.audit.repository import get_case_repository
 from app.core.enums import AuditActor, ExperimentArm, PaymentRail, RecoveryState
 from app.detection.classifier import classify_failure
 from app.detection.customer_profile import get_customer_profile_registry
+from app.detection.ml import get_recovery_model, train_recovery_model
 from app.detection.rail_health import get_rail_health_registry
 
 if TYPE_CHECKING:
@@ -25,6 +26,18 @@ if TYPE_CHECKING:
     from app.audit.models import RecoveryCase
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
+
+
+@router.get("/recovery-model")
+async def recovery_model_status() -> dict[str, object]:
+    model = get_recovery_model()
+    return {"status": "trained" if model.trained_count else "untrained", "version": model.version, "trained_count": model.trained_count}
+
+
+@router.post("/recovery-model/train")
+async def train_recovery_model_endpoint() -> dict[str, object]:
+    model = train_recovery_model()
+    return {"status": "trained", "version": model.version, "trained_count": model.trained_count}
 
 DEFAULT_MAX_TOUCHES = 3
 HIGH_VALUE_THRESHOLD_PAISE = 500_000

@@ -5,6 +5,7 @@ description = "Revenue recovery agent - detects at-risk revenue, diagnoses cause
 authors = [{ name = "Aditya Bavadekar", email = "bvkraditya@gmail.com" }]
 requires-python = ">=3.13"
 dependencies = [
+    "json-repair>=0.30.0,<1.0",
     "fastapi[standard-no-fastapi-cloud-cli]>=0.141.1",
     "pydantic-settings>=2.15.0",
     "structlog>=26.1.0",
