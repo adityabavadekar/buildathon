@@ -89,7 +89,10 @@ class WorkflowEngine:
                 actor=AuditActor.SYSTEM,
                 event_name="workflow.started",
                 notes="Durable workflow launched from operator UI",
-                decision_inputs={"template": chosen_template.value, "workflow_layer": "durable"},
+                decision_inputs={
+                    "template": chosen_template.value,
+                    "workflow_layer": "durable",
+                },
             )
         )
         self.case_repo.save(case)

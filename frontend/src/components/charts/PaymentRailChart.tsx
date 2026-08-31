@@ -30,9 +30,13 @@ function getRailIcon(rail: string) {
   if (upper.includes('UPI')) return <UpiIcon className="h-4 w-4 shrink-0" />
   if (upper.includes('CARD') || upper.includes('RUPAY'))
     return <RuPayIcon className="h-3.5 w-5 shrink-0" />
-  if (upper.includes('MANDATE') || upper.includes('AUTOPAY') || upper.includes('SUBSCRIPTION'))
-    return <RefreshCw className="h-3.5 w-3.5 text-accent shrink-0" />
-  return <Landmark className="h-3.5 w-3.5 text-ink-muted shrink-0" />
+  if (
+    upper.includes('MANDATE') ||
+    upper.includes('AUTOPAY') ||
+    upper.includes('SUBSCRIPTION')
+  )
+    return <RefreshCw className="h-3.5 w-3.5 shrink-0 text-accent" />
+  return <Landmark className="h-3.5 w-3.5 shrink-0 text-ink-muted" />
 }
 
 export function PaymentRailChart({ railPerformance }: PaymentRailChartProps) {
@@ -44,7 +48,8 @@ export function PaymentRailChart({ railPerformance }: PaymentRailChartProps) {
           <CardTitle>Payment Rail Recovery Efficiency</CardTitle>
         </div>
         <CardDescription>
-          Multi-rail performance across UPI Intent, AutoPay mandates, e-NACH, and Cards
+          Multi-rail performance across UPI Intent, AutoPay mandates, e-NACH,
+          and Cards
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4 font-mono text-xs">
@@ -56,7 +61,7 @@ export function PaymentRailChart({ railPerformance }: PaymentRailChartProps) {
           railPerformance.map((item) => (
             <div
               key={item.rail}
-              className="space-y-1.5 p-3 rounded-control bg-surface-sunken/60 border border-border"
+              className="space-y-1.5 rounded-control border border-border bg-surface-sunken/60 p-3"
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -68,12 +73,12 @@ export function PaymentRailChart({ railPerformance }: PaymentRailChartProps) {
                     ({item.total_cases.toString()} cases)
                   </span>
                 </div>
-                <span className="text-recovered font-bold">
+                <span className="font-bold text-recovered">
                   {item.recovery_rate_pct.toFixed(1)}% Recovery
                 </span>
               </div>
 
-              <div className="h-2 w-full rounded-full bg-surface-sunken overflow-hidden">
+              <div className="h-2 w-full overflow-hidden rounded-full bg-surface-sunken">
                 <div
                   className="h-full bg-recovered transition-all duration-500"
                   style={{
@@ -82,9 +87,9 @@ export function PaymentRailChart({ railPerformance }: PaymentRailChartProps) {
                 />
               </div>
 
-              <div className="flex items-center justify-between text-[10px] text-ink-subtle pt-0.5">
+              <div className="flex items-center justify-between pt-0.5 text-[10px] text-ink-subtle">
                 <span>At Risk: {formatINR(item.at_risk_paise)}</span>
-                <span className="text-ink font-semibold">
+                <span className="font-semibold text-ink">
                   Recovered: {formatINR(item.recovered_paise)}
                 </span>
               </div>

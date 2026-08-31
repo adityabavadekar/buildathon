@@ -42,11 +42,20 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { StatCard } from '@/components/ui/StatCard'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 import { SkeletonCard, SkeletonRow } from '@/components/ui/skeleton'
 
 export function PipelineView() {
-  const [overview, setOverview] = useState<PipelineOverviewResponse | null>(null)
+  const [overview, setOverview] = useState<PipelineOverviewResponse | null>(
+    null,
+  )
   const [timeseries, setTimeseries] = useState<PipelineTimeseriesPoint[]>([])
   const [heatmap, setHeatmap] = useState<PipelineHeatmapCell[]>([])
   const [jobs, setJobs] = useState<ScheduledJobItem[]>([])
@@ -165,34 +174,43 @@ export function PipelineView() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border pb-4">
+      <div className="flex flex-col justify-between gap-3 border-b border-border pb-4 sm:flex-row sm:items-center">
         <div>
           <div className="flex items-center gap-2">
-            <Radio className="h-5 w-5 text-accent animate-pulse" />
-            <h1 className="text-2xl font-bold font-mono text-ink">
+            <Radio className="h-5 w-5 animate-pulse text-accent" />
+            <h1 className="font-mono text-2xl font-bold text-ink">
               Data Pipeline & Ingestion Engine
             </h1>
           </div>
-          <p className="text-sm text-ink-muted mt-0.5">
-            Durable FIFO queue, fast non-blocking 202 webhook ingestion, and background fleet generator.
+          <p className="mt-0.5 text-sm text-ink-muted">
+            Durable FIFO queue, fast non-blocking 202 webhook ingestion, and
+            background fleet generator.
           </p>
         </div>
         <div className="flex items-center gap-2 font-mono text-xs text-ink-muted">
           <Clock className="h-3.5 w-3.5" />
-          <span>Oldest Queue Age: {overview ? `${overview.oldest_queued_age_seconds.toString()}s` : '0s'}</span>
+          <span>
+            Oldest Queue Age:{' '}
+            {overview
+              ? `${overview.oldest_queued_age_seconds.toString()}s`
+              : '0s'}
+          </span>
         </div>
       </div>
 
       {/* Fleet Simulator Remote Control Panel */}
       <Card className="border-accent/40 bg-accent/5">
         <CardHeader className="p-5 pb-3">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
             <div className="flex items-center gap-2.5">
               <Zap className="h-5 w-5 text-accent" />
               <div>
-                <CardTitle className="text-base font-mono">Continuous Fleet Failure Simulator</CardTitle>
+                <CardTitle className="font-mono text-base">
+                  Continuous Fleet Failure Simulator
+                </CardTitle>
                 <CardDescription className="text-xs">
-                  Backend-owned failure generator simulating live merchant traffic across payment rails
+                  Backend-owned failure generator simulating live merchant
+                  traffic across payment rails
                 </CardDescription>
               </div>
             </div>
@@ -213,15 +231,15 @@ export function PipelineView() {
                     : 'GENERATING'
                   : 'STOPPED'}
               </Badge>
-              <span className="font-mono text-xs text-ink font-bold">
+              <span className="font-mono text-xs font-bold text-ink">
                 {fleet?.events_emitted.toString() || '0'} Events Emitted
               </span>
             </div>
           </div>
         </CardHeader>
-        <CardContent className="p-5 pt-0 space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-4 pt-2 border-t border-border/60">
-            <div className="flex flex-wrap items-center gap-4 text-xs font-mono">
+        <CardContent className="space-y-4 p-5 pt-0">
+          <div className="flex flex-wrap items-center justify-between gap-4 border-t border-border/60 pt-2">
+            <div className="flex flex-wrap items-center gap-4 font-mono text-xs">
               <div className="flex items-center gap-2">
                 <span className="text-ink-muted">Rate:</span>
                 <input
@@ -234,9 +252,11 @@ export function PipelineView() {
                     setFleetRate(Number(e.target.value))
                   }}
                   disabled={fleet?.is_running}
-                  className="w-28 accent-accent cursor-pointer"
+                  className="w-28 cursor-pointer accent-accent"
                 />
-                <span className="font-bold text-ink w-14">{fleetRate.toString()} / min</span>
+                <span className="w-14 font-bold text-ink">
+                  {fleetRate.toString()} / min
+                </span>
               </div>
 
               <div className="flex items-center gap-2">
@@ -250,7 +270,7 @@ export function PipelineView() {
                   disabled={fleet?.is_running}
                   className="accent-accent"
                 />
-                <label htmlFor="use_llm" className="text-ink cursor-pointer">
+                <label htmlFor="use_llm" className="cursor-pointer text-ink">
                   Enable LLM Reasoning
                 </label>
               </div>
@@ -265,7 +285,7 @@ export function PipelineView() {
                     void handleStartFleet()
                   }}
                   disabled={fleetLoading}
-                  className="font-mono text-xs flex items-center gap-1.5"
+                  className="flex items-center gap-1.5 font-mono text-xs"
                 >
                   <Play className="h-3.5 w-3.5" />
                   Start Fleet
@@ -280,7 +300,7 @@ export function PipelineView() {
                         void handleResumeFleet()
                       }}
                       disabled={fleetLoading}
-                      className="font-mono text-xs flex items-center gap-1.5"
+                      className="flex items-center gap-1.5 font-mono text-xs"
                     >
                       <Play className="h-3.5 w-3.5" />
                       Resume
@@ -293,7 +313,7 @@ export function PipelineView() {
                         void handlePauseFleet()
                       }}
                       disabled={fleetLoading}
-                      className="font-mono text-xs flex items-center gap-1.5"
+                      className="flex items-center gap-1.5 font-mono text-xs"
                     >
                       <Pause className="h-3.5 w-3.5" />
                       Pause
@@ -306,7 +326,7 @@ export function PipelineView() {
                       void handleStopFleet()
                     }}
                     disabled={fleetLoading}
-                    className="font-mono text-xs flex items-center gap-1.5"
+                    className="flex items-center gap-1.5 font-mono text-xs"
                   >
                     <Square className="h-3.5 w-3.5" />
                     Stop
@@ -332,7 +352,7 @@ export function PipelineView() {
           title="Processing"
           value={(overview?.counts.PROCESSING ?? 0).toString()}
           subtitle="Active in worker pipeline"
-          icon={<RefreshCw className="h-4 w-4 text-accent animate-spin" />}
+          icon={<RefreshCw className="h-4 w-4 animate-spin text-accent" />}
           variant="default"
         />
 
@@ -362,48 +382,65 @@ export function PipelineView() {
       </div>
 
       {/* Timeseries & Heatmap Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         {/* Timeseries Chart Summary */}
         <Card className="lg:col-span-2">
           <CardHeader className="p-5 pb-2">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-mono">Ingestion & Processing Velocity (24h)</CardTitle>
+              <CardTitle className="font-mono text-sm">
+                Ingestion & Processing Velocity (24h)
+              </CardTitle>
               <Badge variant="outline" className="font-mono text-[10px]">
-                {overview ? `${overview.current_processing_rate_per_min.toString()} evt/min` : '0/min'}
+                {overview
+                  ? `${overview.current_processing_rate_per_min.toString()} evt/min`
+                  : '0/min'}
               </Badge>
             </div>
             <CardDescription className="text-xs">
-              Hourly comparison of total events ingested into durable queue vs. fully processed jobs
+              Hourly comparison of total events ingested into durable queue vs.
+              fully processed jobs
             </CardDescription>
           </CardHeader>
           <CardContent className="p-5 pt-2">
-            <div className="h-48 flex items-end gap-1 border-b border-l border-border pt-4 pb-1 pl-2">
+            <div className="flex h-48 items-end gap-1 border-b border-l border-border pt-4 pb-1 pl-2">
               {timeseries.slice(-24).map((pt, idx) => {
-                const maxVal = Math.max(1, ...timeseries.map((t) => Math.max(t.ingested, t.processed)))
-                const ingestedHeight = Math.min(100, (pt.ingested / maxVal) * 100)
-                const processedHeight = Math.min(100, (pt.processed / maxVal) * 100)
+                const maxVal = Math.max(
+                  1,
+                  ...timeseries.map((t) => Math.max(t.ingested, t.processed)),
+                )
+                const ingestedHeight = Math.min(
+                  100,
+                  (pt.ingested / maxVal) * 100,
+                )
+                const processedHeight = Math.min(
+                  100,
+                  (pt.processed / maxVal) * 100,
+                )
                 return (
-                  <div key={idx} className="flex-1 flex flex-col items-center gap-0.5 group relative">
-                    <div className="w-full flex items-end justify-center gap-0.5 h-36">
+                  <div
+                    key={idx}
+                    className="group relative flex flex-1 flex-col items-center gap-0.5"
+                  >
+                    <div className="flex h-36 w-full items-end justify-center gap-0.5">
                       <div
                         style={{ height: `${ingestedHeight.toString()}%` }}
-                        className="w-1.5 bg-accent/60 rounded-t-xs transition-all group-hover:bg-accent"
+                        className="w-1.5 rounded-t-xs bg-accent/60 transition-all group-hover:bg-accent"
                         title={`Ingested: ${pt.ingested.toString()}`}
                       />
                       <div
                         style={{ height: `${processedHeight.toString()}%` }}
-                        className="w-1.5 bg-recovered/60 rounded-t-xs transition-all group-hover:bg-recovered"
+                        className="w-1.5 rounded-t-xs bg-recovered/60 transition-all group-hover:bg-recovered"
                         title={`Processed: ${pt.processed.toString()}`}
                       />
                     </div>
-                    <span className="text-[9px] font-mono text-ink-subtle hidden sm:block">
+                    <span className="hidden font-mono text-[9px] text-ink-subtle sm:block">
                       {new Date(pt.timestamp).getHours().toString()}h
                     </span>
                   </div>
                 )
               })}
             </div>
-            <div className="flex items-center justify-end gap-4 mt-3 text-[11px] font-mono">
+            <div className="mt-3 flex items-center justify-end gap-4 font-mono text-[11px]">
               <div className="flex items-center gap-1.5">
                 <div className="h-2 w-2 rounded-xs bg-accent" />
                 <span className="text-ink-muted">Ingested</span>
@@ -419,7 +456,9 @@ export function PipelineView() {
         {/* 7x24 Flood Heatmap */}
         <Card>
           <CardHeader className="p-5 pb-2">
-            <CardTitle className="text-sm font-mono">Flood & Peak Traffic (7x24)</CardTitle>
+            <CardTitle className="font-mono text-sm">
+              Flood & Peak Traffic (7x24)
+            </CardTitle>
             <CardDescription className="text-xs">
               Weekly distribution identifying systemic peak windows
             </CardDescription>
@@ -428,19 +467,23 @@ export function PipelineView() {
             <div className="space-y-1">
               {days.map((dayName, dIdx) => (
                 <div key={dayName} className="flex items-center gap-1">
-                  <span className="w-7 text-[10px] font-mono text-ink-muted">{dayName}</span>
-                  <div className="flex-1 grid grid-cols-24 gap-0.5">
+                  <span className="w-7 font-mono text-[10px] text-ink-muted">
+                    {dayName}
+                  </span>
+                  <div className="grid flex-1 grid-cols-24 gap-0.5">
                     {Array.from({ length: 24 }).map((_, hIdx) => {
-                      const cell = heatmap.find((c) => c.day === dIdx && c.hour === hIdx)
+                      const cell = heatmap.find(
+                        (c) => c.day === dIdx && c.hour === hIdx,
+                      )
                       const count = cell ? cell.count : 0
                       const bg =
                         count > 20
                           ? 'bg-failed'
                           : count > 10
-                          ? 'bg-pending'
-                          : count > 0
-                          ? 'bg-accent/40'
-                          : 'bg-surface-sunken'
+                            ? 'bg-pending'
+                            : count > 0
+                              ? 'bg-accent/40'
+                              : 'bg-surface-sunken'
                       return (
                         <div
                           key={hIdx}
@@ -453,7 +496,7 @@ export function PipelineView() {
                 </div>
               ))}
             </div>
-            <div className="flex items-center justify-between mt-3 text-[10px] font-mono text-ink-subtle">
+            <div className="mt-3 flex items-center justify-between font-mono text-[10px] text-ink-subtle">
               <span>0h (Midnight)</span>
               <span>12h (Noon)</span>
               <span>23h (Night)</span>
@@ -464,18 +507,21 @@ export function PipelineView() {
 
       {/* Single Event Ingest Modal / Quick Trigger */}
       <Card>
-        <CardHeader className="p-5 pb-2 border-b border-border">
+        <CardHeader className="border-b border-border p-5 pb-2">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Send className="h-4 w-4 text-accent" />
-              <CardTitle className="text-sm font-mono">Manual Single Event Ingress (202 Enqueue Test)</CardTitle>
+              <CardTitle className="font-mono text-sm">
+                Manual Single Event Ingress (202 Enqueue Test)
+              </CardTitle>
             </div>
             <Badge variant="outline" className="font-mono text-[10px]">
               NON-BLOCKING 202
             </Badge>
           </div>
           <CardDescription className="text-xs">
-            Push an individual transaction failure directly into the durable FIFO queue without blocking the HTTP request
+            Push an individual transaction failure directly into the durable
+            FIFO queue without blocking the HTTP request
           </CardDescription>
         </CardHeader>
         <CardContent className="p-5">
@@ -488,7 +534,7 @@ export function PipelineView() {
                 onChange={(e) => {
                   setManualAmount(Number(e.target.value))
                 }}
-                className="rounded-control border border-border bg-surface px-2.5 py-1 text-xs text-ink w-28"
+                className="w-28 rounded-control border border-border bg-surface px-2.5 py-1 text-xs text-ink"
               />
             </div>
 
@@ -517,7 +563,7 @@ export function PipelineView() {
                 onChange={(e) => {
                   setManualErrorCode(e.target.value)
                 }}
-                className="rounded-control border border-border bg-surface px-2.5 py-1 text-xs text-ink w-24"
+                className="w-24 rounded-control border border-border bg-surface px-2.5 py-1 text-xs text-ink"
               />
             </div>
 
@@ -527,7 +573,7 @@ export function PipelineView() {
                 void handleManualIngest()
               }}
               disabled={ingesting}
-              className="font-mono text-xs flex items-center gap-1.5 ml-auto"
+              className="ml-auto flex items-center gap-1.5 font-mono text-xs"
             >
               <Send className="h-3.5 w-3.5" />
               {ingesting ? 'Enqueueing...' : 'Enqueue 202 Event'}
@@ -538,11 +584,12 @@ export function PipelineView() {
 
       {/* Observable Queued Jobs Table */}
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between p-5 border-b border-border">
+        <CardHeader className="flex flex-row items-center justify-between border-b border-border p-5">
           <div>
             <CardTitle>Durable Queue Registry</CardTitle>
-            <CardDescription className="text-xs mt-0.5">
-              Live inspection of FIFO task state, attempts, idempotency keys, and scheduled execution times
+            <CardDescription className="mt-0.5 text-xs">
+              Live inspection of FIFO task state, attempts, idempotency keys,
+              and scheduled execution times
             </CardDescription>
           </div>
           <Button
@@ -551,7 +598,7 @@ export function PipelineView() {
             onClick={() => {
               void fetchData()
             }}
-            className="font-mono text-xs flex items-center gap-1.5"
+            className="flex items-center gap-1.5 font-mono text-xs"
           >
             <RefreshCw className="h-3.5 w-3.5" />
             Refresh Queue
@@ -579,14 +626,19 @@ export function PipelineView() {
                 </>
               ) : jobs.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="h-24 text-center font-mono text-xs text-ink-muted">
+                  <TableCell
+                    colSpan={7}
+                    className="h-24 text-center font-mono text-xs text-ink-muted"
+                  >
                     No active or recent jobs found in the queue.
                   </TableCell>
                 </TableRow>
               ) : (
                 jobs.map((j) => (
                   <TableRow key={j.job_id} className="font-mono text-xs">
-                    <TableCell className="font-semibold text-ink">{j.job_id.slice(0, 12)}...</TableCell>
+                    <TableCell className="font-semibold text-ink">
+                      {j.job_id.slice(0, 12)}...
+                    </TableCell>
                     <TableCell className="text-accent">{j.case_id}</TableCell>
                     <TableCell>{j.job_type}</TableCell>
                     <TableCell>
@@ -595,12 +647,12 @@ export function PipelineView() {
                           j.status === 'DONE'
                             ? 'recovered'
                             : j.status === 'PROCESSING'
-                            ? 'default'
-                            : j.status === 'FAILED'
-                            ? 'pending'
-                            : j.status === 'DEAD'
-                            ? 'failed'
-                            : 'outline'
+                              ? 'default'
+                              : j.status === 'FAILED'
+                                ? 'pending'
+                                : j.status === 'DEAD'
+                                  ? 'failed'
+                                  : 'outline'
                         }
                         className="text-[10px]"
                       >
@@ -611,7 +663,7 @@ export function PipelineView() {
                     <TableCell className="text-ink-muted">
                       {new Date(j.due_at).toLocaleTimeString()}
                     </TableCell>
-                    <TableCell className="text-right text-ink-subtle text-[11px]">
+                    <TableCell className="text-right text-[11px] text-ink-subtle">
                       {j.idempotency_key}
                     </TableCell>
                   </TableRow>

@@ -15,7 +15,9 @@ interface LatencyDistributionChartProps {
   ttrBuckets: TTRBucket[]
 }
 
-export function LatencyDistributionChart({ ttrBuckets }: LatencyDistributionChartProps) {
+export function LatencyDistributionChart({
+  ttrBuckets,
+}: LatencyDistributionChartProps) {
   return (
     <Card>
       <CardHeader>
@@ -24,7 +26,8 @@ export function LatencyDistributionChart({ ttrBuckets }: LatencyDistributionChar
           <CardTitle>Time-to-Recovery (TTR) Latency</CardTitle>
         </div>
         <CardDescription>
-          Distribution of resolution speed across instant drop-off links and banking cooldown windows
+          Distribution of resolution speed across instant drop-off links and
+          banking cooldown windows
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3 font-mono text-xs">
@@ -37,14 +40,17 @@ export function LatencyDistributionChart({ ttrBuckets }: LatencyDistributionChar
             <div key={bucket.bucket} className="space-y-1">
               <div className="flex justify-between">
                 <span className="text-ink">{bucket.bucket}</span>
-                <span className="text-ink-muted font-semibold">
-                  {bucket.percentage.toFixed(0)}% ({bucket.count.toString()} cases)
+                <span className="font-semibold text-ink-muted">
+                  {bucket.percentage.toFixed(0)}% ({bucket.count.toString()}{' '}
+                  cases)
                 </span>
               </div>
-              <div className="h-2 w-full rounded-full bg-surface-sunken overflow-hidden">
+              <div className="h-2 w-full overflow-hidden rounded-full bg-surface-sunken">
                 <div
                   className="h-full bg-accent transition-all duration-500"
-                  style={{ width: `${Math.min(100, bucket.percentage).toString()}%` }}
+                  style={{
+                    width: `${Math.min(100, bucket.percentage).toString()}%`,
+                  }}
                 />
               </div>
             </div>

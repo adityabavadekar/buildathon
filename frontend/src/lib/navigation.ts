@@ -68,7 +68,12 @@ export const MAIN_NAV_ITEMS: {
 }[] = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
   { id: 'analytics', label: 'Analytics', icon: BarChart3 },
-  { id: 'transactions', label: 'Transactions', icon: Receipt, badgeKey: 'cases' },
+  {
+    id: 'transactions',
+    label: 'Transactions',
+    icon: Receipt,
+    badgeKey: 'cases',
+  },
   { id: 'audit', label: 'Audit Log', icon: History },
 ]
 
@@ -88,7 +93,11 @@ export const SETTINGS_NAV_ITEMS: {
   label: string
   icon: LucideIcon
 }[] = [
-  { id: 'settings-general', label: 'General Settings', icon: SlidersHorizontal },
+  {
+    id: 'settings-general',
+    label: 'General Settings',
+    icon: SlidersHorizontal,
+  },
   { id: 'settings-policies', label: 'Merchant Policies', icon: ShieldCheck },
   { id: 'settings-integrations', label: 'Integrations', icon: Unplug },
 ]

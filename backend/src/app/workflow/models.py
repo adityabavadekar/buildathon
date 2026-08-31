@@ -178,6 +178,7 @@ class WorkflowTemplateDefinition(BaseModel):
             adjacency[source].append(target)
         visiting: set[str] = set()
         visited: set[str] = set()
+
         def visit(node_id: str) -> None:
             if node_id in visiting:
                 raise ValueError("workflow graph must not contain cycles")
@@ -188,6 +189,7 @@ class WorkflowTemplateDefinition(BaseModel):
                 visit(child)
             visiting.remove(node_id)
             visited.add(node_id)
+
         for node_id in node_ids:
             visit(node_id)
         return self

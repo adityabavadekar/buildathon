@@ -36,7 +36,9 @@ def test_groq_provider_resolution() -> None:
 
 def test_groq_configured_providers(monkeypatch: pytest.MonkeyPatch) -> None:
     """Verify configured_providers includes groq when key is present."""
-    fake_settings = Settings.model_construct(groq_api_key=SecretStr("gsk_test_123456789"))
+    fake_settings = Settings.model_construct(
+        groq_api_key=SecretStr("gsk_test_123456789")
+    )
     with patch("app.llm.client.get_settings", return_value=fake_settings):
         provs = configured_providers()
         assert "groq" in provs
@@ -45,7 +47,9 @@ def test_groq_configured_providers(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.mark.anyio
 async def test_groq_double_prefix_and_call() -> None:
     """Verify Groq model call correctly formats wire model ID with groq/ prefix."""
-    fake_settings = Settings.model_construct(groq_api_key=SecretStr("gsk_test_valid_key"))
+    fake_settings = Settings.model_construct(
+        groq_api_key=SecretStr("gsk_test_valid_key")
+    )
 
     class FakeMessage:
         content = "OK"

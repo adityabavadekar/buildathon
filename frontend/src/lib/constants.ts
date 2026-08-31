@@ -46,7 +46,10 @@ export type EditablePolicyField =
   | 'holdout_percentage'
   | 'require_human_above_paise'
 
-export const POLICY_FIELD_BOUNDS: Record<EditablePolicyField, PolicyFieldBounds> = {
+export const POLICY_FIELD_BOUNDS: Record<
+  EditablePolicyField,
+  PolicyFieldBounds
+> = {
   max_touches: { min: 1, max: 10 },
   min_cooldown_hours: { min: 0 },
   max_discount_bps: { min: 0, max: 5000 },

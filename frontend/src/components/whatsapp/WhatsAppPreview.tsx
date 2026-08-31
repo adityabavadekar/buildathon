@@ -42,34 +42,38 @@ export function WhatsAppPreview({ caseItem }: WhatsAppPreviewProps) {
   const messageText = lang === 'en' ? defaultMsgEn : defaultMsgHi
 
   return (
-    <div className="rounded-panel border border-border bg-surface overflow-hidden shadow-sm">
+    <div className="overflow-hidden rounded-panel border border-border bg-surface shadow-sm">
       {/* WhatsApp Chat Header */}
       <div className="flex items-center justify-between bg-[#075E54] px-4 py-3 text-white">
         <div className="flex items-center gap-2.5">
-          <div className="flex h-7 w-7 items-center justify-center rounded-full bg-white text-[#075E54] font-bold text-xs font-mono shadow-xs">
+          <div className="flex h-7 w-7 items-center justify-center rounded-full bg-white font-mono text-xs font-bold text-[#075E54] shadow-xs">
             <RazorpaySymbol className="h-4 w-4" />
           </div>
           <div>
             <div className="flex items-center gap-1.5">
-              <span className="text-xs font-semibold">Razorpay Verified Merchant</span>
+              <span className="text-xs font-semibold">
+                Razorpay Verified Merchant
+              </span>
               <ShieldCheck className="h-3.5 w-3.5 text-[#25D366]" />
               <WhatsAppIcon className="h-3.5 w-3.5" />
             </div>
-            <span className="text-[10px] text-white/80 block font-mono">
+            <span className="block font-mono text-[10px] text-white/80">
               +91 98765 00000 · Official Recovery Bot
             </span>
           </div>
         </div>
 
         {/* Language Switcher */}
-        <div className="flex items-center gap-1 rounded-control bg-black/20 p-0.5 text-[10px] font-mono">
+        <div className="flex items-center gap-1 rounded-control bg-black/20 p-0.5 font-mono text-[10px]">
           <button
             type="button"
             onClick={() => {
               setLang('en')
             }}
-            className={`px-1.5 py-0.5 rounded cursor-pointer ${
-              lang === 'en' ? 'bg-white text-[#075E54] font-bold' : 'text-white/80'
+            className={`cursor-pointer rounded px-1.5 py-0.5 ${
+              lang === 'en'
+                ? 'bg-white font-bold text-[#075E54]'
+                : 'text-white/80'
             }`}
           >
             EN
@@ -79,8 +83,10 @@ export function WhatsAppPreview({ caseItem }: WhatsAppPreviewProps) {
             onClick={() => {
               setLang('hi')
             }}
-            className={`px-1.5 py-0.5 rounded cursor-pointer ${
-              lang === 'hi' ? 'bg-white text-[#075E54] font-bold' : 'text-white/80'
+            className={`cursor-pointer rounded px-1.5 py-0.5 ${
+              lang === 'hi'
+                ? 'bg-white font-bold text-[#075E54]'
+                : 'text-white/80'
             }`}
           >
             HI
@@ -89,33 +95,40 @@ export function WhatsAppPreview({ caseItem }: WhatsAppPreviewProps) {
       </div>
 
       {/* WhatsApp Chat Background Body */}
-      <div className="bg-[#EFEAE2] dark:bg-[#0B141A] p-4 min-h-[220px] flex flex-col justify-end space-y-3">
+      <div className="flex min-h-[220px] flex-col justify-end space-y-3 bg-[#EFEAE2] p-4 dark:bg-[#0B141A]">
         {/* Outbound Dunning Bubble */}
-        <div className="max-w-[85%] self-start rounded-panel rounded-tl-xs bg-white dark:bg-[#1F2C34] p-3 shadow-xs border border-black/5 dark:border-white/5 space-y-2">
-          <p className="text-xs text-[#111B21] dark:text-[#E9EDEF] leading-relaxed">
+        <div className="max-w-[85%] space-y-2 self-start rounded-panel rounded-tl-xs border border-black/5 bg-white p-3 shadow-xs dark:border-white/5 dark:bg-[#1F2C34]">
+          <p className="text-xs leading-relaxed text-[#111B21] dark:text-[#E9EDEF]">
             {messageText}
           </p>
 
           {/* Interactive Single-Use Payment Link Card */}
-          <div className="p-2.5 rounded-control bg-[#F0F2F5] dark:bg-[#111B21] border border-black/10 dark:border-white/10 space-y-1.5">
-            <div className="flex items-center justify-between text-[11px] font-mono font-bold text-ink">
+          <div className="space-y-1.5 rounded-control border border-black/10 bg-[#F0F2F5] p-2.5 dark:border-white/10 dark:bg-[#111B21]">
+            <div className="flex items-center justify-between font-mono text-[11px] font-bold text-ink">
               <span>Razorpay Secure Link</span>
               <span className="text-recovered">{formatINR(payablePaise)}</span>
             </div>
             {discountPaise > 0 && (
-              <div className="flex items-center justify-between text-[10px] font-mono text-ink-muted">
+              <div className="flex items-center justify-between font-mono text-[10px] text-ink-muted">
                 <span>Original: {formatINR(amountPaise)}</span>
-                <span className="text-accent font-semibold">Saved {formatINR(discountPaise)}</span>
+                <span className="font-semibold text-accent">
+                  Saved {formatINR(discountPaise)}
+                </span>
               </div>
             )}
-            <div className="flex items-center gap-1 text-[10px] text-accent font-mono pt-1">
+            <div className="flex items-center gap-1 pt-1 font-mono text-[10px] text-accent">
               <ExternalLink className="h-3 w-3" />
               <span>https://rzp.io/i/{caseItem.case_id.slice(0, 8)}</span>
             </div>
           </div>
 
-          <div className="flex items-center justify-end gap-1 text-[9px] font-mono text-ink-muted">
-            <span>{new Date(caseItem.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+          <div className="flex items-center justify-end gap-1 font-mono text-[9px] text-ink-muted">
+            <span>
+              {new Date(caseItem.created_at).toLocaleTimeString([], {
+                hour: '2-digit',
+                minute: '2-digit',
+              })}
+            </span>
             <CheckCheck className="h-3.5 w-3.5 text-[#53BDEB]" />
           </div>
         </div>
@@ -123,7 +136,7 @@ export function WhatsAppPreview({ caseItem }: WhatsAppPreviewProps) {
         {/* Informational Mandate Guidance */}
         {isMandate && (
           <div className="text-center">
-            <span className="inline-block rounded-control bg-white/80 dark:bg-[#1F2C34]/80 px-2.5 py-1 text-[10px] font-mono text-ink-muted shadow-2xs">
+            <span className="inline-block rounded-control bg-white/80 px-2.5 py-1 font-mono text-[10px] text-ink-muted shadow-2xs dark:bg-[#1F2C34]/80">
               Automatic retry scheduled per RBI mandate circular
             </span>
           </div>

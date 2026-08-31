@@ -78,7 +78,9 @@ class LLMSettingsStore:
 
     def _default_state(self) -> LLMSettingsState:
         settings = get_settings()
-        primary_active_model = settings.openrouter_model or DEFAULT_MODELS["openrouter"][0]
+        primary_active_model = (
+            settings.openrouter_model or DEFAULT_MODELS["openrouter"][0]
+        )
         anthropic_available = [primary_active_model, *DEFAULT_MODELS["anthropic"]]
         has_openrouter = bool(
             settings.openrouter_api_key

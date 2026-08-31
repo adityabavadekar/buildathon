@@ -220,7 +220,8 @@ export default function DashboardPage() {
 
               {activeSection === 'workflows' && <WorkflowView />}
 
-              {(activeSection === 'transactions' || activeSection === 'recovery') && (
+              {(activeSection === 'transactions' ||
+                activeSection === 'recovery') && (
                 <RecoveryView
                   onSelectCase={(c) => {
                     setSelectedCase(c)
@@ -247,7 +248,8 @@ export default function DashboardPage() {
                 />
               )}
 
-              {(activeSection === 'policies' || activeSection === 'settings-policies') && (
+              {(activeSection === 'policies' ||
+                activeSection === 'settings-policies') && (
                 <PoliciesView
                   policies={policies}
                   loading={casesLoading}
@@ -276,7 +278,8 @@ export default function DashboardPage() {
                 />
               )}
 
-              {(activeSection === 'settings' || activeSection === 'settings-general') && (
+              {(activeSection === 'settings' ||
+                activeSection === 'settings-general') && (
                 <SettingsView settings={settings} loading={casesLoading} />
               )}
 

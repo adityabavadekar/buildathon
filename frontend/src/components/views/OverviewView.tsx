@@ -9,7 +9,12 @@ import {
   ShieldAlert,
   TrendingUp,
 } from 'lucide-react'
-import { resetSimulation, seedSimulationBatch, type AnalyticsSummaryResponse, type RecoveryCase } from '@/lib/api'
+import {
+  resetSimulation,
+  seedSimulationBatch,
+  type AnalyticsSummaryResponse,
+  type RecoveryCase,
+} from '@/lib/api'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -72,20 +77,42 @@ export function OverviewView({
     ? analytics.recovered_amount_paise
     : cases
         .filter((c) => c.state === 'RECOVERED')
-        .reduce((acc, c) => acc + (c.recovered_amount_paise || c.amount_paise), 0)
+        .reduce(
+          (acc, c) => acc + (c.recovered_amount_paise || c.amount_paise),
+          0,
+        )
   const totalNrvPaise = analytics
     ? analytics.net_recovered_value_paise
     : totalRecoveredPaise
 
-  const recoveredCasesCount = cases.filter((c) => c.state === 'RECOVERED').length
+  const recoveredCasesCount = cases.filter(
+    (c) => c.state === 'RECOVERED',
+  ).length
   const totalCasesCount = cases.length
 
-  const activeCount = analytics?.active_cases !== undefined ? analytics.active_cases : cases.filter((c) =>
-    ['IN_DUNNING', 'OUTREACH_PENDING', 'RETRY_SCHEDULED', 'ANALYSIS_QUEUED'].includes(c.state)
-  ).length
-  const escalatedCount = analytics?.escalated_cases !== undefined ? analytics.escalated_cases : cases.filter((c) => c.state === 'ESCALATED').length
-  const recoveredCount = analytics?.recovered_cases !== undefined ? analytics.recovered_cases : recoveredCasesCount
-  const totalCount = analytics?.total_cases !== undefined ? analytics.total_cases : totalCasesCount
+  const activeCount =
+    analytics?.active_cases !== undefined
+      ? analytics.active_cases
+      : cases.filter((c) =>
+          [
+            'IN_DUNNING',
+            'OUTREACH_PENDING',
+            'RETRY_SCHEDULED',
+            'ANALYSIS_QUEUED',
+          ].includes(c.state),
+        ).length
+  const escalatedCount =
+    analytics?.escalated_cases !== undefined
+      ? analytics.escalated_cases
+      : cases.filter((c) => c.state === 'ESCALATED').length
+  const recoveredCount =
+    analytics?.recovered_cases !== undefined
+      ? analytics.recovered_cases
+      : recoveredCasesCount
+  const totalCount =
+    analytics?.total_cases !== undefined
+      ? analytics.total_cases
+      : totalCasesCount
 
   let recoveryRate = 0
   if (analytics) {
@@ -117,13 +144,14 @@ export function OverviewView({
   return (
     <div className="space-y-6">
       {/* View Header with Plain-Language Context */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-border pb-4">
+      <div className="flex flex-col gap-3 border-b border-border pb-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold font-mono text-ink">
+          <h1 className="font-mono text-2xl font-bold text-ink">
             Revenue Recovery Control Center
           </h1>
-          <p className="text-sm text-ink-muted mt-0.5">
-            Autonomous intervention lifecycle for failed payments, abandoned checkouts, and overdue receivables.
+          <p className="mt-0.5 text-sm text-ink-muted">
+            Autonomous intervention lifecycle for failed payments, abandoned
+            checkouts, and overdue receivables.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -174,7 +202,11 @@ export function OverviewView({
         ) : (
           <>
             <StatCard
-              title={<GlossaryTerm termKey="AT_RISK_REVENUE">At Risk Revenue</GlossaryTerm>}
+              title={
+                <GlossaryTerm termKey="AT_RISK_REVENUE">
+                  At Risk Revenue
+                </GlossaryTerm>
+              }
               value={formatINR(totalAtRiskPaise)}
               subtitle={`${totalCount.toString()} total failed transactions worked`}
               icon={<AlertTriangle className="h-4 w-4 text-failed" />}
@@ -182,7 +214,11 @@ export function OverviewView({
             />
 
             <StatCard
-              title={<GlossaryTerm termKey="RECOVERED_NRV">Recovered (NRV)</GlossaryTerm>}
+              title={
+                <GlossaryTerm termKey="RECOVERED_NRV">
+                  Recovered (NRV)
+                </GlossaryTerm>
+              }
               value={formatINR(totalNrvPaise)}
               subtitle={`Gross: ${formatINR(totalRecoveredPaise)} (Net of Costs)`}
               icon={<CheckCircle2 className="h-4 w-4 text-recovered" />}
@@ -190,7 +226,11 @@ export function OverviewView({
             />
 
             <StatCard
-              title={<GlossaryTerm termKey="RECOVERY_RATE">Recovery Rate</GlossaryTerm>}
+              title={
+                <GlossaryTerm termKey="RECOVERY_RATE">
+                  Recovery Rate
+                </GlossaryTerm>
+              }
               value={`${recoveryRate.toFixed(1)}%`}
               subtitle={`${recoveredCount.toString()} of ${totalCount.toString()} cases resolved`}
               icon={<TrendingUp className="h-4 w-4 text-accent" />}
@@ -198,14 +238,22 @@ export function OverviewView({
             />
 
             <StatCard
-              title={<GlossaryTerm termKey="HUMAN_IN_THE_LOOP">Need Attention</GlossaryTerm>}
+              title={
+                <GlossaryTerm termKey="HUMAN_IN_THE_LOOP">
+                  Need Attention
+                </GlossaryTerm>
+              }
               value={escalatedCount.toString()}
               subtitle={
                 escalatedCount > 0
                   ? 'Escalated cases require operator signoff'
                   : 'Zero high-risk escalations pending'
               }
-              icon={<ShieldAlert className={`h-4 w-4 ${escalatedCount > 0 ? 'text-escalated' : 'text-ink-muted'}`} />}
+              icon={
+                <ShieldAlert
+                  className={`h-4 w-4 ${escalatedCount > 0 ? 'text-escalated' : 'text-ink-muted'}`}
+                />
+              }
               variant={escalatedCount > 0 ? 'escalated' : 'default'}
             />
           </>
@@ -214,33 +262,42 @@ export function OverviewView({
 
       {/* Counterfactual Lift Callout Banner */}
       {analytics && (
-        <div className="rounded-panel border border-accent/40 bg-accent/5 p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex flex-col justify-between gap-4 rounded-panel border border-accent/40 bg-accent/5 p-4 sm:p-5 md:flex-row md:items-center">
           <div className="space-y-1">
             <div className="flex items-center gap-2">
               <TrendingUp className="h-4 w-4 text-accent" />
-              <span className="font-mono text-xs font-bold text-ink uppercase tracking-wider">
+              <span className="font-mono text-xs font-bold tracking-wider text-ink uppercase">
                 <GlossaryTerm termKey="HOLDOUT_ARM" showIcon={false}>
                   Counterfactual Recovery Lift (vs. 10% Control Arm)
                 </GlossaryTerm>
               </span>
             </div>
             <p className="text-xs text-ink-muted">
-              The AI engine achieved <strong className="text-recovered font-mono">+{analytics.attributable_lift_pct.toFixed(1)}% lift</strong> in net recovery over natural recovery in uncontacted holdout cases.
+              The AI engine achieved{' '}
+              <strong className="font-mono text-recovered">
+                +{analytics.attributable_lift_pct.toFixed(1)}% lift
+              </strong>{' '}
+              in net recovery over natural recovery in uncontacted holdout
+              cases.
             </p>
           </div>
-          <div className="flex items-center gap-4 font-mono text-xs border-t md:border-t-0 md:border-l border-border pt-3 md:pt-0 md:pl-6">
+          <div className="flex items-center gap-4 border-t border-border pt-3 font-mono text-xs md:border-t-0 md:border-l md:pt-0 md:pl-6">
             <div>
-              <span className="text-ink-muted block text-[11px]">
-                <GlossaryTerm termKey="TREATMENT_ARM" showIcon={false}>Treatment Cohort</GlossaryTerm>
+              <span className="block text-[11px] text-ink-muted">
+                <GlossaryTerm termKey="TREATMENT_ARM" showIcon={false}>
+                  Treatment Cohort
+                </GlossaryTerm>
               </span>
               <span className="text-sm font-bold text-ink">
                 {analytics.treatment_recovery_rate_pct.toFixed(1)}%
               </span>
             </div>
-            <div className="h-6 w-px bg-border hidden sm:block" />
+            <div className="hidden h-6 w-px bg-border sm:block" />
             <div>
-              <span className="text-ink-muted block text-[11px]">
-                <GlossaryTerm termKey="HOLDOUT_ARM" showIcon={false}>Holdout Control</GlossaryTerm>
+              <span className="block text-[11px] text-ink-muted">
+                <GlossaryTerm termKey="HOLDOUT_ARM" showIcon={false}>
+                  Holdout Control
+                </GlossaryTerm>
               </span>
               <span className="text-sm font-bold text-ink-muted">
                 {analytics.holdout_recovery_rate_pct.toFixed(1)}%
@@ -253,24 +310,28 @@ export function OverviewView({
       {/* Operations Quick Action Cards Grid */}
       <section className="grid grid-cols-1 gap-6 md:grid-cols-3">
         <Card
-          className="cursor-pointer hover:border-accent/40 transition-colors"
+          className="cursor-pointer transition-colors hover:border-accent/40"
           onClick={() => {
             onNavigateToRecovery('ACTIVE')
           }}
         >
-          <CardHeader className="p-4 sm:p-5 pb-2">
+          <CardHeader className="p-4 pb-2 sm:p-5">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-mono text-ink">In-Flight Queue</CardTitle>
+              <CardTitle className="font-mono text-sm text-ink">
+                In-Flight Queue
+              </CardTitle>
               <RotateCcw className="h-4 w-4 text-accent" />
             </div>
             <CardDescription className="text-xs text-ink-muted">
               Active dunning sequences & scheduled smart retries
             </CardDescription>
           </CardHeader>
-          <CardContent className="p-4 sm:p-5 pt-0">
-            <div className="flex items-baseline justify-between mt-2 font-mono">
-              <span className="text-2xl font-bold text-ink">{activeCount.toString()}</span>
-              <span className="text-xs text-accent flex items-center gap-1">
+          <CardContent className="p-4 pt-0 sm:p-5">
+            <div className="mt-2 flex items-baseline justify-between font-mono">
+              <span className="text-2xl font-bold text-ink">
+                {activeCount.toString()}
+              </span>
+              <span className="flex items-center gap-1 text-xs text-accent">
                 View Queue <ArrowRight className="h-3 w-3" />
               </span>
             </div>
@@ -287,21 +348,25 @@ export function OverviewView({
             onNavigateToRecovery('ESCALATED')
           }}
         >
-          <CardHeader className="p-4 sm:p-5 pb-2">
+          <CardHeader className="p-4 pb-2 sm:p-5">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-mono text-ink">Manual Approvals</CardTitle>
+              <CardTitle className="font-mono text-sm text-ink">
+                Manual Approvals
+              </CardTitle>
               <ShieldAlert className="h-4 w-4 text-escalated" />
             </div>
             <CardDescription className="text-xs text-ink-muted">
               Cases escalated by deterministic guardrails
             </CardDescription>
           </CardHeader>
-          <CardContent className="p-4 sm:p-5 pt-0">
-            <div className="flex items-baseline justify-between mt-2 font-mono">
-              <span className={`text-2xl font-bold ${escalatedCount > 0 ? 'text-escalated' : 'text-ink'}`}>
+          <CardContent className="p-4 pt-0 sm:p-5">
+            <div className="mt-2 flex items-baseline justify-between font-mono">
+              <span
+                className={`text-2xl font-bold ${escalatedCount > 0 ? 'text-escalated' : 'text-ink'}`}
+              >
                 {escalatedCount.toString()}
               </span>
-              <span className="text-xs text-escalated flex items-center gap-1">
+              <span className="flex items-center gap-1 text-xs text-escalated">
                 Review Cases <ArrowRight className="h-3 w-3" />
               </span>
             </div>
@@ -309,24 +374,28 @@ export function OverviewView({
         </Card>
 
         <Card
-          className="cursor-pointer hover:border-recovered/40 transition-colors"
+          className="cursor-pointer transition-colors hover:border-recovered/40"
           onClick={() => {
             onNavigateToRecovery('RECOVERED')
           }}
         >
-          <CardHeader className="p-4 sm:p-5 pb-2">
+          <CardHeader className="p-4 pb-2 sm:p-5">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-mono text-ink">Recovered Volume</CardTitle>
+              <CardTitle className="font-mono text-sm text-ink">
+                Recovered Volume
+              </CardTitle>
               <CheckCircle2 className="h-4 w-4 text-recovered" />
             </div>
             <CardDescription className="text-xs text-ink-muted">
               Successfully completed revenue recoveries
             </CardDescription>
           </CardHeader>
-          <CardContent className="p-4 sm:p-5 pt-0">
-            <div className="flex items-baseline justify-between mt-2 font-mono">
-              <span className="text-2xl font-bold text-recovered">{recoveredCount.toString()}</span>
-              <span className="text-xs text-recovered flex items-center gap-1">
+          <CardContent className="p-4 pt-0 sm:p-5">
+            <div className="mt-2 flex items-baseline justify-between font-mono">
+              <span className="text-2xl font-bold text-recovered">
+                {recoveredCount.toString()}
+              </span>
+              <span className="flex items-center gap-1 text-xs text-recovered">
                 View Ledger <ArrowRight className="h-3 w-3" />
               </span>
             </div>
@@ -338,7 +407,9 @@ export function OverviewView({
       {analytics && (
         <section className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <RecoveryVelocityChart timeSeries={analytics.time_series} />
-          <LatencyDistributionChart ttrBuckets={analytics.time_to_recovery_buckets} />
+          <LatencyDistributionChart
+            ttrBuckets={analytics.time_to_recovery_buckets}
+          />
         </section>
       )}
 
@@ -358,11 +429,12 @@ export function OverviewView({
 
       {/* Recent Cases Preview Table */}
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between p-4 sm:p-5 border-b border-border">
+        <CardHeader className="flex flex-row items-center justify-between border-b border-border p-4 sm:p-5">
           <div>
             <CardTitle>Recent Recovery Cases</CardTitle>
-            <CardDescription className="text-xs mt-0.5">
-              Live stream of recent failed payments ingested into recovery engine
+            <CardDescription className="mt-0.5 text-xs">
+              Live stream of recent failed payments ingested into recovery
+              engine
             </CardDescription>
           </div>
           <Button
@@ -402,7 +474,8 @@ export function OverviewView({
                     colSpan={6}
                     className="h-24 text-center font-mono text-xs text-ink-muted"
                   >
-                    No recovery cases found. Click &quot;Seed 50 Failures&quot; to generate synthetic cases.
+                    No recovery cases found. Click &quot;Seed 50 Failures&quot;
+                    to generate synthetic cases.
                   </TableCell>
                 </TableRow>
               ) : (
@@ -424,7 +497,10 @@ export function OverviewView({
                       {formatINR(c.amount_paise)}
                     </TableCell>
                     <TableCell>
-                      <Badge variant="outline" className="font-mono text-[10px]">
+                      <Badge
+                        variant="outline"
+                        className="font-mono text-[10px]"
+                      >
                         {c.experiment_arm}
                       </Badge>
                     </TableCell>
@@ -434,8 +510,8 @@ export function OverviewView({
                           c.state === 'RECOVERED'
                             ? 'recovered'
                             : c.state === 'ESCALATED'
-                            ? 'escalated'
-                            : 'pending'
+                              ? 'escalated'
+                              : 'pending'
                         }
                       >
                         {c.state.replace('_', ' ')}

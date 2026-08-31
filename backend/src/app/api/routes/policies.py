@@ -11,7 +11,6 @@ from app.intervention.policy_gate import get_active_policy, set_active_policy
 router = APIRouter(prefix="/policies", tags=["policies"])
 
 
-
 class PolicyRuleDetail(BaseModel):
     """Details of an active recovery invariant rule."""
 

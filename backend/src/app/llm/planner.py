@@ -84,7 +84,9 @@ def _extract_json_block(text: str) -> dict[str, Any]:
 
     def parse(candidate: str) -> dict[str, Any]:
         repaired = re.sub(r",\s*([}\]])", r"\1", candidate)
-        repaired = re.sub(r"([{,])\s*([A-Za-z_][A-Za-z0-9_]*)\s*:", r'\1 "\2":', repaired)
+        repaired = re.sub(
+            r"([{,])\s*([A-Za-z_][A-Za-z0-9_]*)\s*:", r'\1 "\2":', repaired
+        )
         parsed_value: Any = json.loads(repaired)
         if not isinstance(parsed_value, dict):
             raise TypeError("LLM response is not a JSON object")
@@ -258,7 +260,9 @@ class RecoveryPlanner:
             if state.providers
             else get_settings().openrouter_model
         )
-        attempted_provider = state.providers[0].name if state.providers else "openrouter"
+        attempted_provider = (
+            state.providers[0].name if state.providers else "openrouter"
+        )
 
         # Deterministic rule fallback with structured audit metadata and telemetry
         fallback_res = self.fallback_classifier.classify(event)

@@ -13,7 +13,8 @@ interface AutonomySwitcherProps {
 }
 
 export function AutonomySwitcher({ onModeChange }: AutonomySwitcherProps) {
-  const [currentMode, setCurrentMode] = useState<OperatorAutonomyMode>('FULL_AUTONOMY')
+  const [currentMode, setCurrentMode] =
+    useState<OperatorAutonomyMode>('FULL_AUTONOMY')
   const [isUpdating, setIsUpdating] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
@@ -58,16 +59,16 @@ export function AutonomySwitcher({ onModeChange }: AutonomySwitcherProps) {
 
   return (
     <div className="relative flex items-center">
-      <div className="flex items-center rounded-control bg-surface-sunken p-0.5 border border-border text-xs font-mono">
+      <div className="flex items-center rounded-control border border-border bg-surface-sunken p-0.5 font-mono text-xs">
         <button
           type="button"
           disabled={isUpdating}
           onClick={() => {
             void handleSelect('FULL_AUTONOMY')
           }}
-          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-control transition-all cursor-pointer ${
+          className={`flex cursor-pointer items-center gap-1.5 rounded-control px-2.5 py-1 transition-all ${
             currentMode === 'FULL_AUTONOMY'
-              ? 'bg-recovered text-white font-bold shadow-xs'
+              ? 'bg-recovered font-bold text-white shadow-xs'
               : 'text-ink-muted hover:text-ink disabled:opacity-50'
           }`}
           title="Full autonomous dunning and smart retries active"
@@ -86,9 +87,9 @@ export function AutonomySwitcher({ onModeChange }: AutonomySwitcherProps) {
           onClick={() => {
             void handleSelect('HUMAN_IN_THE_LOOP')
           }}
-          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-control transition-all cursor-pointer ${
+          className={`flex cursor-pointer items-center gap-1.5 rounded-control px-2.5 py-1 transition-all ${
             currentMode === 'HUMAN_IN_THE_LOOP'
-              ? 'bg-accent text-white font-bold shadow-xs'
+              ? 'bg-accent font-bold text-white shadow-xs'
               : 'text-ink-muted hover:text-ink disabled:opacity-50'
           }`}
           title="AI plans strategy; operator approval required"
@@ -107,9 +108,9 @@ export function AutonomySwitcher({ onModeChange }: AutonomySwitcherProps) {
           onClick={() => {
             void handleSelect('MONITORING_ONLY')
           }}
-          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-control transition-all cursor-pointer ${
+          className={`flex cursor-pointer items-center gap-1.5 rounded-control px-2.5 py-1 transition-all ${
             currentMode === 'MONITORING_ONLY'
-              ? 'bg-failed text-white font-bold shadow-xs'
+              ? 'bg-failed font-bold text-white shadow-xs'
               : 'text-ink-muted hover:text-ink disabled:opacity-50'
           }`}
           title="Global Circuit Breaker: Outbound interventions paused"
@@ -124,7 +125,7 @@ export function AutonomySwitcher({ onModeChange }: AutonomySwitcherProps) {
       </div>
 
       {errorMessage && (
-        <span className="absolute -bottom-5 right-0 text-[10px] text-failed font-mono whitespace-nowrap">
+        <span className="absolute right-0 -bottom-5 font-mono text-[10px] whitespace-nowrap text-failed">
           {errorMessage}
         </span>
       )}

@@ -122,11 +122,15 @@ class WorkflowRepository:
                 except sqlite3.OperationalError:
                     pass
             try:
-                cur.execute("ALTER TABLE workflow_template_definitions ADD COLUMN description TEXT NOT NULL DEFAULT '';" )
+                cur.execute(
+                    "ALTER TABLE workflow_template_definitions ADD COLUMN description TEXT NOT NULL DEFAULT '';"
+                )
             except sqlite3.OperationalError:
                 pass
             try:
-                cur.execute("ALTER TABLE workflow_template_definitions ADD COLUMN status TEXT NOT NULL DEFAULT 'draft';")
+                cur.execute(
+                    "ALTER TABLE workflow_template_definitions ADD COLUMN status TEXT NOT NULL DEFAULT 'draft';"
+                )
             except sqlite3.OperationalError:
                 pass
             defaults = (
@@ -430,14 +434,21 @@ class WorkflowRepository:
         graph_nodes = json.loads(row["graph_nodes_json"])
         graph_edges = json.loads(row["graph_edges_json"])
         # Older built-ins predate terminal nodes; normalize them on read.
-        if graph_nodes and not any(node.get("type") == "terminal" for node in graph_nodes):
+        if graph_nodes and not any(
+            node.get("type") == "terminal" for node in graph_nodes
+        ):
             last_id = graph_nodes[-1].get("id", "last")
-            graph_nodes.append({"id": "terminal", "label": "Complete", "type": "terminal"})
-            graph_edges.append({"id": "terminal-edge", "source": last_id, "target": "terminal"})
+            graph_nodes.append(
+                {"id": "terminal", "label": "Complete", "type": "terminal"}
+            )
+            graph_edges.append(
+                {"id": "terminal-edge", "source": last_id, "target": "terminal"}
+            )
         return WorkflowTemplateDefinition(
             template_id=row["template_id"],
             name=row["name"],
-            description=row["description"] or f"Durable recovery path for {row['name'].lower()}.",
+            description=row["description"]
+            or f"Durable recovery path for {row['name'].lower()}.",
             status=row["status"],
             base_template=WorkflowTemplate(row["base_template"]),
             trigger_type=row["trigger_type"],

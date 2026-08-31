@@ -26,7 +26,7 @@ export function GlossaryTerm({
 
   return (
     <span
-      className={`relative inline-flex items-center gap-1 cursor-help group ${className}`}
+      className={`group relative inline-flex cursor-help items-center gap-1 ${className}`}
       onMouseEnter={() => {
         setOpen(true)
       }}
@@ -46,21 +46,23 @@ export function GlossaryTerm({
         {children ?? item.term}
       </span>
       {showIcon && (
-        <HelpCircle className="h-3 w-3 text-ink-muted transition-colors group-hover:text-ink shrink-0" />
+        <HelpCircle className="h-3 w-3 shrink-0 text-ink-muted transition-colors group-hover:text-ink" />
       )}
 
       {open && (
-        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-50 w-72 p-3 rounded-panel bg-surface border border-border shadow-xl text-left font-sans animate-in fade-in-0 zoom-in-95 pointer-events-none">
-          <div className="flex items-center justify-between pb-1 mb-1.5 border-b border-border/60">
+        <div className="animate-in fade-in-0 zoom-in-95 pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 w-72 -translate-x-1/2 rounded-panel border border-border bg-surface p-3 text-left font-sans shadow-xl">
+          <div className="mb-1.5 flex items-center justify-between border-b border-border/60 pb-1">
             <span className="font-mono text-xs font-bold text-ink">
               {item.title}
             </span>
           </div>
-          <p className="text-[11px] leading-relaxed text-ink mb-2">
+          <p className="mb-2 text-[11px] leading-relaxed text-ink">
             {item.definition}
           </p>
-          <div className="pt-1.5 border-t border-border/40 text-[10px] leading-tight text-accent font-medium">
-            <span className="font-semibold text-ink-subtle">Why it matters: </span>
+          <div className="border-t border-border/40 pt-1.5 text-[10px] leading-tight font-medium text-accent">
+            <span className="font-semibold text-ink-subtle">
+              Why it matters:{' '}
+            </span>
             {item.whyItMatters}
           </div>
           {/* Subtle triangle arrow */}

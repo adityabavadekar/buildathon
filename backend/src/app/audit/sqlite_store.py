@@ -1494,12 +1494,28 @@ class RelationalCaseStore:
             self._conn.executemany(
                 "INSERT OR REPLACE INTO pattern_alerts VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 [
-                    (item["alert_id"], item["run_id"], item["seed"], item["feature_scope"], item["dominant_category"], item["dominant_intervention"], item["member_count"], item["mean_amount_paise"], json.dumps(item["example_case_ids"]), item["created_at"])
+                    (
+                        item["alert_id"],
+                        item["run_id"],
+                        item["seed"],
+                        item["feature_scope"],
+                        item["dominant_category"],
+                        item["dominant_intervention"],
+                        item["member_count"],
+                        item["mean_amount_paise"],
+                        json.dumps(item["example_case_ids"]),
+                        item["created_at"],
+                    )
                     for item in alerts
                 ],
             )
 
     def list_pattern_alerts(self) -> list[dict[str, Any]]:
         with self._lock:
-            rows = self._conn.execute("SELECT * FROM pattern_alerts ORDER BY created_at DESC").fetchall()
-        return [{**dict(row), "example_case_ids": json.loads(row["example_case_ids_json"])} for row in rows]
+            rows = self._conn.execute(
+                "SELECT * FROM pattern_alerts ORDER BY created_at DESC"
+            ).fetchall()
+        return [
+            {**dict(row), "example_case_ids": json.loads(row["example_case_ids_json"])}
+            for row in rows
+        ]

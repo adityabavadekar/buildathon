@@ -181,7 +181,9 @@ async def list_cases(  # noqa: PLR0917
     visible_cases = list(cases)
     if role.lower() in {"viewer", "analyst"}:
         visible_cases = [
-            item.model_copy(update={"user_ref": None, "contact_email": None, "contact_phone": None})
+            item.model_copy(
+                update={"user_ref": None, "contact_email": None, "contact_phone": None}
+            )
             for item in visible_cases
         ]
     return CaseListResponse(

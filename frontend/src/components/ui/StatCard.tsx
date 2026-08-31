@@ -1,7 +1,13 @@
 'use client'
 
 import React, { ReactNode } from 'react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card'
 
 interface StatCardProps {
   title: ReactNode
@@ -23,7 +29,8 @@ export function StatCard({
   const variantStyles = {
     default: 'hover:border-border-strong',
     recovered: 'border-recovered/30 bg-recovered/5 hover:border-recovered/60',
-    escalated: 'border-escalated/50 bg-escalated-subtle/20 hover:border-escalated/70',
+    escalated:
+      'border-escalated/50 bg-escalated-subtle/20 hover:border-escalated/70',
     failed: 'border-failed/30 bg-failed/5 hover:border-failed/60',
     accent: 'border-accent/30 bg-accent/5 hover:border-accent/60',
   }
@@ -37,24 +44,26 @@ export function StatCard({
   }
 
   return (
-    <Card className={`${variantStyles[variant]} transition-colors ${className}`}>
-      <CardHeader className="p-5 pb-2 border-none">
+    <Card
+      className={`${variantStyles[variant]} transition-colors ${className}`}
+    >
+      <CardHeader className="border-none p-5 pb-2">
         <div className="flex items-center justify-between">
           <CardDescription className="text-sm font-semibold text-ink">
             {title}
           </CardDescription>
           {icon && (
-            <div className="p-2 rounded-control bg-surface-sunken">
-              {icon}
-            </div>
+            <div className="rounded-control bg-surface-sunken p-2">{icon}</div>
           )}
         </div>
-        <CardTitle className={`text-3xl sm:text-4xl font-mono font-bold tabular-nums tracking-tight mt-1 ${textStyles[variant]}`}>
+        <CardTitle
+          className={`mt-1 font-mono text-3xl font-bold tracking-tight tabular-nums sm:text-4xl ${textStyles[variant]}`}
+        >
           {value}
         </CardTitle>
       </CardHeader>
       {subtitle && (
-        <CardContent className="p-5 pt-0 text-xs sm:text-sm text-ink-muted leading-relaxed">
+        <CardContent className="p-5 pt-0 text-xs leading-relaxed text-ink-muted sm:text-sm">
           {subtitle}
         </CardContent>
       )}

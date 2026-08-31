@@ -43,7 +43,8 @@ interface SettingsViewProps {
 
 export function SettingsView({ settings, loading }: SettingsViewProps) {
   const [testingGateway, setTestingGateway] = useState<boolean>(false)
-  const [gatewayTestResult, setGatewayTestResult] = useState<GatewayTestResponse | null>(null)
+  const [gatewayTestResult, setGatewayTestResult] =
+    useState<GatewayTestResponse | null>(null)
 
   const [llmConfig, setLlmConfig] = useState<LLMSettingsState | null>(null)
   const [llmReport, setLlmReport] = useState<LLMReportResponse | null>(null)
@@ -80,7 +81,7 @@ export function SettingsView({ settings, loading }: SettingsViewProps) {
     const updated = {
       ...llmConfig,
       providers: llmConfig.providers.map((p) =>
-        p.name === name ? { ...p, enabled: !p.enabled } : p
+        p.name === name ? { ...p, enabled: !p.enabled } : p,
       ),
     }
     setLlmConfig(updated)
@@ -106,7 +107,7 @@ export function SettingsView({ settings, loading }: SettingsViewProps) {
     const updated = {
       ...llmConfig,
       providers: llmConfig.providers.map((p) =>
-        p.name === providerName ? { ...p, active_model: model } : p
+        p.name === providerName ? { ...p, active_model: model } : p,
       ),
     }
     setLlmConfig(updated)
@@ -133,11 +134,12 @@ export function SettingsView({ settings, loading }: SettingsViewProps) {
     <div className="space-y-6">
       {/* View Header */}
       <div className="border-b border-border pb-4">
-        <h1 className="text-2xl font-bold font-mono text-ink">
+        <h1 className="font-mono text-2xl font-bold text-ink">
           System & Engine Settings
         </h1>
-        <p className="text-sm text-ink-muted mt-0.5">
-          Real-time gateway credentials, multi-provider LLM priority hierarchy, model telemetry, and A/B experiment evaluation.
+        <p className="mt-0.5 text-sm text-ink-muted">
+          Real-time gateway credentials, multi-provider LLM priority hierarchy,
+          model telemetry, and A/B experiment evaluation.
         </p>
       </div>
 
@@ -149,32 +151,54 @@ export function SettingsView({ settings, loading }: SettingsViewProps) {
             <CardTitle>Razorpay Webhook & Payment Gateway</CardTitle>
           </div>
           <CardDescription className="text-xs">
-            Direct production connection parameters for synchronous webhook ingress and smart recovery link generation
+            Direct production connection parameters for synchronous webhook
+            ingress and smart recovery link generation
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {loading ? (
             <SkeletonCard />
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 font-mono text-xs">
-              <div className="space-y-1 p-3 rounded-control bg-surface-sunken border border-border">
-                <span className="text-ink-muted block text-[11px]">Active Environment</span>
-                <span className="text-ink font-bold uppercase">{settings?.environment || 'LIVE / PRODUCTION'}</span>
-              </div>
-
-              <div className="space-y-1 p-3 rounded-control bg-surface-sunken border border-border">
-                <span className="text-ink-muted block text-[11px]">Razorpay Key ID</span>
-                <span className="text-ink font-semibold">
-                  {settings?.razorpay_key_id ? `${settings.razorpay_key_id.slice(0, 10)}...` : 'rzp_live_buildathon'}
+            <div className="grid grid-cols-1 gap-4 font-mono text-xs md:grid-cols-2">
+              <div className="space-y-1 rounded-control border border-border bg-surface-sunken p-3">
+                <span className="block text-[11px] text-ink-muted">
+                  Active Environment
+                </span>
+                <span className="font-bold text-ink uppercase">
+                  {settings?.environment || 'LIVE / PRODUCTION'}
                 </span>
               </div>
 
-              <div className="space-y-1 p-3 rounded-control bg-surface-sunken border border-border md:col-span-2">
-                <span className="text-ink-muted block text-[11px]">Ingress Webhook Endpoint</span>
+              <div className="space-y-1 rounded-control border border-border bg-surface-sunken p-3">
+                <span className="block text-[11px] text-ink-muted">
+                  Razorpay Key ID
+                </span>
+                <span className="font-semibold text-ink">
+                  {settings?.razorpay_key_id
+                    ? `${settings.razorpay_key_id.slice(0, 10)}...`
+                    : 'rzp_live_buildathon'}
+                </span>
+              </div>
+
+              <div className="space-y-1 rounded-control border border-border bg-surface-sunken p-3 md:col-span-2">
+                <span className="block text-[11px] text-ink-muted">
+                  Ingress Webhook Endpoint
+                </span>
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-ink truncate select-all">{settings?.webhook_ingress_url || '/api/webhooks/razorpay'}</span>
-                  <Badge variant={settings?.webhook_secret_configured ? 'recovered' : 'outline'} className="text-[10px]">
-                    {settings?.webhook_secret_configured ? 'HMAC Verification Active' : 'Unsigned (Simulated)'}
+                  <span className="truncate text-ink select-all">
+                    {settings?.webhook_ingress_url || '/api/webhooks/razorpay'}
+                  </span>
+                  <Badge
+                    variant={
+                      settings?.webhook_secret_configured
+                        ? 'recovered'
+                        : 'outline'
+                    }
+                    className="text-[10px]"
+                  >
+                    {settings?.webhook_secret_configured
+                      ? 'HMAC Verification Active'
+                      : 'Unsigned (Simulated)'}
                   </Badge>
                 </div>
               </div>
@@ -189,15 +213,20 @@ export function SettingsView({ settings, loading }: SettingsViewProps) {
                 void handleTestGateway()
               }}
               disabled={testingGateway}
-              className="gap-2 font-mono text-xs cursor-pointer"
+              className="cursor-pointer gap-2 font-mono text-xs"
             >
               <RazorpaySymbol className="h-3.5 w-3.5" />
-              <span>{testingGateway ? 'Testing Gateway...' : 'Ping Gateway & Verify HMAC'}</span>
+              <span>
+                {testingGateway
+                  ? 'Testing Gateway...'
+                  : 'Ping Gateway & Verify HMAC'}
+              </span>
             </Button>
             {gatewayTestResult && (
-              <span className="font-mono text-xs text-recovered flex items-center gap-1.5">
+              <span className="flex items-center gap-1.5 font-mono text-xs text-recovered">
                 <CheckCircle2 className="h-3.5 w-3.5" />
-                {gatewayTestResult.message} ({gatewayTestResult.latency_ms.toFixed(0)}ms)
+                {gatewayTestResult.message} (
+                {gatewayTestResult.latency_ms.toFixed(0)}ms)
               </span>
             )}
           </div>
@@ -207,14 +236,15 @@ export function SettingsView({ settings, loading }: SettingsViewProps) {
       {/* LLM Multi-Provider Fallback Hierarchy */}
       <Card>
         <CardHeader>
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
             <div>
               <div className="flex items-center gap-2">
                 <Cpu className="h-4 w-4 text-accent" />
                 <CardTitle>AI Reasoning Engine & Provider Hierarchy</CardTitle>
               </div>
               <CardDescription className="text-xs">
-                Configure fallback priority, model models, and enable/disable LLM providers dynamically
+                Configure fallback priority, model models, and enable/disable
+                LLM providers dynamically
               </CardDescription>
             </div>
 
@@ -225,10 +255,20 @@ export function SettingsView({ settings, loading }: SettingsViewProps) {
               onClick={() => {
                 void handleSaveLLMConfig()
               }}
-              className="gap-2 font-mono text-xs cursor-pointer self-start sm:self-auto"
+              className="cursor-pointer gap-2 self-start font-mono text-xs sm:self-auto"
             >
-              {saveSuccess ? <Check className="h-3.5 w-3.5 text-recovered" /> : <Save className="h-3.5 w-3.5" />}
-              <span>{savingConfig ? 'Saving...' : saveSuccess ? 'Saved to Store' : 'Save LLM Settings'}</span>
+              {saveSuccess ? (
+                <Check className="h-3.5 w-3.5 text-recovered" />
+              ) : (
+                <Save className="h-3.5 w-3.5" />
+              )}
+              <span>
+                {savingConfig
+                  ? 'Saving...'
+                  : saveSuccess
+                    ? 'Saved to Store'
+                    : 'Save LLM Settings'}
+              </span>
             </Button>
           </div>
         </CardHeader>
@@ -236,7 +276,7 @@ export function SettingsView({ settings, loading }: SettingsViewProps) {
           {llmConfig?.providers.map((provider, idx) => (
             <div
               key={provider.name}
-              className={`flex flex-col sm:flex-row sm:items-center justify-between p-3.5 rounded-panel border transition-all gap-3 ${
+              className={`flex flex-col justify-between gap-3 rounded-panel border p-3.5 transition-all sm:flex-row sm:items-center ${
                 provider.enabled
                   ? 'border-border bg-surface-sunken/40'
                   : 'border-border/40 bg-surface-sunken/10 opacity-60'
@@ -244,20 +284,28 @@ export function SettingsView({ settings, loading }: SettingsViewProps) {
             >
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
-                  <Badge variant="outline" className="font-mono text-[10px] bg-surface font-bold text-ink">
+                  <Badge
+                    variant="outline"
+                    className="bg-surface font-mono text-[10px] font-bold text-ink"
+                  >
                     Priority #{provider.priority.toString()}
                   </Badge>
                   <span className="font-mono text-xs font-bold text-ink">
                     {provider.label}
                   </span>
-                  <Badge variant={provider.has_api_key ? 'recovered' : 'outline'} className="text-[10px]">
+                  <Badge
+                    variant={provider.has_api_key ? 'recovered' : 'outline'}
+                    className="text-[10px]"
+                  >
                     {provider.has_api_key ? 'API Key Configured' : 'No Key'}
                   </Badge>
                 </div>
 
                 {/* Model Selector */}
                 <div className="flex items-center gap-2 pt-1 font-mono text-xs">
-                  <span className="text-ink-muted text-[11px]">Active Model:</span>
+                  <span className="text-[11px] text-ink-muted">
+                    Active Model:
+                  </span>
                   <select
                     value={provider.active_model}
                     onChange={(e) => {
@@ -265,7 +313,7 @@ export function SettingsView({ settings, loading }: SettingsViewProps) {
                     }}
                     disabled={!provider.enabled}
                     aria-label={`Active model for ${provider.label}`}
-                    className="rounded-control border border-border bg-surface px-2.5 py-1 text-xs font-mono text-ink focus:outline-hidden cursor-pointer"
+                    className="cursor-pointer rounded-control border border-border bg-surface px-2.5 py-1 font-mono text-xs text-ink focus:outline-hidden"
                   >
                     {provider.available_models.map((m) => (
                       <option key={m} value={m}>
@@ -278,25 +326,25 @@ export function SettingsView({ settings, loading }: SettingsViewProps) {
 
               {/* Actions: Priority Reorder & Enable Toggle */}
               <div className="flex items-center gap-2.5 self-end sm:self-center">
-                <div className="flex items-center rounded-control border border-border bg-surface overflow-hidden">
+                <div className="flex items-center overflow-hidden rounded-control border border-border bg-surface">
                   <button
                     type="button"
                     disabled={idx === 0}
                     onClick={() => {
                       handleMovePriority(idx, 'up')
                     }}
-                    className="p-1.5 hover:bg-surface-sunken text-ink disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer transition-colors border-r border-border"
+                    className="cursor-pointer border-r border-border p-1.5 text-ink transition-colors hover:bg-surface-sunken disabled:cursor-not-allowed disabled:opacity-30"
                     title="Move Priority Up"
                   >
                     <ChevronUp className="h-4 w-4" />
                   </button>
                   <button
                     type="button"
-                    disabled={idx === (llmConfig.providers.length - 1)}
+                    disabled={idx === llmConfig.providers.length - 1}
                     onClick={() => {
                       handleMovePriority(idx, 'down')
                     }}
-                    className="p-1.5 hover:bg-surface-sunken text-ink disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer transition-colors"
+                    className="cursor-pointer p-1.5 text-ink transition-colors hover:bg-surface-sunken disabled:cursor-not-allowed disabled:opacity-30"
                     title="Move Priority Down"
                   >
                     <ChevronDown className="h-4 w-4" />
@@ -309,7 +357,7 @@ export function SettingsView({ settings, loading }: SettingsViewProps) {
                   onClick={() => {
                     handleToggleProvider(provider.name)
                   }}
-                  className="h-8 font-mono text-xs px-3 cursor-pointer"
+                  className="h-8 cursor-pointer px-3 font-mono text-xs"
                 >
                   {provider.enabled ? 'Enabled' : 'Disabled'}
                 </Button>
@@ -322,72 +370,105 @@ export function SettingsView({ settings, loading }: SettingsViewProps) {
       {/* Model Telemetry & Cost Accounting Report */}
       {llmReport && (
         <Card>
-          <CardHeader className="pb-3 border-b border-border/40">
+          <CardHeader className="border-b border-border/40 pb-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Coins className="h-4 w-4 text-accent" />
-                <CardTitle className="text-base font-semibold">AI Model Telemetry & Token Accounting</CardTitle>
+                <CardTitle className="text-base font-semibold">
+                  AI Model Telemetry & Token Accounting
+                </CardTitle>
               </div>
               <span className="font-mono text-xs font-bold text-ink">
                 Total USD Cost: ${(llmReport.total_cost_usd || 0).toFixed(5)}
               </span>
             </div>
             <CardDescription className="text-xs">
-              Live aggregations derived directly from the model_telemetry relational store
+              Live aggregations derived directly from the model_telemetry
+              relational store
             </CardDescription>
           </CardHeader>
-          <CardContent className="p-4 space-y-4">
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 font-mono text-xs">
-              <div className="p-3 rounded-control bg-surface-sunken border border-border">
-                <span className="text-ink-muted block text-[11px]">Total Calls</span>
-                <span className="text-ink font-bold text-sm mt-0.5 block">{llmReport.total_calls.toString()}</span>
+          <CardContent className="space-y-4 p-4">
+            <div className="grid grid-cols-2 gap-3 font-mono text-xs sm:grid-cols-4">
+              <div className="rounded-control border border-border bg-surface-sunken p-3">
+                <span className="block text-[11px] text-ink-muted">
+                  Total Calls
+                </span>
+                <span className="mt-0.5 block text-sm font-bold text-ink">
+                  {llmReport.total_calls.toString()}
+                </span>
               </div>
-              <div className="p-3 rounded-control bg-surface-sunken border border-border">
-                <span className="text-ink-muted block text-[11px]">Input Tokens</span>
-                <span className="text-ink font-bold text-sm mt-0.5 block">{llmReport.total_input_tokens.toLocaleString()}</span>
+              <div className="rounded-control border border-border bg-surface-sunken p-3">
+                <span className="block text-[11px] text-ink-muted">
+                  Input Tokens
+                </span>
+                <span className="mt-0.5 block text-sm font-bold text-ink">
+                  {llmReport.total_input_tokens.toLocaleString()}
+                </span>
               </div>
-              <div className="p-3 rounded-control bg-surface-sunken border border-border">
-                <span className="text-ink-muted block text-[11px]">Output Tokens</span>
-                <span className="text-ink font-bold text-sm mt-0.5 block">{llmReport.total_output_tokens.toLocaleString()}</span>
+              <div className="rounded-control border border-border bg-surface-sunken p-3">
+                <span className="block text-[11px] text-ink-muted">
+                  Output Tokens
+                </span>
+                <span className="mt-0.5 block text-sm font-bold text-ink">
+                  {llmReport.total_output_tokens.toLocaleString()}
+                </span>
               </div>
-              <div className="p-3 rounded-control bg-surface-sunken border border-recovered/40">
-                <span className="text-recovered block text-[11px] font-semibold">Total Cost</span>
-                <span className="text-recovered font-bold text-sm mt-0.5 block">${(llmReport.total_cost_usd || 0).toFixed(5)}</span>
+              <div className="rounded-control border border-recovered/40 bg-surface-sunken p-3">
+                <span className="block text-[11px] font-semibold text-recovered">
+                  Total Cost
+                </span>
+                <span className="mt-0.5 block text-sm font-bold text-recovered">
+                  ${(llmReport.total_cost_usd || 0).toFixed(5)}
+                </span>
               </div>
             </div>
 
             {/* Per-Model Breakdown Table */}
             {llmReport.model_breakdown.length > 0 && (
-              <div className="border border-border rounded-control overflow-hidden">
-                <table className="w-full text-xs font-mono">
-                  <thead className="bg-surface-sunken border-b border-border text-ink-muted uppercase text-[10px]">
+              <div className="overflow-hidden rounded-control border border-border">
+                <table className="w-full font-mono text-xs">
+                  <thead className="border-b border-border bg-surface-sunken text-[10px] text-ink-muted uppercase">
                     <tr>
-                      <th className="text-left p-2.5">Model</th>
-                      <th className="text-left p-2.5">Provider</th>
-                      <th className="text-right p-2.5">Calls</th>
-                      <th className="text-right p-2.5">Latency (Avg / p50 / p95)</th>
-                      <th className="text-right p-2.5">Tokens (In / Out)</th>
-                      <th className="text-right p-2.5">Cost (USD)</th>
+                      <th className="p-2.5 text-left">Model</th>
+                      <th className="p-2.5 text-left">Provider</th>
+                      <th className="p-2.5 text-right">Calls</th>
+                      <th className="p-2.5 text-right">
+                        Latency (Avg / p50 / p95)
+                      </th>
+                      <th className="p-2.5 text-right">Tokens (In / Out)</th>
+                      <th className="p-2.5 text-right">Cost (USD)</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border/60">
                     {llmReport.model_breakdown.map((row) => (
-                      <tr key={`${row.provider}-${row.model}`} className="hover:bg-surface-sunken/40">
-                        <td className="p-2.5 text-ink font-semibold">{row.model}</td>
-                        <td className="p-2.5 text-ink-muted uppercase">{row.provider}</td>
+                      <tr
+                        key={`${row.provider}-${row.model}`}
+                        className="hover:bg-surface-sunken/40"
+                      >
+                        <td className="p-2.5 font-semibold text-ink">
+                          {row.model}
+                        </td>
+                        <td className="p-2.5 text-ink-muted uppercase">
+                          {row.provider}
+                        </td>
                         <td className="p-2.5 text-right text-ink">
                           {row.call_count.toString()}
                           {row.fallback_count && row.fallback_count > 0 ? (
-                            <span className="text-warning text-[10px] ml-1">({row.fallback_count} fb)</span>
+                            <span className="text-warning ml-1 text-[10px]">
+                              ({row.fallback_count} fb)
+                            </span>
                           ) : null}
                         </td>
                         <td className="p-2.5 text-right text-accent">
-                          {row.avg_latency_ms.toFixed(0)}ms / {(row.p50_latency_ms || 0).toFixed(0)}ms / {(row.p95_latency_ms || 0).toFixed(0)}ms
+                          {row.avg_latency_ms.toFixed(0)}ms /{' '}
+                          {(row.p50_latency_ms || 0).toFixed(0)}ms /{' '}
+                          {(row.p95_latency_ms || 0).toFixed(0)}ms
                         </td>
                         <td className="p-2.5 text-right text-ink-muted">
-                          {row.total_input_tokens.toLocaleString()} / {row.total_output_tokens.toLocaleString()}
+                          {row.total_input_tokens.toLocaleString()} /{' '}
+                          {row.total_output_tokens.toLocaleString()}
                         </td>
-                        <td className="p-2.5 text-right text-recovered font-semibold">
+                        <td className="p-2.5 text-right font-semibold text-recovered">
                           ${(row.total_cost_usd || 0).toFixed(5)}
                         </td>
                       </tr>
@@ -402,51 +483,71 @@ export function SettingsView({ settings, loading }: SettingsViewProps) {
 
       {/* A/B Model Experimentation Comparison */}
       <Card>
-        <CardHeader className="pb-3 border-b border-border/40">
+        <CardHeader className="border-b border-border/40 pb-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <FlaskConical className="h-4 w-4 text-accent" />
-              <CardTitle className="text-base font-semibold">A/B Model Experiment Cohorts</CardTitle>
+              <CardTitle className="text-base font-semibold">
+                A/B Model Experiment Cohorts
+              </CardTitle>
             </div>
             <Badge variant="outline" className="font-mono text-xs">
               {experiments.length} Active Experiments
             </Badge>
           </div>
           <CardDescription className="text-xs">
-            Controlled model-vs-model comparisons with holdout control arm baseline integrity
+            Controlled model-vs-model comparisons with holdout control arm
+            baseline integrity
           </CardDescription>
         </CardHeader>
         <CardContent className="p-4">
           {experiments.length === 0 ? (
-            <div className="text-center py-6 text-xs font-mono text-ink-muted">
-              No experiment tags registered yet. Seed cohorts with experiment tags to compare models.
+            <div className="py-6 text-center font-mono text-xs text-ink-muted">
+              No experiment tags registered yet. Seed cohorts with experiment
+              tags to compare models.
             </div>
           ) : (
-            <div className="border border-border rounded-control overflow-hidden">
-              <table className="w-full text-xs font-mono">
-                <thead className="bg-surface-sunken border-b border-border text-ink-muted uppercase text-[10px]">
+            <div className="overflow-hidden rounded-control border border-border">
+              <table className="w-full font-mono text-xs">
+                <thead className="border-b border-border bg-surface-sunken text-[10px] text-ink-muted uppercase">
                   <tr>
-                    <th className="text-left p-2.5">Experiment Tag</th>
-                    <th className="text-left p-2.5">Model</th>
-                    <th className="text-left p-2.5">Provider</th>
-                    <th className="text-right p-2.5">Cohort Size</th>
-                    <th className="text-right p-2.5">Recovery Rate</th>
-                    <th className="text-right p-2.5">Avg Latency</th>
-                    <th className="text-right p-2.5">Total Cost</th>
+                    <th className="p-2.5 text-left">Experiment Tag</th>
+                    <th className="p-2.5 text-left">Model</th>
+                    <th className="p-2.5 text-left">Provider</th>
+                    <th className="p-2.5 text-right">Cohort Size</th>
+                    <th className="p-2.5 text-right">Recovery Rate</th>
+                    <th className="p-2.5 text-right">Avg Latency</th>
+                    <th className="p-2.5 text-right">Total Cost</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/60">
                   {experiments.map((exp) => (
-                    <tr key={`${exp.experiment_tag}-${exp.model}`} className="hover:bg-surface-sunken/40">
-                      <td className="p-2.5 text-accent font-bold">{exp.experiment_tag}</td>
-                      <td className="p-2.5 text-ink font-semibold">{exp.model}</td>
-                      <td className="p-2.5 text-ink-muted uppercase">{exp.provider}</td>
-                      <td className="p-2.5 text-right text-ink">{exp.cohort_size.toString()}</td>
-                      <td className="p-2.5 text-right text-recovered font-bold">
-                        {(exp.recovery_rate * 100).toFixed(1)}% ({exp.recovered_count}/{exp.cohort_size})
+                    <tr
+                      key={`${exp.experiment_tag}-${exp.model}`}
+                      className="hover:bg-surface-sunken/40"
+                    >
+                      <td className="p-2.5 font-bold text-accent">
+                        {exp.experiment_tag}
                       </td>
-                      <td className="p-2.5 text-right text-ink-muted">{exp.avg_latency_ms.toFixed(0)}ms</td>
-                      <td className="p-2.5 text-right text-ink font-semibold">${exp.total_cost_usd.toFixed(5)}</td>
+                      <td className="p-2.5 font-semibold text-ink">
+                        {exp.model}
+                      </td>
+                      <td className="p-2.5 text-ink-muted uppercase">
+                        {exp.provider}
+                      </td>
+                      <td className="p-2.5 text-right text-ink">
+                        {exp.cohort_size.toString()}
+                      </td>
+                      <td className="p-2.5 text-right font-bold text-recovered">
+                        {(exp.recovery_rate * 100).toFixed(1)}% (
+                        {exp.recovered_count}/{exp.cohort_size})
+                      </td>
+                      <td className="p-2.5 text-right text-ink-muted">
+                        {exp.avg_latency_ms.toFixed(0)}ms
+                      </td>
+                      <td className="p-2.5 text-right font-semibold text-ink">
+                        ${exp.total_cost_usd.toFixed(5)}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

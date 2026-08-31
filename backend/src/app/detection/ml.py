@@ -48,7 +48,6 @@ from app.core.enums import (
 )
 
 if TYPE_CHECKING:
-
     from collections.abc import Sequence
 
     from app.audit.models import RecoveryCase
@@ -298,7 +297,9 @@ def _logistic_fit_with_validation(  # noqa: PLR0917
             decay = lam * weights[index] if index < dim - 1 else 0.0
             weights[index] -= lr * (grad[index] / len(rows) + decay)
         if validation_vectors is not None and validation_labels is not None:
-            acc = _accuracy(validation_vectors, validation_labels, weights, means, stds, binarized)
+            acc = _accuracy(
+                validation_vectors, validation_labels, weights, means, stds, binarized
+            )
             if acc > best_val_acc + 1e-6:
                 best_val_acc = acc
                 best_weights = list(weights)
@@ -323,7 +324,9 @@ def _accuracy(  # noqa: PLR0917
     correct = 0
     for vector, label in zip(vectors, labels, strict=True):
         feats = [
-            _z_transform(vector[col], means[col], stds[col]) if not binarized[col] else vector[col]
+            _z_transform(vector[col], means[col], stds[col])
+            if not binarized[col]
+            else vector[col]
             for col in range(len(means))
         ]
         score = weights[-1] + sum(
@@ -429,12 +432,7 @@ class RecoveryTimeModel:
         if not self.trained:
             return 0.0
         # A single scalar projection: weighted toward recent, higher-value cases.
-        scalar = (
-            0.4 * vector[0]
-            + 0.3 * vector[1]
-            + 0.2 * vector[4]
-            + 0.1 * vector[6]
-        )
+        scalar = 0.4 * vector[0] + 0.3 * vector[1] + 0.2 * vector[4] + 0.1 * vector[6]
         return max(0.0, self.intercept + self.slope * scalar)
 
 
@@ -449,12 +447,7 @@ def _fit_recovery_time(
         if days is None:
             continue
         vector = _features_for(case, spec, customer_counts)
-        scalar = (
-            0.4 * vector[0]
-            + 0.3 * vector[1]
-            + 0.2 * vector[4]
-            + 0.1 * vector[6]
-        )
+        scalar = 0.4 * vector[0] + 0.3 * vector[1] + 0.2 * vector[4] + 0.1 * vector[6]
         points.append((scalar, days))
     if len(points) < _MIN_GROUP:
         return RecoveryTimeModel(trained=False)
@@ -524,7 +517,11 @@ class TrainedModel:
         """P(recovered) * net_recovered_value - the probability-weighted value
         at risk, in integer paise (computed, not manufactured)."""
         prob = self.predict_probability(case)
-        nrv = case.net_recovered_value_paise if case.net_recovered_value_paise else case.amount_paise
+        nrv = (
+            case.net_recovered_value_paise
+            if case.net_recovered_value_paise
+            else case.amount_paise
+        )
         return round(max(0, nrv) * prob)
 
     def expected_recovery_days(self, case: RecoveryCase) -> float:
@@ -643,11 +640,21 @@ def train_recovery_model(
     vectors = [_features_for(c, spec, customer_counts) for c in treatment]
     labels = [1 if _is_recovered(c) else 0 for c in treatment]
 
-    if not treatment or len(set(labels)) < _MIN_TRAIN_CLASSES or len(treatment) < _MIN_TRAIN_CASES:
-        empty_log = LogisticModel(weights=[0.0] * (spec.size() + 1), binarized=[False] * spec.size())
+    if (
+        not treatment
+        or len(set(labels)) < _MIN_TRAIN_CLASSES
+        or len(treatment) < _MIN_TRAIN_CASES
+    ):
+        empty_log = LogisticModel(
+            weights=[0.0] * (spec.size() + 1), binarized=[False] * spec.size()
+        )
         empty_nb = NaiveBayesModel(
-            prior_pos=0.5, prior_neg=0.5, means_pos=[], means_neg=[],
-            vars_pos=[], vars_neg=[],
+            prior_pos=0.5,
+            prior_neg=0.5,
+            means_pos=[],
+            means_neg=[],
+            vars_pos=[],
+            vars_neg=[],
         )
         empty_cv = CVResult(folds=(0.0,), mean_accuracy=0.0, mean_auc=0.0)
         holdout_metrics = _evaluate_holdout(rows, spec, empty_log, empty_nb, {})
@@ -682,8 +689,11 @@ def train_recovery_model(
     val_l = [labels[i] for i in val_idx]
 
     logistic = _logistic_fit_with_validation(
-        train_v, train_l, spec.size() + 1,
-        validation_vectors=val_v, validation_labels=val_l,
+        train_v,
+        train_l,
+        spec.size() + 1,
+        validation_vectors=val_v,
+        validation_labels=val_l,
     )
     nb = _fit_naive_bayes(train_v, train_l)
     recovery_time = _fit_recovery_time(treatment, spec, customer_counts)
@@ -726,7 +736,12 @@ def _evaluate_holdout(
 ) -> dict[str, float]:
     holdout = [c for c in rows if c.experiment_arm == ExperimentArm.HOLDOUT_CONTROL]
     if not holdout:
-        return {"cases": 0.0, "accuracy": 0.0, "recovery_rate": 0.0, "interventions_scored": 0.0}
+        return {
+            "cases": 0.0,
+            "accuracy": 0.0,
+            "recovery_rate": 0.0,
+            "interventions_scored": 0.0,
+        }
     customer_counts = Counter(c.failure_event.customer_id for c in rows)
     labels = [1 if _is_recovered(c) else 0 for c in holdout]
     predicted = []
@@ -817,8 +832,12 @@ def _model_from_persisted(persisted: dict[str, Any]) -> TrainedModel:
     )
     logistic_art = artifact.get("logistic", {})
     logistic = LogisticModel(
-        weights=[float(w) for w in logistic_art.get("weights", [0.0] * (spec.size() + 1))],
-        binarized=[bool(b) for b in logistic_art.get("binarized", [False] * spec.size())],
+        weights=[
+            float(w) for w in logistic_art.get("weights", [0.0] * (spec.size() + 1))
+        ],
+        binarized=[
+            bool(b) for b in logistic_art.get("binarized", [False] * spec.size())
+        ],
     )
     nb_art = artifact.get("naive_bayes", {})
     nb = NaiveBayesModel(
@@ -829,7 +848,9 @@ def _model_from_persisted(persisted: dict[str, Any]) -> TrainedModel:
         vars_pos=[float(x) for x in nb_art.get("vars_pos", [])],
         vars_neg=[float(x) for x in nb_art.get("vars_neg", [])],
     )
-    rt_art = artifact.get("recovery_time", {"trained": False, "intercept": 0.0, "slope": 0.0})
+    rt_art = artifact.get(
+        "recovery_time", {"trained": False, "intercept": 0.0, "slope": 0.0}
+    )
     rt = RecoveryTimeModel(
         trained=bool(rt_art.get("trained", False)),
         intercept=float(rt_art.get("intercept", 0.0)),
@@ -848,7 +869,9 @@ def _model_from_persisted(persisted: dict[str, Any]) -> TrainedModel:
         intervention_params=intervention_params,
         trained_count=0,
         holdout_metrics=persisted["holdout_metrics"],
-        cv_metrics=persisted.get("cv_metrics", {"folds": 0.0, "mean_accuracy": 0.0, "mean_auc": 0.0}),
+        cv_metrics=persisted.get(
+            "cv_metrics", {"folds": 0.0, "mean_accuracy": 0.0, "mean_auc": 0.0}
+        ),
         trained_at=persisted["trained_at"],
         seed=persisted["seed"],
     )
@@ -858,9 +881,7 @@ def _spec_from_names(names: list[str]) -> FeatureSpec:
     continuous = tuple(
         name
         for name in names
-        if name
-        and not name.startswith("category=")
-        and not name.startswith("rail=")
+        if name and not name.startswith("category=") and not name.startswith("rail=")
     )
     categories = tuple(
         FailureCategory(name.removeprefix("category="))
@@ -901,7 +922,9 @@ def predict_and_audit(
                 "amount_paise": case.amount_paise,
                 "touches_count": case.touches_count,
                 "confidence_half_width": round(confidence, 4),
-                "expected_recovery_value_paise": model.expected_recovery_value_paise(case),
+                "expected_recovery_value_paise": model.expected_recovery_value_paise(
+                    case
+                ),
                 "expected_recovery_days": model.expected_recovery_days(case),
             },
             "created_at": datetime.now(UTC).isoformat(),

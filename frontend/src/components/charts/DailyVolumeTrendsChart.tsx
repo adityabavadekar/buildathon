@@ -35,31 +35,30 @@ export function DailyVolumeTrendsChart({
 
   const items = granularity === 'daily' ? dailyMetrics : monthlyMetrics
 
-  const maxTotal = Math.max(
-    ...items.map((i) => i.total_transactions),
-    1
-  )
+  const maxTotal = Math.max(...items.map((i) => i.total_transactions), 1)
 
-  const hoveredItem = hoveredIdx !== null && items[hoveredIdx] ? items[hoveredIdx] : null
+  const hoveredItem =
+    hoveredIdx !== null && items[hoveredIdx] ? items[hoveredIdx] : null
 
   return (
     <Card className="col-span-full">
-      <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-3 gap-3 border-b border-border/40">
+      <CardHeader className="flex flex-col gap-3 border-b border-border/40 pb-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="flex items-center gap-2">
             <BarChart3 className="h-4 w-4 text-accent" />
-            <CardTitle className="text-base font-mono">
+            <CardTitle className="font-mono text-base">
               Transaction Volume & Recovery Trajectory
             </CardTitle>
           </div>
-          <CardDescription className="text-xs mt-0.5">
-            Historical transaction breakdown per day/month across failed, recovered, and human-escalated states.
+          <CardDescription className="mt-0.5 text-xs">
+            Historical transaction breakdown per day/month across failed,
+            recovered, and human-escalated states.
           </CardDescription>
         </div>
 
         {/* Time Granularity Toggle */}
         <div className="flex items-center gap-2">
-          <div className="flex items-center rounded-control bg-surface-sunken p-1 border border-border">
+          <div className="flex items-center rounded-control border border-border bg-surface-sunken p-1">
             <Button
               size="sm"
               variant={granularity === 'daily' ? 'primary' : 'ghost'}
@@ -67,9 +66,9 @@ export function DailyVolumeTrendsChart({
                 setGranularity('daily')
                 setHoveredIdx(null)
               }}
-              className="h-7 text-xs font-mono px-2.5"
+              className="h-7 px-2.5 font-mono text-xs"
             >
-              <Calendar className="h-3 w-3 mr-1" />
+              <Calendar className="mr-1 h-3 w-3" />
               Daily
             </Button>
             <Button
@@ -79,27 +78,29 @@ export function DailyVolumeTrendsChart({
                 setGranularity('monthly')
                 setHoveredIdx(null)
               }}
-              className="h-7 text-xs font-mono px-2.5"
+              className="h-7 px-2.5 font-mono text-xs"
             >
-              <BarChart3 className="h-3 w-3 mr-1" />
+              <BarChart3 className="mr-1 h-3 w-3" />
               Monthly
             </Button>
           </div>
         </div>
       </CardHeader>
 
-      <CardContent className="pt-4 space-y-4">
+      <CardContent className="space-y-4 pt-4">
         {/* Legend & Hovered Detail Strip */}
-        <div className="flex flex-wrap items-center justify-between gap-3 text-xs font-mono bg-surface-sunken/40 p-3 rounded-control border border-border/50">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-control border border-border/50 bg-surface-sunken/40 p-3 font-mono text-xs">
           <div className="flex items-center gap-4">
             <span className="flex items-center gap-1.5 text-ink">
-              <span className="h-2.5 w-2.5 rounded-xs bg-ink/70" /> Total Ingested
+              <span className="h-2.5 w-2.5 rounded-xs bg-ink/70" /> Total
+              Ingested
             </span>
             <span className="flex items-center gap-1.5 text-recovered">
               <span className="h-2.5 w-2.5 rounded-xs bg-recovered" /> Recovered
             </span>
             <span className="flex items-center gap-1.5 text-escalated">
-              <span className="h-2.5 w-2.5 rounded-xs bg-escalated" /> Escalated (HITL)
+              <span className="h-2.5 w-2.5 rounded-xs bg-escalated" /> Escalated
+              (HITL)
             </span>
             <span className="flex items-center gap-1.5 text-failed">
               <span className="h-2.5 w-2.5 rounded-xs bg-failed" /> Unrecovered
@@ -111,37 +112,50 @@ export function DailyVolumeTrendsChart({
               <span className="font-bold text-ink">
                 {'date' in hoveredItem ? hoveredItem.date : hoveredItem.month}:
               </span>
-              <span className="text-recovered font-bold">
-                +{formatINR(hoveredItem.recovered_paise)} ({hoveredItem.recovery_rate_pct.toFixed(1)}% rate)
+              <span className="font-bold text-recovered">
+                +{formatINR(hoveredItem.recovered_paise)} (
+                {hoveredItem.recovery_rate_pct.toFixed(1)}% rate)
               </span>
               <span className="text-ink-muted">
                 At Risk: {formatINR(hoveredItem.at_risk_paise)}
               </span>
             </div>
           ) : (
-            <span className="text-ink-subtle text-[11px]">Hover over a period bar to inspect details</span>
+            <span className="text-[11px] text-ink-subtle">
+              Hover over a period bar to inspect details
+            </span>
           )}
         </div>
 
         {items.length === 0 ? (
-          <div className="py-16 text-center text-xs font-mono text-ink-muted">
-            No chronological transaction telemetry recorded yet. Seed a recovery batch to populate volume graphs.
+          <div className="py-16 text-center font-mono text-xs text-ink-muted">
+            No chronological transaction telemetry recorded yet. Seed a recovery
+            batch to populate volume graphs.
           </div>
         ) : (
           <div className="space-y-3">
             {/* Chart Area */}
-            <div className="flex h-56 items-end gap-2 sm:gap-4 pt-8 border-b border-border pb-2 overflow-x-auto">
+            <div className="flex h-56 items-end gap-2 overflow-x-auto border-b border-border pt-8 pb-2 sm:gap-4">
               {items.map((item, idx) => {
-                const totalH = Math.max(12, Math.round((item.total_transactions / maxTotal) * 100))
-                const recH = Math.max(4, Math.round((item.recovered_count / maxTotal) * 100))
-                const escH = Math.max(0, Math.round((item.escalated_count / maxTotal) * 100))
+                const totalH = Math.max(
+                  12,
+                  Math.round((item.total_transactions / maxTotal) * 100),
+                )
+                const recH = Math.max(
+                  4,
+                  Math.round((item.recovered_count / maxTotal) * 100),
+                )
+                const escH = Math.max(
+                  0,
+                  Math.round((item.escalated_count / maxTotal) * 100),
+                )
                 const isHovered = hoveredIdx === idx
                 const label = 'date' in item ? item.date.slice(5) : item.month
 
                 return (
                   <div
                     key={'date' in item ? item.date : item.month}
-                    className="flex flex-1 flex-col items-center gap-1.5 h-full justify-end cursor-pointer group min-w-[36px]"
+                    className="group flex h-full min-w-[36px] flex-1 cursor-pointer flex-col items-center justify-end gap-1.5"
                     onMouseEnter={() => {
                       setHoveredIdx(idx)
                     }}
@@ -149,11 +163,13 @@ export function DailyVolumeTrendsChart({
                       setHoveredIdx(null)
                     }}
                   >
-                    <div className="relative w-full max-w-[32px] flex items-end justify-center gap-0.5 h-full">
+                    <div className="relative flex h-full w-full max-w-[32px] items-end justify-center gap-0.5">
                       {/* Total Ingested Bar */}
                       <div
                         className={`w-2.5 rounded-t-xs transition-all duration-300 ${
-                          isHovered ? 'bg-ink' : 'bg-ink/40 group-hover:bg-ink/70'
+                          isHovered
+                            ? 'bg-ink'
+                            : 'bg-ink/40 group-hover:bg-ink/70'
                         }`}
                         style={{ height: `${totalH.toString()}%` }}
                         title={`Total: ${item.total_transactions.toString()}`}
@@ -161,7 +177,9 @@ export function DailyVolumeTrendsChart({
                       {/* Recovered Bar */}
                       <div
                         className={`w-2.5 rounded-t-xs transition-all duration-300 ${
-                          isHovered ? 'bg-recovered' : 'bg-recovered/80 group-hover:bg-recovered'
+                          isHovered
+                            ? 'bg-recovered'
+                            : 'bg-recovered/80 group-hover:bg-recovered'
                         }`}
                         style={{ height: `${recH.toString()}%` }}
                         title={`Recovered: ${item.recovered_count.toString()}`}
@@ -170,7 +188,9 @@ export function DailyVolumeTrendsChart({
                       {escH > 0 && (
                         <div
                           className={`w-2 rounded-t-xs transition-all duration-300 ${
-                            isHovered ? 'bg-escalated' : 'bg-escalated/80 group-hover:bg-escalated'
+                            isHovered
+                              ? 'bg-escalated'
+                              : 'bg-escalated/80 group-hover:bg-escalated'
                           }`}
                           style={{ height: `${escH.toString()}%` }}
                           title={`Escalated: ${item.escalated_count.toString()}`}
@@ -178,7 +198,7 @@ export function DailyVolumeTrendsChart({
                       )}
                     </div>
                     <span
-                      className={`text-[10px] font-mono whitespace-nowrap ${
+                      className={`font-mono text-[10px] whitespace-nowrap ${
                         isHovered ? 'font-bold text-ink' : 'text-ink-muted'
                       }`}
                     >
@@ -190,29 +210,45 @@ export function DailyVolumeTrendsChart({
             </div>
 
             {/* Summary KPI Strip */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 font-mono text-xs pt-2">
-              <div className="p-3 rounded-control bg-surface-sunken border border-border">
-                <span className="text-ink-muted block text-[11px]">Total Transactions</span>
-                <span className="text-base font-bold text-ink mt-0.5 block">
-                  {items.reduce((acc, i) => acc + i.total_transactions, 0).toString()}
+            <div className="grid grid-cols-2 gap-3 pt-2 font-mono text-xs sm:grid-cols-4">
+              <div className="rounded-control border border-border bg-surface-sunken p-3">
+                <span className="block text-[11px] text-ink-muted">
+                  Total Transactions
+                </span>
+                <span className="mt-0.5 block text-base font-bold text-ink">
+                  {items
+                    .reduce((acc, i) => acc + i.total_transactions, 0)
+                    .toString()}
                 </span>
               </div>
-              <div className="p-3 rounded-control bg-recovered/10 border border-recovered/30">
-                <span className="text-recovered block text-[11px] font-semibold">Recovered Transactions</span>
-                <span className="text-base font-bold text-recovered mt-0.5 block">
-                  {items.reduce((acc, i) => acc + i.recovered_count, 0).toString()}
+              <div className="rounded-control border border-recovered/30 bg-recovered/10 p-3">
+                <span className="block text-[11px] font-semibold text-recovered">
+                  Recovered Transactions
+                </span>
+                <span className="mt-0.5 block text-base font-bold text-recovered">
+                  {items
+                    .reduce((acc, i) => acc + i.recovered_count, 0)
+                    .toString()}
                 </span>
               </div>
-              <div className="p-3 rounded-control bg-escalated/10 border border-escalated/30">
-                <span className="text-escalated block text-[11px] font-semibold">Escalated to Operator</span>
-                <span className="text-base font-bold text-escalated mt-0.5 block">
-                  {items.reduce((acc, i) => acc + i.escalated_count, 0).toString()}
+              <div className="rounded-control border border-escalated/30 bg-escalated/10 p-3">
+                <span className="block text-[11px] font-semibold text-escalated">
+                  Escalated to Operator
+                </span>
+                <span className="mt-0.5 block text-base font-bold text-escalated">
+                  {items
+                    .reduce((acc, i) => acc + i.escalated_count, 0)
+                    .toString()}
                 </span>
               </div>
-              <div className="p-3 rounded-control bg-accent/10 border border-accent/30">
-                <span className="text-accent block text-[11px] font-semibold">Total Recovered Yield</span>
-                <span className="text-base font-bold text-accent mt-0.5 block">
-                  {formatINR(items.reduce((acc, i) => acc + i.recovered_paise, 0))}
+              <div className="rounded-control border border-accent/30 bg-accent/10 p-3">
+                <span className="block text-[11px] font-semibold text-accent">
+                  Total Recovered Yield
+                </span>
+                <span className="mt-0.5 block text-base font-bold text-accent">
+                  {formatINR(
+                    items.reduce((acc, i) => acc + i.recovered_paise, 0),
+                  )}
                 </span>
               </div>
             </div>

@@ -1,7 +1,6 @@
 import React from 'react'
 
-export interface ButtonProps
-  extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger'
   size?: 'sm' | 'md' | 'lg'
 }
@@ -21,8 +20,7 @@ export function Button({
       'bg-surface text-ink hover:bg-surface-sunken border-border active:scale-[0.99]',
     ghost:
       'bg-transparent text-ink-muted hover:text-ink hover:bg-surface-sunken border-transparent',
-    danger:
-      'bg-failed-subtle text-failed hover:bg-failed/20 border-failed/30',
+    danger: 'bg-failed-subtle text-failed hover:bg-failed/20 border-failed/30',
   }[variant]
 
   const sizeStyles = {
@@ -33,7 +31,7 @@ export function Button({
 
   return (
     <button
-      className={`inline-flex items-center justify-center gap-1.5 rounded-control border font-medium transition-all focus-visible:outline-2 focus-visible:outline-accent disabled:opacity-50 disabled:pointer-events-none cursor-pointer ${variantStyles} ${sizeStyles} ${className}`}
+      className={`inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-control border font-medium transition-all focus-visible:outline-2 focus-visible:outline-accent disabled:pointer-events-none disabled:opacity-50 ${variantStyles} ${sizeStyles} ${className}`}
       {...props}
     />
   )

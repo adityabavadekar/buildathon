@@ -82,7 +82,12 @@ interface GraphEditorProps {
   onSelectNode: (node: Record<string, string> | null) => void
 }
 
-function GraphEditor({ nodes, edges, onChange, onSelectNode }: GraphEditorProps) {
+function GraphEditor({
+  nodes,
+  edges,
+  onChange,
+  onSelectNode,
+}: GraphEditorProps) {
   const nodeTypes = React.useMemo(
     () => ({
       workflow: ({ data }: { data: { label?: string; type?: string } }) => (
@@ -113,8 +118,12 @@ function GraphEditor({ nodes, edges, onChange, onSelectNode }: GraphEditorProps)
   }))
   const [flowNodes, setFlowNodes] = React.useState<Node[]>(mappedNodes)
   const [flowEdges, setFlowEdges] = React.useState<Edge[]>(mappedEdges)
-  React.useEffect(() => { setFlowNodes(mappedNodes) }, [nodes])
-  React.useEffect(() => { setFlowEdges(mappedEdges) }, [edges])
+  React.useEffect(() => {
+    setFlowNodes(mappedNodes)
+  }, [nodes])
+  React.useEffect(() => {
+    setFlowEdges(mappedEdges)
+  }, [edges])
   const handleNodesChange = (changes: NodeChange[]) => {
     const changed = applyNodeChanges(changes, flowNodes)
     setFlowNodes(changed)
@@ -143,14 +152,19 @@ function GraphEditor({ nodes, edges, onChange, onSelectNode }: GraphEditorProps)
   }
   return (
     <ReactFlowProvider>
-      <div className="relative h-72 w-full rounded-control border border-border bg-surface" style={{ minHeight: 288 }}>
+      <div
+        className="relative h-72 w-full rounded-control border border-border bg-surface"
+        style={{ minHeight: 288 }}
+      >
         <ReactFlow
           nodeTypes={nodeTypes}
           nodes={flowNodes}
           edges={flowEdges}
           onNodesChange={handleNodesChange}
           onConnect={handleConnect}
-          onNodeClick={(_, node) => onSelectNode(nodes.find((item) => item.id === node.id) ?? null)}
+          onNodeClick={(_, node) =>
+            onSelectNode(nodes.find((item) => item.id === node.id) ?? null)
+          }
           fitView
           deleteKeyCode="Delete"
           nodesDraggable
@@ -215,7 +229,9 @@ export function WorkflowView() {
   const [templateActions, setTemplateActions] = useState<WorkflowAction[]>([])
   const [options, setOptions] = useState<WorkflowOptionsResponse | null>(null)
   const [launchCaseId, setLaunchCaseId] = useState<string>('')
-  const [launchTemplate, setLaunchTemplate] = useState<WorkflowTemplate | ''>('')
+  const [launchTemplate, setLaunchTemplate] = useState<WorkflowTemplate | ''>(
+    '',
+  )
   const [launching, setLaunching] = useState<boolean>(false)
   const [templateSaving, setTemplateSaving] = useState<boolean>(false)
   const [graphNodes, setGraphNodes] = useState<Array<Record<string, string>>>(
@@ -224,18 +240,25 @@ export function WorkflowView() {
   const [graphEdges, setGraphEdges] = useState<Array<Record<string, string>>>(
     [],
   )
-  const [selectedNode, setSelectedNode] = useState<Record<string, string> | null>(null)
+  const [selectedNode, setSelectedNode] = useState<Record<
+    string,
+    string
+  > | null>(null)
 
   const fetchWorkflows = useCallback(async () => {
     try {
       setError(null)
-      const [analyticsResponse, workflowResponse, templateResponse, optionsResponse] =
-        await Promise.all([
-          getWorkflowAnalytics(),
-          listWorkflows(),
-          listWorkflowTemplates(),
-          getWorkflowOptions(),
-        ])
+      const [
+        analyticsResponse,
+        workflowResponse,
+        templateResponse,
+        optionsResponse,
+      ] = await Promise.all([
+        getWorkflowAnalytics(),
+        listWorkflows(),
+        listWorkflowTemplates(),
+        getWorkflowOptions(),
+      ])
       setAnalytics(analyticsResponse)
       setWorkflows(workflowResponse)
       setTemplates(templateResponse)
@@ -421,7 +444,9 @@ export function WorkflowView() {
       setLaunchCaseId('')
       await fetchWorkflows()
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Unable to launch workflow.')
+      setError(
+        err instanceof Error ? err.message : 'Unable to launch workflow.',
+      )
     } finally {
       setLaunching(false)
     }
@@ -591,7 +616,12 @@ export function WorkflowView() {
               placeholder="Template name"
               className="h-8 rounded-control border border-border bg-surface px-2 font-mono text-xs"
             />
-            <input value={templateDescription} onChange={(event) => setTemplateDescription(event.target.value)} placeholder="What this workflow recovers" className="h-8 rounded-control border border-border bg-surface px-2 font-mono text-xs" />
+            <input
+              value={templateDescription}
+              onChange={(event) => setTemplateDescription(event.target.value)}
+              placeholder="What this workflow recovers"
+              className="h-8 rounded-control border border-border bg-surface px-2 font-mono text-xs"
+            />
             <select
               value={templateBase}
               onChange={(event) => {
@@ -614,16 +644,27 @@ export function WorkflowView() {
             >
               <option value="">Select trigger</option>
               {(options?.trigger_types ?? []).map((value) => (
-                <option key={value} value={value}>{value}</option>
+                <option key={value} value={value}>
+                  {value}
+                </option>
               ))}
             </select>
             <div className="flex flex-wrap items-center gap-2 rounded-control border border-border bg-surface px-2 py-1">
               {(options?.actions ?? []).map((action) => (
-                <label key={action} className="flex items-center gap-1 font-mono text-[10px] text-ink-muted">
+                <label
+                  key={action}
+                  className="flex items-center gap-1 font-mono text-[10px] text-ink-muted"
+                >
                   <input
                     type="checkbox"
                     checked={templateActions.includes(action)}
-                    onChange={() => setTemplateActions((current) => current.includes(action) ? current.filter((item) => item !== action) : [...current, action])}
+                    onChange={() =>
+                      setTemplateActions((current) =>
+                        current.includes(action)
+                          ? current.filter((item) => item !== action)
+                          : [...current, action],
+                      )
+                    }
                   />
                   {action}
                 </label>
@@ -699,21 +740,39 @@ export function WorkflowView() {
             {graphNodes.length > 0 && (
               <div className="mt-2 flex flex-wrap gap-2">
                 {graphNodes.map((node) => (
-                  <button key={node.id} type="button" onClick={() => setSelectedNode(node)} className="flex items-center gap-1 rounded-control border border-accent/30 bg-surface px-2 py-1 font-mono text-[10px] text-ink">
-                    {iconForNodeType(node.type ?? 'action')}{node.label ?? node.id}
+                  <button
+                    key={node.id}
+                    type="button"
+                    onClick={() => setSelectedNode(node)}
+                    className="flex items-center gap-1 rounded-control border border-accent/30 bg-surface px-2 py-1 font-mono text-[10px] text-ink"
+                  >
+                    {iconForNodeType(node.type ?? 'action')}
+                    {node.label ?? node.id}
                   </button>
                 ))}
               </div>
             )}
             {selectedNode && (
               <div className="mt-3 flex items-center gap-2 rounded-control border border-border bg-surface px-3 py-2">
-                <span className="font-mono text-[10px] uppercase text-ink-muted">Edit node</span>
-                <input value={selectedNode.label ?? ''} onChange={(event) => {
-                  const label = event.target.value
-                  setSelectedNode({ ...selectedNode, label })
-                  setGraphNodes((current) => current.map((node) => node.id === selectedNode.id ? { ...node, label } : node))
-                }} className="h-7 flex-1 rounded-control border border-border bg-surface px-2 font-mono text-xs" />
-                <span className="rounded-control bg-surface-sunken px-2 py-1 font-mono text-[10px] text-accent">{selectedNode.type}</span>
+                <span className="font-mono text-[10px] text-ink-muted uppercase">
+                  Edit node
+                </span>
+                <input
+                  value={selectedNode.label ?? ''}
+                  onChange={(event) => {
+                    const label = event.target.value
+                    setSelectedNode({ ...selectedNode, label })
+                    setGraphNodes((current) =>
+                      current.map((node) =>
+                        node.id === selectedNode.id ? { ...node, label } : node,
+                      ),
+                    )
+                  }}
+                  className="h-7 flex-1 rounded-control border border-border bg-surface px-2 font-mono text-xs"
+                />
+                <span className="rounded-control bg-surface-sunken px-2 py-1 font-mono text-[10px] text-accent">
+                  {selectedNode.type}
+                </span>
               </div>
             )}
           </div>
@@ -767,18 +826,45 @@ export function WorkflowView() {
       <Card>
         <CardHeader className="p-5 pb-3">
           <CardTitle className="font-mono text-base">Launch workflow</CardTitle>
-          <CardDescription>Attach a durable workflow to an existing recovery case.</CardDescription>
+          <CardDescription>
+            Attach a durable workflow to an existing recovery case.
+          </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-2 p-5 pt-0 sm:flex-row">
-          <input value={launchCaseId} onChange={(event) => setLaunchCaseId(event.target.value)} placeholder="Recovery case ID" className="h-8 flex-1 rounded-control border border-border bg-surface px-2 font-mono text-xs" />
-          <select value={launchTemplate} onChange={(event) => setLaunchTemplate(event.target.value as WorkflowTemplate | '')} className="h-8 rounded-control border border-border bg-surface px-2 font-mono text-xs">
+          <input
+            value={launchCaseId}
+            onChange={(event) => setLaunchCaseId(event.target.value)}
+            placeholder="Recovery case ID"
+            className="h-8 flex-1 rounded-control border border-border bg-surface px-2 font-mono text-xs"
+          />
+          <select
+            value={launchTemplate}
+            onChange={(event) =>
+              setLaunchTemplate(event.target.value as WorkflowTemplate | '')
+            }
+            className="h-8 rounded-control border border-border bg-surface px-2 font-mono text-xs"
+          >
             <option value="">Default template</option>
             {(options?.trigger_types ?? []).map((trigger) => {
-              const match = templates.find((item) => item.trigger_type === trigger)
-              return match ? <option key={match.base_template} value={match.base_template}>{match.name}</option> : null
+              const match = templates.find(
+                (item) => item.trigger_type === trigger,
+              )
+              return match ? (
+                <option key={match.base_template} value={match.base_template}>
+                  {match.name}
+                </option>
+              ) : null
             })}
           </select>
-          <Button size="sm" onClick={() => void handleLaunch()} disabled={launching || !launchCaseId.trim()} className="font-mono"><GitBranch className="h-3.5 w-3.5" />{launching ? 'Launching...' : 'Launch'}</Button>
+          <Button
+            size="sm"
+            onClick={() => void handleLaunch()}
+            disabled={launching || !launchCaseId.trim()}
+            className="font-mono"
+          >
+            <GitBranch className="h-3.5 w-3.5" />
+            {launching ? 'Launching...' : 'Launch'}
+          </Button>
         </CardContent>
       </Card>
 

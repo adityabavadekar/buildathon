@@ -257,7 +257,11 @@
 }
 
 .channel-card--selected .channel-card-icon {
-  border-color: color-mix(in oklch, var(--color-accent) 35%, var(--color-border));
+  border-color: color-mix(
+    in oklch,
+    var(--color-accent) 35%,
+    var(--color-border)
+  );
   background-color: var(--color-surface);
 }
 

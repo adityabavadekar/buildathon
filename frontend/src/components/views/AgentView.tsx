@@ -33,7 +33,12 @@ interface AgentViewProps {
   onRefresh?: () => void
 }
 
-export function AgentView({ cases, status, loading, onRefresh }: AgentViewProps) {
+export function AgentView({
+  cases,
+  status,
+  loading,
+  onRefresh,
+}: AgentViewProps) {
   const [seeding, setSeeding] = useState(false)
 
   const agentEntries: Array<{
@@ -71,7 +76,10 @@ export function AgentView({ cases, status, loading, onRefresh }: AgentViewProps)
         const providerName = meta?.provider || 'engine'
 
         let planRationale: string | null = null
-        if (typeof entry.decision_outputs.plan === 'object' && entry.decision_outputs.plan !== null) {
+        if (
+          typeof entry.decision_outputs.plan === 'object' &&
+          entry.decision_outputs.plan !== null
+        ) {
           const planObj = entry.decision_outputs.plan as Record<string, unknown>
           if (typeof planObj.rationale === 'string') {
             planRationale = planObj.rationale
@@ -87,15 +95,20 @@ export function AgentView({ cases, status, loading, onRefresh }: AgentViewProps)
           timestamp: entry.timestamp,
           reason: (entry.notes ?? entry.reason) || null,
           plan_rationale: planRationale,
-          confidence: typeof meta?.confidence_score === 'number' ? meta.confidence_score : 0.95,
+          confidence:
+            typeof meta?.confidence_score === 'number'
+              ? meta.confidence_score
+              : 0.95,
           model: modelName,
           provider: providerName,
           version: meta?.version || null,
-          latency_ms: typeof meta?.latency_ms === 'number' ? meta.latency_ms : null,
+          latency_ms:
+            typeof meta?.latency_ms === 'number' ? meta.latency_ms : null,
           cost_usd: typeof meta?.cost_usd === 'number' ? meta.cost_usd : null,
           used_fallback: meta?.used_fallback === true,
           fallback_reason: meta?.fallback_reason || null,
-          experiment_tag: meta?.experiment_tag || (c.failure_event.experiment_tag || null),
+          experiment_tag:
+            meta?.experiment_tag || c.failure_event.experiment_tag || null,
           config_snapshot: meta?.config_snapshot || null,
         })
       }
@@ -103,7 +116,9 @@ export function AgentView({ cases, status, loading, onRefresh }: AgentViewProps)
   })
 
   // Sort newest first
-  agentEntries.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+  agentEntries.sort(
+    (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
+  )
 
   const handleSeedBatch = async () => {
     setSeeding(true)
@@ -116,20 +131,22 @@ export function AgentView({ cases, status, loading, onRefresh }: AgentViewProps)
   }
 
   const llmEngine = status?.llm_engine
-  const activeModelName = llmEngine?.active_model || 'Deterministic Rules Engine'
+  const activeModelName =
+    llmEngine?.active_model || 'Deterministic Rules Engine'
   const primaryProvider = llmEngine?.configured_providers[0] || 'deterministic'
   const guardrailPassRate = cases.length > 0 ? '100%' : '100%'
 
   return (
     <div className="space-y-6">
       {/* View Header */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-border pb-4">
+      <div className="flex flex-col gap-3 border-b border-border pb-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold font-mono text-ink">
+          <h1 className="font-mono text-2xl font-bold text-ink">
             Autonomous Decision Stream
           </h1>
-          <p className="text-sm text-ink-muted mt-0.5">
-            Immutable per-decision model traces, exact provider attribution, latencies, and token cost accounting.
+          <p className="mt-0.5 text-sm text-ink-muted">
+            Immutable per-decision model traces, exact provider attribution,
+            latencies, and token cost accounting.
           </p>
         </div>
 
@@ -140,10 +157,12 @@ export function AgentView({ cases, status, loading, onRefresh }: AgentViewProps)
           onClick={() => {
             void handleSeedBatch()
           }}
-          className="gap-2 font-mono text-xs cursor-pointer self-start sm:self-auto"
+          className="cursor-pointer gap-2 self-start font-mono text-xs sm:self-auto"
         >
           <Sparkles className="h-3.5 w-3.5" />
-          <span>{seeding ? 'Generating Decisions...' : 'Seed Decision Cohort'}</span>
+          <span>
+            {seeding ? 'Generating Decisions...' : 'Seed Decision Cohort'}
+          </span>
         </Button>
       </div>
 
@@ -173,12 +192,15 @@ export function AgentView({ cases, status, loading, onRefresh }: AgentViewProps)
 
       {/* Decision Stream Feed */}
       <Card>
-        <CardHeader className="pb-3 border-b border-border/40">
+        <CardHeader className="border-b border-border/40 pb-3">
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle className="text-base font-semibold">Audited Agent Reasoning Feed</CardTitle>
+              <CardTitle className="text-base font-semibold">
+                Audited Agent Reasoning Feed
+              </CardTitle>
               <CardDescription className="text-xs">
-                Each decision shows the immutable provider, model version, execution latency, and token cost snapshotted at execution time
+                Each decision shows the immutable provider, model version,
+                execution latency, and token cost snapshotted at execution time
               </CardDescription>
             </div>
             <Badge variant="outline" className="font-mono text-xs">
@@ -186,16 +208,19 @@ export function AgentView({ cases, status, loading, onRefresh }: AgentViewProps)
             </Badge>
           </div>
         </CardHeader>
-        <CardContent className="p-4 space-y-3">
+        <CardContent className="space-y-3 p-4">
           {agentEntries.length === 0 ? (
-            <div className="text-center py-12 space-y-4">
-              <div className="h-12 w-12 rounded-full bg-surface-sunken border border-border flex items-center justify-center mx-auto text-ink-muted">
+            <div className="space-y-4 py-12 text-center">
+              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full border border-border bg-surface-sunken text-ink-muted">
                 <Brain className="h-6 w-6 text-accent" />
               </div>
               <div>
-                <p className="text-sm font-mono text-ink font-semibold">No Decision Events Recorded Yet</p>
-                <p className="text-xs text-ink-muted mt-1 max-w-md mx-auto">
-                  Run a recovery simulation or trigger webhook ingress to inspect live AI strategy plans and safety audits.
+                <p className="font-mono text-sm font-semibold text-ink">
+                  No Decision Events Recorded Yet
+                </p>
+                <p className="mx-auto mt-1 max-w-md text-xs text-ink-muted">
+                  Run a recovery simulation or trigger webhook ingress to
+                  inspect live AI strategy plans and safety audits.
                 </p>
               </div>
               <Button
@@ -205,7 +230,7 @@ export function AgentView({ cases, status, loading, onRefresh }: AgentViewProps)
                 onClick={() => {
                   void handleSeedBatch()
                 }}
-                className="gap-2 font-mono text-xs cursor-pointer"
+                className="cursor-pointer gap-2 font-mono text-xs"
               >
                 <Play className="h-3 w-3 text-recovered" />
                 <span>Run Decision Simulation</span>
@@ -213,17 +238,21 @@ export function AgentView({ cases, status, loading, onRefresh }: AgentViewProps)
             </div>
           ) : (
             agentEntries.map((entry, idx) => {
-              const isDeterministic = entry.provider === 'deterministic' || entry.used_fallback
+              const isDeterministic =
+                entry.provider === 'deterministic' || entry.used_fallback
 
               return (
                 <div
                   key={`${entry.case_id}-${idx.toString()}`}
-                  className="rounded-panel border border-border bg-surface-sunken/40 p-4 space-y-3 font-mono text-xs transition-colors hover:border-accent/40"
+                  className="space-y-3 rounded-panel border border-border bg-surface-sunken/40 p-4 font-mono text-xs transition-colors hover:border-accent/40"
                 >
                   {/* Top Metadata Header */}
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-border/60 pb-2">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <Badge variant="outline" className="font-mono text-[11px] font-semibold text-ink">
+                  <div className="flex flex-col justify-between gap-2 border-b border-border/60 pb-2 sm:flex-row sm:items-center">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge
+                        variant="outline"
+                        className="font-mono text-[11px] font-semibold text-ink"
+                      >
                         {entry.case_id.slice(0, 13)}...
                       </Badge>
                       <RailBadge rail={entry.payment_rail} />
@@ -231,29 +260,32 @@ export function AgentView({ cases, status, loading, onRefresh }: AgentViewProps)
                         {entry.payment_id}
                       </span>
                       {entry.experiment_tag && (
-                        <Badge variant="outline" className="text-[9px] bg-accent/10 border-accent/30 text-accent font-bold">
+                        <Badge
+                          variant="outline"
+                          className="border-accent/30 bg-accent/10 text-[9px] font-bold text-accent"
+                        >
                           Tag: {entry.experiment_tag}
                         </Badge>
                       )}
                     </div>
 
                     {/* Right-side Model Identity & Telemetry */}
-                    <div className="flex items-center gap-2 flex-wrap">
+                    <div className="flex flex-wrap items-center gap-2">
                       {entry.latency_ms !== null && (
-                        <span className="text-[10px] text-ink-subtle flex items-center gap-0.5">
+                        <span className="flex items-center gap-0.5 text-[10px] text-ink-subtle">
                           <Zap className="h-2.5 w-2.5" />
                           {entry.latency_ms.toFixed(0)}ms
                         </span>
                       )}
 
                       {entry.cost_usd !== null && entry.cost_usd > 0 && (
-                        <span className="text-[10px] text-ink-subtle flex items-center gap-0.5">
-                          <DollarSign className="h-2.5 w-2.5" />
-                          ${entry.cost_usd.toFixed(5)}
+                        <span className="flex items-center gap-0.5 text-[10px] text-ink-subtle">
+                          <DollarSign className="h-2.5 w-2.5" />$
+                          {entry.cost_usd.toFixed(5)}
                         </span>
                       )}
 
-                      <span className="text-ink-muted text-[10px]">
+                      <span className="text-[10px] text-ink-muted">
                         {new Date(entry.timestamp).toLocaleTimeString()}
                       </span>
 
@@ -262,8 +294,8 @@ export function AgentView({ cases, status, loading, onRefresh }: AgentViewProps)
                         variant={isDeterministic ? 'outline' : 'default'}
                         className={`text-[10px] font-bold ${
                           isDeterministic
-                            ? 'bg-surface border-border text-ink-muted'
-                            : 'bg-accent/15 border-accent/40 text-accent'
+                            ? 'border-border bg-surface text-ink-muted'
+                            : 'border-accent/40 bg-accent/15 text-accent'
                         }`}
                       >
                         {entry.provider.toUpperCase()}
@@ -277,7 +309,7 @@ export function AgentView({ cases, status, loading, onRefresh }: AgentViewProps)
                       {entry.used_fallback && (
                         <Badge
                           variant="failed"
-                          className="text-[10px] font-bold border-failed/40 text-failed bg-failed/10 flex items-center gap-1"
+                          className="flex items-center gap-1 border-failed/40 bg-failed/10 text-[10px] font-bold text-failed"
                         >
                           <AlertTriangle className="h-3 w-3" />
                           LLM Call Failed (Fail-Safe Active)
@@ -288,8 +320,8 @@ export function AgentView({ cases, status, loading, onRefresh }: AgentViewProps)
 
                   {/* Plan Rationale */}
                   {entry.plan_rationale && (
-                    <div className="rounded-control bg-surface p-3 border border-border text-ink leading-relaxed">
-                      <span className="text-ink-muted block text-[10px] font-semibold uppercase tracking-wider mb-1">
+                    <div className="rounded-control border border-border bg-surface p-3 leading-relaxed text-ink">
+                      <span className="mb-1 block text-[10px] font-semibold tracking-wider text-ink-muted uppercase">
                         Strategy Rationale
                       </span>
                       {entry.plan_rationale}
@@ -297,23 +329,26 @@ export function AgentView({ cases, status, loading, onRefresh }: AgentViewProps)
                   )}
 
                   {entry.reason && !entry.plan_rationale && (
-                    <div className="text-ink-muted text-xs">
-                      {entry.reason}
-                    </div>
+                    <div className="text-xs text-ink-muted">{entry.reason}</div>
                   )}
 
                   {/* Explicit LLM Provider Exception Alert Box */}
                   {entry.fallback_reason && (
-                    <div className="rounded-control bg-failed/10 border border-failed/30 p-3 space-y-1 font-mono text-xs">
-                      <div className="flex items-center gap-1.5 text-failed font-bold text-xs">
+                    <div className="space-y-1 rounded-control border border-failed/30 bg-failed/10 p-3 font-mono text-xs">
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-failed">
                         <AlertTriangle className="h-3.5 w-3.5" />
-                        <span>LLM Provider Error: Automated Fallback Executed</span>
+                        <span>
+                          LLM Provider Error: Automated Fallback Executed
+                        </span>
                       </div>
-                      <p className="text-ink text-xs leading-relaxed">
+                      <p className="text-xs leading-relaxed text-ink">
                         {entry.fallback_reason}
                       </p>
-                      <div className="flex items-center justify-between pt-1 border-t border-failed/20 text-[10px] text-ink-muted">
-                        <span>Fail-Safe: Gracefully fallen back to deterministic rules engine.</span>
+                      <div className="flex items-center justify-between border-t border-failed/20 pt-1 text-[10px] text-ink-muted">
+                        <span>
+                          Fail-Safe: Gracefully fallen back to deterministic
+                          rules engine.
+                        </span>
                       </div>
                     </div>
                   )}

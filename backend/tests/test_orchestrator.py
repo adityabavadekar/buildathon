@@ -20,7 +20,9 @@ def _isolated_repo() -> CaseRepository:
     (e.g. RECOVERED) and is returned on the next run, breaking the state
     assertion. A temp store starts empty every time.
     """
-    return CaseRepository(storage_path=Path(tempfile.mkdtemp(prefix="orch_test_")) / "test.db")
+    return CaseRepository(
+        storage_path=Path(tempfile.mkdtemp(prefix="orch_test_")) / "test.db"
+    )
 
 
 @pytest.mark.anyio

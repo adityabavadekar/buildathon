@@ -24,7 +24,9 @@ function formatINR(paise: number): string {
   }).format(rupees)
 }
 
-export function RecoveryVelocityChart({ timeSeries }: RecoveryVelocityChartProps) {
+export function RecoveryVelocityChart({
+  timeSeries,
+}: RecoveryVelocityChartProps) {
   const [hoveredPoint, setHoveredPoint] = useState<TimePointStats | null>(null)
 
   const maxVal = Math.max(...timeSeries.map((p) => p.failed_paise), 100000)
@@ -38,10 +40,11 @@ export function RecoveryVelocityChart({ timeSeries }: RecoveryVelocityChartProps
             <CardTitle>Recovery Velocity & Time Horizon</CardTitle>
           </div>
           <CardDescription>
-            Cumulative revenue at risk vs autonomous net recoveries across rolling time horizons
+            Cumulative revenue at risk vs autonomous net recoveries across
+            rolling time horizons
           </CardDescription>
         </div>
-        <div className="flex items-center gap-3 text-[11px] font-mono text-ink-muted">
+        <div className="flex items-center gap-3 font-mono text-[11px] text-ink-muted">
           <span className="flex items-center gap-1">
             <span className="h-2 w-2 rounded-xs bg-ink/50" /> At Risk
           </span>
@@ -52,20 +55,26 @@ export function RecoveryVelocityChart({ timeSeries }: RecoveryVelocityChartProps
       </CardHeader>
       <CardContent className="pt-4">
         {timeSeries.length === 0 ? (
-          <div className="py-12 text-center text-xs font-mono text-ink-muted">
+          <div className="py-12 text-center font-mono text-xs text-ink-muted">
             No time-series telemetry available.
           </div>
         ) : (
           <div className="space-y-4">
-            <div className="flex h-48 items-end gap-3 pt-6 border-b border-border/80 pb-2">
+            <div className="flex h-48 items-end gap-3 border-b border-border/80 pt-6 pb-2">
               {timeSeries.map((pt) => {
-                const failedHeightPct = Math.min(100, Math.max(8, (pt.failed_paise / maxVal) * 100))
-                const recHeightPct = Math.min(100, Math.max(4, (pt.recovered_paise / maxVal) * 100))
+                const failedHeightPct = Math.min(
+                  100,
+                  Math.max(8, (pt.failed_paise / maxVal) * 100),
+                )
+                const recHeightPct = Math.min(
+                  100,
+                  Math.max(4, (pt.recovered_paise / maxVal) * 100),
+                )
 
                 return (
                   <div
                     key={pt.label}
-                    className="flex flex-1 flex-col items-center gap-2 h-full justify-end group cursor-pointer"
+                    className="group flex h-full flex-1 cursor-pointer flex-col items-center justify-end gap-2"
                     onMouseEnter={() => {
                       setHoveredPoint(pt)
                     }}
@@ -73,19 +82,19 @@ export function RecoveryVelocityChart({ timeSeries }: RecoveryVelocityChartProps
                       setHoveredPoint(null)
                     }}
                   >
-                    <div className="flex items-end gap-1 w-full justify-center h-full">
+                    <div className="flex h-full w-full items-end justify-center gap-1">
                       {/* At Risk Bar */}
                       <div
-                        className="w-full max-w-4 rounded-t-xs bg-ink/40 group-hover:bg-ink/60 transition-all duration-300"
+                        className="w-full max-w-4 rounded-t-xs bg-ink/40 transition-all duration-300 group-hover:bg-ink/60"
                         style={{ height: `${failedHeightPct.toString()}%` }}
                       />
                       {/* Recovered Bar */}
                       <div
-                        className="w-full max-w-4 rounded-t-xs bg-recovered group-hover:bg-recovered-strong transition-all duration-300 shadow-xs"
+                        className="group-hover:bg-recovered-strong w-full max-w-4 rounded-t-xs bg-recovered shadow-xs transition-all duration-300"
                         style={{ height: `${recHeightPct.toString()}%` }}
                       />
                     </div>
-                    <span className="text-[10px] font-mono text-ink-muted group-hover:text-ink">
+                    <span className="font-mono text-[10px] text-ink-muted group-hover:text-ink">
                       {pt.label}
                     </span>
                   </div>
@@ -94,7 +103,7 @@ export function RecoveryVelocityChart({ timeSeries }: RecoveryVelocityChartProps
             </div>
 
             {/* Context Tooltip / Active Point Details */}
-            <div className="min-h-8 rounded-control bg-surface-sunken p-2 font-mono text-xs flex items-center justify-between">
+            <div className="flex min-h-8 items-center justify-between rounded-control bg-surface-sunken p-2 font-mono text-xs">
               {hoveredPoint ? (
                 <>
                   <span className="font-semibold text-ink">
@@ -104,18 +113,23 @@ export function RecoveryVelocityChart({ timeSeries }: RecoveryVelocityChartProps
                     <span className="text-ink-muted">
                       At Risk: {formatINR(hoveredPoint.failed_paise)}
                     </span>
-                    <span className="text-recovered font-bold">
+                    <span className="font-bold text-recovered">
                       Recovered: {formatINR(hoveredPoint.recovered_paise)} (
                       {hoveredPoint.failed_paise > 0
-                        ? ((hoveredPoint.recovered_paise / hoveredPoint.failed_paise) * 100).toFixed(1)
+                        ? (
+                            (hoveredPoint.recovered_paise /
+                              hoveredPoint.failed_paise) *
+                            100
+                          ).toFixed(1)
                         : 0}
                       %)
                     </span>
                   </div>
                 </>
               ) : (
-                <span className="text-ink-subtle text-[11px]">
-                  Hover over any time horizon bar to inspect exact financial recovery volume.
+                <span className="text-[11px] text-ink-subtle">
+                  Hover over any time horizon bar to inspect exact financial
+                  recovery volume.
                 </span>
               )}
             </div>

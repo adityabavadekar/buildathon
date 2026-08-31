@@ -7,7 +7,7 @@ export function Table({
   return (
     <div className="relative w-full overflow-auto">
       <table
-        className={`w-full caption-bottom text-xs text-left ${className}`}
+        className={`w-full caption-bottom text-left text-xs ${className}`}
         {...props}
       />
     </div>
@@ -20,7 +20,7 @@ export function TableHeader({
 }: React.HTMLAttributes<HTMLTableSectionElement>) {
   return (
     <thead
-      className={`border-b border-border bg-surface-sunken/60 font-mono uppercase text-ink-muted text-[11px] ${className}`}
+      className={`border-b border-border bg-surface-sunken/60 font-mono text-[11px] text-ink-muted uppercase ${className}`}
       {...props}
     />
   )
@@ -31,10 +31,7 @@ export function TableBody({
   ...props
 }: React.HTMLAttributes<HTMLTableSectionElement>) {
   return (
-    <tbody
-      className={`divide-y divide-border/60 ${className}`}
-      {...props}
-    />
+    <tbody className={`divide-y divide-border/60 ${className}`} {...props} />
   )
 }
 
@@ -56,7 +53,7 @@ export function TableHead({
 }: React.ThHTMLAttributes<HTMLTableCellElement>) {
   return (
     <th
-      className={`h-9 px-4 text-left font-medium text-ink-muted align-middle ${className}`}
+      className={`h-9 px-4 text-left align-middle font-medium text-ink-muted ${className}`}
       {...props}
     />
   )
@@ -66,10 +63,5 @@ export function TableCell({
   className = '',
   ...props
 }: React.TdHTMLAttributes<HTMLTableCellElement>) {
-  return (
-    <td
-      className={`p-4 align-middle text-ink ${className}`}
-      {...props}
-    />
-  )
+  return <td className={`p-4 align-middle text-ink ${className}`} {...props} />
 }

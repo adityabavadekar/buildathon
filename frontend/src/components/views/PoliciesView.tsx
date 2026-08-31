@@ -2,7 +2,11 @@
 
 import React from 'react'
 import { Check, Radio, ShieldCheck } from 'lucide-react'
-import type { MerchantPolicyPayload, PolicyResponse, PolicyRuleDetail } from '@/lib/api'
+import type {
+  MerchantPolicyPayload,
+  PolicyResponse,
+  PolicyRuleDetail,
+} from '@/lib/api'
 import { updatePolicies } from '@/lib/api'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -132,7 +136,9 @@ function PolicyEditor({ initial, onSaved }: PolicyEditorProps) {
 
   const validateAll = (): boolean => {
     const nextErrors: PolicyErrors = {}
-    for (const field of Object.keys(POLICY_FIELD_BOUNDS) as EditablePolicyField[]) {
+    for (const field of Object.keys(
+      POLICY_FIELD_BOUNDS,
+    ) as EditablePolicyField[]) {
       const error = validateField(field, draft[field])
       if (error !== null) {
         nextErrors[field] = error
@@ -173,9 +179,7 @@ function PolicyEditor({ initial, onSaved }: PolicyEditorProps) {
 
   const editableRules = initial.rules.flatMap((rule) => {
     const field = RULE_TO_FIELD[rule.id]
-    return field
-      ? [{ rule: rule as PolicyRuleDetailWithField, field }]
-      : []
+    return field ? [{ rule: rule as PolicyRuleDetailWithField, field }] : []
   })
 
   const enabledChannelCount = draft.allowed_channels.length
@@ -184,7 +188,7 @@ function PolicyEditor({ initial, onSaved }: PolicyEditorProps) {
     <Card>
       <CardHeader>
         <div className="flex items-center gap-2">
-          <ShieldCheck className="h-4 w-4 text-accent shrink-0" />
+          <ShieldCheck className="h-4 w-4 shrink-0 text-accent" />
           <CardTitle>Merchant Recovery Policies & Guardrails</CardTitle>
         </div>
         <CardDescription>
@@ -197,8 +201,10 @@ function PolicyEditor({ initial, onSaved }: PolicyEditorProps) {
         <section className="space-y-4">
           <div className="flex items-center justify-between gap-4">
             <div>
-              <h3 className="text-sm font-semibold text-ink">Recovery Limits</h3>
-              <p className="text-xs text-ink-muted mt-0.5">
+              <h3 className="text-sm font-semibold text-ink">
+                Recovery Limits
+              </h3>
+              <p className="mt-0.5 text-xs text-ink-muted">
                 Numeric guardrails applied before any outreach is attempted.
               </p>
             </div>
@@ -215,18 +221,23 @@ function PolicyEditor({ initial, onSaved }: PolicyEditorProps) {
                   className="rounded-panel border border-border bg-surface-sunken/40 p-4"
                 >
                   <div className="flex items-start justify-between gap-3">
-                    <div className="space-y-1 min-w-0">
-                      <span className="text-sm font-semibold text-ink leading-snug">
+                    <div className="min-w-0 space-y-1">
+                      <span className="text-sm leading-snug font-semibold text-ink">
                         {rule.name}
                       </span>
-                      <p className="text-xs text-ink-muted leading-relaxed">
+                      <p className="text-xs leading-relaxed text-ink-muted">
                         {rule.description}
                       </p>
                       {errors[field] ? (
-                        <span className="text-xs text-danger block">{errors[field]}</span>
+                        <span className="text-danger block text-xs">
+                          {errors[field]}
+                        </span>
                       ) : null}
                     </div>
-                    <Badge variant={rule.enforced ? 'recovered' : 'default'} className="shrink-0">
+                    <Badge
+                      variant={rule.enforced ? 'recovered' : 'default'}
+                      className="shrink-0"
+                    >
                       {rule.enforced ? 'On' : 'Off'}
                     </Badge>
                   </div>
@@ -243,9 +254,11 @@ function PolicyEditor({ initial, onSaved }: PolicyEditorProps) {
                         setField(field, Number(event.target.value))
                       }}
                     />
-                    <span className="text-xs font-mono text-ink-muted">{unit}</span>
+                    <span className="font-mono text-xs text-ink-muted">
+                      {unit}
+                    </span>
                   </div>
-                  <p className="mt-2 text-[11px] text-ink-subtle font-mono">
+                  <p className="mt-2 font-mono text-[11px] text-ink-subtle">
                     Current: {rule.value}
                   </p>
                 </div>
@@ -257,13 +270,18 @@ function PolicyEditor({ initial, onSaved }: PolicyEditorProps) {
         <section className="space-y-4 border-t border-border pt-6">
           <div className="flex items-center justify-between gap-4">
             <div>
-              <h3 className="text-sm font-semibold text-ink">Allowed Outreach Channels</h3>
-              <p className="text-xs text-ink-muted mt-0.5">
-                The payment-recovery engine may only message customers through channels you keep enabled. Unchecking a channel blocks it at execution time, not just in this screen.
+              <h3 className="text-sm font-semibold text-ink">
+                Allowed Outreach Channels
+              </h3>
+              <p className="mt-0.5 text-xs text-ink-muted">
+                The payment-recovery engine may only message customers through
+                channels you keep enabled. Unchecking a channel blocks it at
+                execution time, not just in this screen.
               </p>
             </div>
             <Badge variant="outline">
-              {enabledChannelCount.toString()} of {OUTREACH_CHANNELS.length.toString()} enabled
+              {enabledChannelCount.toString()} of{' '}
+              {OUTREACH_CHANNELS.length.toString()} enabled
             </Badge>
           </div>
 
@@ -285,11 +303,16 @@ function PolicyEditor({ initial, onSaved }: PolicyEditorProps) {
                     }}
                   />
                   <div className="channel-card-icon">
-                    <OutreachChannelIcon channel={channel} className="h-5 w-5" />
+                    <OutreachChannelIcon
+                      channel={channel}
+                      className="h-5 w-5"
+                    />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <span className="text-sm font-semibold text-ink">{meta.label}</span>
-                    <p className="text-xs text-ink-muted mt-0.5 leading-relaxed">
+                    <span className="text-sm font-semibold text-ink">
+                      {meta.label}
+                    </span>
+                    <p className="mt-0.5 text-xs leading-relaxed text-ink-muted">
                       {meta.description}
                     </p>
                   </div>
@@ -297,14 +320,20 @@ function PolicyEditor({ initial, onSaved }: PolicyEditorProps) {
                     className={`channel-card-check ${selected ? 'channel-card-check--on' : ''}`}
                     aria-hidden
                   >
-                    {selected ? <Check className="h-3.5 w-3.5" /> : <Radio className="h-3.5 w-3.5 opacity-30" />}
+                    {selected ? (
+                      <Check className="h-3.5 w-3.5" />
+                    ) : (
+                      <Radio className="h-3.5 w-3.5 opacity-30" />
+                    )}
                   </span>
                 </label>
               )
             })}
           </div>
           {errors.allowed_channels ? (
-            <span className="text-xs text-danger">{errors.allowed_channels}</span>
+            <span className="text-danger text-xs">
+              {errors.allowed_channels}
+            </span>
           ) : null}
         </section>
 
@@ -338,11 +367,12 @@ export function PoliciesView({
   return (
     <div className="space-y-6">
       <div className="border-b border-border pb-4">
-        <h1 className="text-2xl font-bold font-mono text-ink">
+        <h1 className="font-mono text-2xl font-bold text-ink">
           Policies & Guardrails
         </h1>
-        <p className="text-sm text-ink-muted mt-0.5">
-          Configure deterministic recovery limits and approved customer outreach channels.
+        <p className="mt-0.5 text-sm text-ink-muted">
+          Configure deterministic recovery limits and approved customer outreach
+          channels.
         </p>
       </div>
       <PolicyEditor

@@ -22,9 +22,7 @@ interface SidebarProps {
 }
 
 function navButtonClass(isActive: boolean, nested = false): string {
-  const base = nested
-    ? 'pl-9 pr-3 py-2 text-[13px]'
-    : 'px-3.5 py-2.5 text-sm'
+  const base = nested ? 'pl-9 pr-3 py-2 text-[13px]' : 'px-3.5 py-2.5 text-sm'
   const state = isActive
     ? 'border border-border/80 bg-surface-sunken font-bold text-ink'
     : 'border border-transparent text-ink-muted hover:bg-surface-sunken/60 hover:text-ink'
@@ -57,7 +55,8 @@ export function Sidebar({
     const badge =
       item.badgeKey === 'cases' && casesCount > 0 ? casesCount : undefined
     const showEscalated =
-      (item.id === 'recovery' || item.id === 'transactions') && escalatedCount > 0
+      (item.id === 'recovery' || item.id === 'transactions') &&
+      escalatedCount > 0
 
     return (
       <button
@@ -72,7 +71,7 @@ export function Sidebar({
           <Icon
             className={`${nested ? 'h-4 w-4' : 'h-4.5 w-4.5'} shrink-0 ${isActive ? 'text-accent' : 'text-ink-muted group-hover:text-ink'}`}
           />
-          <span className={nested ? 'font-medium truncate' : 'font-semibold'}>
+          <span className={nested ? 'truncate font-medium' : 'font-semibold'}>
             {item.label}
           </span>
         </div>

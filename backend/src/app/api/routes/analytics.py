@@ -78,6 +78,7 @@ async def train_recovery_model_endpoint() -> dict[str, object]:
         "holdout_metrics": model.holdout_metrics,
     }
 
+
 DEFAULT_MAX_TOUCHES = 3
 HIGH_VALUE_THRESHOLD_PAISE = 500_000
 DEFAULT_DISCOUNT_BPS = 300

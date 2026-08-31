@@ -92,7 +92,9 @@ async def launch_workflow(req: LaunchRequest) -> WorkflowInstance:
 
 @router.post("/launch-cohort", response_model=list[WorkflowInstance], status_code=201)
 async def launch_workflow_cohort(req: CohortLaunchRequest) -> list[WorkflowInstance]:
-    cases = get_case_repository().list_cases(campaign_id=req.campaign_id, limit=req.limit)
+    cases = get_case_repository().list_cases(
+        campaign_id=req.campaign_id, limit=req.limit
+    )
     engine = get_workflow_engine()
     launched: list[WorkflowInstance] = []
     for case in cases:

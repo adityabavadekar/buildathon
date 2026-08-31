@@ -35,9 +35,8 @@ export function IntegrationsView({
   onRefresh,
 }: IntegrationsViewProps) {
   const [testingGateway, setTestingGateway] = useState(false)
-  const [gatewayTestResult, setGatewayTestResult] = useState<GatewayTestResponse | null>(
-    null,
-  )
+  const [gatewayTestResult, setGatewayTestResult] =
+    useState<GatewayTestResponse | null>(null)
 
   const handleTestGateway = async () => {
     try {
@@ -54,8 +53,8 @@ export function IntegrationsView({
   return (
     <div className="space-y-6">
       <div className="border-b border-border pb-4">
-        <h1 className="text-2xl font-bold font-mono text-ink">Integrations</h1>
-        <p className="text-sm text-ink-muted mt-0.5">
+        <h1 className="font-mono text-2xl font-bold text-ink">Integrations</h1>
+        <p className="mt-0.5 text-sm text-ink-muted">
           Razorpay gateway connectivity, webhook ingress, and subsystem health.
         </p>
       </div>
@@ -67,38 +66,49 @@ export function IntegrationsView({
             <CardTitle>Razorpay Webhook & Payment Gateway</CardTitle>
           </div>
           <CardDescription className="text-xs">
-            Production connection parameters for webhook ingress and recovery link generation.
+            Production connection parameters for webhook ingress and recovery
+            link generation.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {loading ? (
             <SkeletonCard />
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 font-mono text-xs">
-              <div className="space-y-1 p-3 rounded-control bg-surface-sunken border border-border">
-                <span className="text-ink-muted block text-[11px]">Active Environment</span>
-                <span className="text-ink font-bold uppercase">
+            <div className="grid grid-cols-1 gap-4 font-mono text-xs md:grid-cols-2">
+              <div className="space-y-1 rounded-control border border-border bg-surface-sunken p-3">
+                <span className="block text-[11px] text-ink-muted">
+                  Active Environment
+                </span>
+                <span className="font-bold text-ink uppercase">
                   {settings?.environment || 'LIVE / PRODUCTION'}
                 </span>
               </div>
 
-              <div className="space-y-1 p-3 rounded-control bg-surface-sunken border border-border">
-                <span className="text-ink-muted block text-[11px]">Razorpay Key ID</span>
-                <span className="text-ink font-semibold">
+              <div className="space-y-1 rounded-control border border-border bg-surface-sunken p-3">
+                <span className="block text-[11px] text-ink-muted">
+                  Razorpay Key ID
+                </span>
+                <span className="font-semibold text-ink">
                   {settings?.razorpay_key_id
                     ? `${settings.razorpay_key_id.slice(0, 10)}...`
                     : 'rzp_live_buildathon'}
                 </span>
               </div>
 
-              <div className="space-y-1 p-3 rounded-control bg-surface-sunken border border-border md:col-span-2">
-                <span className="text-ink-muted block text-[11px]">Ingress Webhook Endpoint</span>
+              <div className="space-y-1 rounded-control border border-border bg-surface-sunken p-3 md:col-span-2">
+                <span className="block text-[11px] text-ink-muted">
+                  Ingress Webhook Endpoint
+                </span>
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-ink truncate select-all">
+                  <span className="truncate text-ink select-all">
                     {settings?.webhook_ingress_url || '/api/webhooks/razorpay'}
                   </span>
                   <Badge
-                    variant={settings?.webhook_secret_configured ? 'recovered' : 'outline'}
+                    variant={
+                      settings?.webhook_secret_configured
+                        ? 'recovered'
+                        : 'outline'
+                    }
                     className="text-[10px]"
                   >
                     {settings?.webhook_secret_configured
@@ -118,15 +128,20 @@ export function IntegrationsView({
                 void handleTestGateway()
               }}
               disabled={testingGateway}
-              className="gap-2 font-mono text-xs cursor-pointer"
+              className="cursor-pointer gap-2 font-mono text-xs"
             >
               <RazorpaySymbol className="h-3.5 w-3.5" />
-              <span>{testingGateway ? 'Testing Gateway...' : 'Ping Gateway & Verify HMAC'}</span>
+              <span>
+                {testingGateway
+                  ? 'Testing Gateway...'
+                  : 'Ping Gateway & Verify HMAC'}
+              </span>
             </Button>
             {gatewayTestResult ? (
-              <span className="font-mono text-xs text-recovered flex items-center gap-1.5">
+              <span className="flex items-center gap-1.5 font-mono text-xs text-recovered">
                 <CheckCircle2 className="h-3.5 w-3.5" />
-                {gatewayTestResult.message} ({gatewayTestResult.latency_ms.toFixed(0)}ms)
+                {gatewayTestResult.message} (
+                {gatewayTestResult.latency_ms.toFixed(0)}ms)
               </span>
             ) : null}
           </div>

@@ -25,7 +25,7 @@ export function SkeletonCard() {
 
 export function SkeletonRow() {
   return (
-    <div className="flex items-center justify-between border-b border-border/50 py-3.5 px-4">
+    <div className="flex items-center justify-between border-b border-border/50 px-4 py-3.5">
       <div className="flex items-center gap-3">
         <Skeleton className="h-4 w-28" />
         <Skeleton className="h-3.5 w-36" />

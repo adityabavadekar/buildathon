@@ -76,7 +76,8 @@ export function AuditView({
       }
     }
     return list.sort(
-      (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+      (a, b) =>
+        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
     )
   }, [cases])
 
@@ -119,17 +120,26 @@ export function AuditView({
 
   const formatActionBadge = (eventName: string) => {
     const lower = eventName.toLowerCase()
-    if (lower.includes('plan') || lower.includes('ai') || lower.includes('llm')) {
+    if (
+      lower.includes('plan') ||
+      lower.includes('ai') ||
+      lower.includes('llm')
+    ) {
       return (
-        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-bold bg-purple-500/15 text-purple-600 border border-purple-500/30">
+        <span className="inline-flex items-center gap-1 rounded-md border border-purple-500/30 bg-purple-500/15 px-2.5 py-1 text-[11px] font-bold text-purple-600">
           <Bot className="h-3 w-3" />
           AI STRATEGY PLAN
         </span>
       )
     }
-    if (lower.includes('executed') || lower.includes('dispatch') || lower.includes('retry') || lower.includes('link')) {
+    if (
+      lower.includes('executed') ||
+      lower.includes('dispatch') ||
+      lower.includes('retry') ||
+      lower.includes('link')
+    ) {
       return (
-        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-bold bg-emerald-500/15 text-emerald-600 border border-emerald-500/30">
+        <span className="inline-flex items-center gap-1 rounded-md border border-emerald-500/30 bg-emerald-500/15 px-2.5 py-1 text-[11px] font-bold text-emerald-600">
           <Zap className="h-3 w-3" />
           INTERVENTION DISPATCH
         </span>
@@ -137,7 +147,7 @@ export function AuditView({
     }
     if (lower.includes('recovered') || lower.includes('captured')) {
       return (
-        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-bold bg-green-500/15 text-recovered border border-green-500/30">
+        <span className="inline-flex items-center gap-1 rounded-md border border-green-500/30 bg-green-500/15 px-2.5 py-1 text-[11px] font-bold text-recovered">
           <CheckCircle2 className="h-3 w-3" />
           PAYMENT RECOVERED
         </span>
@@ -145,7 +155,7 @@ export function AuditView({
     }
     if (lower.includes('escalat') || lower.includes('breach')) {
       return (
-        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-bold bg-rose-500/15 text-rose-600 border border-rose-500/30">
+        <span className="inline-flex items-center gap-1 rounded-md border border-rose-500/30 bg-rose-500/15 px-2.5 py-1 text-[11px] font-bold text-rose-600">
           <ShieldAlert className="h-3 w-3" />
           SAFETY ESCALATION
         </span>
@@ -153,22 +163,26 @@ export function AuditView({
     }
     if (lower.includes('holdout')) {
       return (
-        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-bold bg-slate-500/15 text-slate-500 border border-slate-500/30">
+        <span className="inline-flex items-center gap-1 rounded-md border border-slate-500/30 bg-slate-500/15 px-2.5 py-1 text-[11px] font-bold text-slate-500">
           <Radio className="h-3 w-3" />
           HOLDOUT CONTROL
         </span>
       )
     }
-    if (lower.includes('ingest') || lower.includes('created') || lower.includes('failed')) {
+    if (
+      lower.includes('ingest') ||
+      lower.includes('created') ||
+      lower.includes('failed')
+    ) {
       return (
-        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-bold bg-blue-500/15 text-blue-600 border border-blue-500/30">
+        <span className="inline-flex items-center gap-1 rounded-md border border-blue-500/30 bg-blue-500/15 px-2.5 py-1 text-[11px] font-bold text-blue-600">
           <FileText className="h-3 w-3" />
           FAILURE INGESTED
         </span>
       )
     }
     return (
-      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-mono font-medium bg-surface-sunken text-ink border border-border">
+      <span className="inline-flex items-center gap-1 rounded-md border border-border bg-surface-sunken px-2.5 py-1 font-mono text-[11px] font-medium text-ink">
         {eventName.replace(/[._]/g, ' ').toUpperCase()}
       </span>
     )
@@ -182,13 +196,25 @@ export function AuditView({
       case 'SYSTEM':
         return { label: 'System Engine', sub: 'State Machine', type: 'system' }
       case 'POLICY_GATE':
-        return { label: 'Policy Gate', sub: 'Invariant Guardrail', type: 'policy' }
+        return {
+          label: 'Policy Gate',
+          sub: 'Invariant Guardrail',
+          type: 'policy',
+        }
       case 'GATEWAY_WEBHOOK':
-        return { label: 'Razorpay Webhook', sub: 'Event Relay', type: 'webhook' }
+        return {
+          label: 'Razorpay Webhook',
+          sub: 'Event Relay',
+          type: 'webhook',
+        }
       case 'HUMAN_OPERATOR':
         return { label: 'Ops Operator', sub: 'HITL Reviewer', type: 'human' }
       default:
-        return { label: actor.replace('_', ' '), sub: 'System Entity', type: 'default' }
+        return {
+          label: actor.replace('_', ' '),
+          sub: 'System Entity',
+          type: 'default',
+        }
     }
   }
 
@@ -198,20 +224,21 @@ export function AuditView({
   }
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto h-full overflow-y-auto">
+    <div className="mx-auto h-full max-w-7xl space-y-6 overflow-y-auto">
       {/* 1. Header with Forensic Tag & Live Refresh */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border pb-5">
+      <div className="flex flex-col justify-between gap-4 border-b border-border pb-5 sm:flex-row sm:items-center">
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-2xl font-bold tracking-tight text-ink">
               Operational Forensic Audit Trail
             </h1>
-            <span className="text-xs font-mono font-semibold bg-accent-subtle text-accent border border-accent/20 px-2.5 py-0.5 rounded-full">
+            <span className="rounded-full border border-accent/20 bg-accent-subtle px-2.5 py-0.5 font-mono text-xs font-semibold text-accent">
               Immutable Forensic Log
             </span>
           </div>
-          <p className="text-sm text-ink-muted mt-1">
-            Tamper-evident record of all AI diagnosis formulations, state transitions, policy evaluations, and payment captures.
+          <p className="mt-1 text-sm text-ink-muted">
+            Tamper-evident record of all AI diagnosis formulations, state
+            transitions, policy evaluations, and payment captures.
           </p>
         </div>
 
@@ -220,20 +247,22 @@ export function AuditView({
             type="button"
             onClick={onRefresh}
             disabled={refreshing}
-            className="inline-flex items-center gap-2 px-3.5 py-2 text-xs font-semibold rounded-xl bg-surface border border-border hover:bg-surface-sunken transition-colors shadow-sm self-start sm:self-auto cursor-pointer"
+            className="inline-flex cursor-pointer items-center gap-2 self-start rounded-xl border border-border bg-surface px-3.5 py-2 text-xs font-semibold shadow-sm transition-colors hover:bg-surface-sunken sm:self-auto"
           >
-            <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />
+            <RefreshCw
+              className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`}
+            />
             <span>Refresh</span>
           </button>
         )}
       </div>
 
       {/* 2. Filter Matrix */}
-      <div className="bg-surface border border-border rounded-2xl p-4 shadow-sm space-y-3">
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="space-y-3 rounded-2xl border border-border bg-surface p-4 shadow-sm">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-4">
           {/* Action Filter */}
           <div>
-            <label className="text-[11px] font-bold text-ink-muted uppercase tracking-wider block mb-1.5">
+            <label className="mb-1.5 block text-[11px] font-bold tracking-wider text-ink-muted uppercase">
               Action Type
             </label>
             <select
@@ -242,9 +271,11 @@ export function AuditView({
                 setActionFilter(e.target.value)
                 setPage(1)
               }}
-              className="w-full bg-surface-sunken border border-border text-ink text-xs rounded-xl px-3 py-2 focus:outline-none focus:ring-1 focus:ring-accent"
+              className="w-full rounded-xl border border-border bg-surface-sunken px-3 py-2 text-xs text-ink focus:ring-1 focus:ring-accent focus:outline-none"
             >
-              <option value="">All Actions ({allEntries.length.toString()})</option>
+              <option value="">
+                All Actions ({allEntries.length.toString()})
+              </option>
               {availableActions.map((act) => (
                 <option key={act} value={act}>
                   {act}
@@ -255,7 +286,7 @@ export function AuditView({
 
           {/* Entity Scope Filter */}
           <div>
-            <label className="text-[11px] font-bold text-ink-muted uppercase tracking-wider block mb-1.5">
+            <label className="mb-1.5 block text-[11px] font-bold tracking-wider text-ink-muted uppercase">
               Entity Scope
             </label>
             <select
@@ -264,7 +295,7 @@ export function AuditView({
                 setEntityFilter(e.target.value)
                 setPage(1)
               }}
-              className="w-full bg-surface-sunken border border-border text-ink text-xs rounded-xl px-3 py-2 focus:outline-none focus:ring-1 focus:ring-accent"
+              className="w-full rounded-xl border border-border bg-surface-sunken px-3 py-2 text-xs text-ink focus:ring-1 focus:ring-accent focus:outline-none"
             >
               <option value="">All Entities</option>
               <option value="case">Cases Only</option>
@@ -274,7 +305,7 @@ export function AuditView({
 
           {/* Actor Role Filter */}
           <div>
-            <label className="text-[11px] font-bold text-ink-muted uppercase tracking-wider block mb-1.5">
+            <label className="mb-1.5 block text-[11px] font-bold tracking-wider text-ink-muted uppercase">
               Executing Actor
             </label>
             <select
@@ -283,7 +314,7 @@ export function AuditView({
                 setActorFilter(e.target.value)
                 setPage(1)
               }}
-              className="w-full bg-surface-sunken border border-border text-ink text-xs rounded-xl px-3 py-2 focus:outline-none focus:ring-1 focus:ring-accent"
+              className="w-full rounded-xl border border-border bg-surface-sunken px-3 py-2 text-xs text-ink focus:ring-1 focus:ring-accent focus:outline-none"
             >
               <option value="">All Actors</option>
               {availableActors.map((act) => (
@@ -296,7 +327,7 @@ export function AuditView({
 
           {/* Search Entity ID Form */}
           <form onSubmit={handleSearchSubmit}>
-            <label className="text-[11px] font-bold text-ink-muted uppercase tracking-wider block mb-1.5">
+            <label className="mb-1.5 block text-[11px] font-bold tracking-wider text-ink-muted uppercase">
               Entity ID Search
             </label>
             <div className="flex gap-1.5">
@@ -307,11 +338,11 @@ export function AuditView({
                 onChange={(e) => {
                   setSearchQuery(e.target.value)
                 }}
-                className="w-full bg-surface-sunken border border-border text-ink text-xs rounded-xl px-3 py-2 focus:outline-none focus:ring-1 focus:ring-accent font-mono"
+                className="w-full rounded-xl border border-border bg-surface-sunken px-3 py-2 font-mono text-xs text-ink focus:ring-1 focus:ring-accent focus:outline-none"
               />
               <button
                 type="submit"
-                className="px-3 bg-accent text-white rounded-xl text-xs font-bold hover:bg-accent-hover transition-colors cursor-pointer"
+                className="cursor-pointer rounded-xl bg-accent px-3 text-xs font-bold text-white transition-colors hover:bg-accent-hover"
               >
                 <Search className="h-3.5 w-3.5" />
               </button>
@@ -321,17 +352,17 @@ export function AuditView({
       </div>
 
       {/* 3. Audit Log Table */}
-      <div className="bg-surface border border-border rounded-2xl overflow-hidden shadow-sm">
+      <div className="overflow-hidden rounded-2xl border border-border bg-surface shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
-            <thead className="bg-surface-sunken/60 border-b border-border text-ink-muted uppercase font-bold text-[10px] tracking-wider">
+            <thead className="border-b border-border bg-surface-sunken/60 text-[10px] font-bold tracking-wider text-ink-muted uppercase">
               <tr>
-                <th className="py-3 px-4">Timestamp</th>
-                <th className="py-3 px-4">Action</th>
-                <th className="py-3 px-4">Entity</th>
-                <th className="py-3 px-4">Entity ID</th>
-                <th className="py-3 px-4">Actor</th>
-                <th className="py-3 px-4">Details</th>
+                <th className="px-4 py-3">Timestamp</th>
+                <th className="px-4 py-3">Action</th>
+                <th className="px-4 py-3">Entity</th>
+                <th className="px-4 py-3">Entity ID</th>
+                <th className="px-4 py-3">Actor</th>
+                <th className="px-4 py-3">Details</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -354,10 +385,14 @@ export function AuditView({
                               setIsSeeding(false)
                             })
                         }}
-                        className="gap-2 text-xs font-mono cursor-pointer"
+                        className="cursor-pointer gap-2 font-mono text-xs"
                       >
                         <Sparkles className="h-3.5 w-3.5 text-accent" />
-                        <span>{isSeeding ? 'Seeding Batch...' : 'Seed Recovery Batch'}</span>
+                        <span>
+                          {isSeeding
+                            ? 'Seeding Batch...'
+                            : 'Seed Recovery Batch'}
+                        </span>
                       </Button>
                     </div>
                   </td>
@@ -369,60 +404,75 @@ export function AuditView({
 
                   return (
                     <React.Fragment key={entry.entry_id}>
-                      <tr className="hover:bg-surface-sunken/40 transition-colors">
+                      <tr className="transition-colors hover:bg-surface-sunken/40">
                         {/* Timestamp */}
-                        <td className="py-3.5 px-4 font-mono text-[11px] text-ink-muted whitespace-nowrap">
+                        <td className="px-4 py-3.5 font-mono text-[11px] whitespace-nowrap text-ink-muted">
                           {new Date(entry.timestamp).toLocaleString()}
                         </td>
 
                         {/* Action Badge */}
-                        <td className="py-3.5 px-4 whitespace-nowrap">
+                        <td className="px-4 py-3.5 whitespace-nowrap">
                           {formatActionBadge(entry.event_name)}
                         </td>
 
                         {/* Entity */}
-                        <td className="py-3.5 px-4 font-semibold capitalize text-ink">
+                        <td className="px-4 py-3.5 font-semibold text-ink capitalize">
                           Case Entry
                         </td>
 
                         {/* Entity ID */}
-                        <td className="py-3.5 px-4 font-mono text-[11px] text-ink-muted">
+                        <td className="px-4 py-3.5 font-mono text-[11px] text-ink-muted">
                           #{entry.case_id.slice(0, 10)}...
                         </td>
 
                         {/* Actor with Floating User Tooltip */}
-                        <td className="py-3.5 px-4 whitespace-nowrap">
-                          <div className="relative group inline-flex items-center gap-1.5 cursor-pointer">
-                            <span className="font-semibold text-ink underline decoration-dotted decoration-ink-muted underline-offset-4">
+                        <td className="px-4 py-3.5 whitespace-nowrap">
+                          <div className="group relative inline-flex cursor-pointer items-center gap-1.5">
+                            <span className="font-semibold text-ink underline decoration-ink-muted decoration-dotted underline-offset-4">
                               {actorInfo.label}
                             </span>
-                            <span className="text-[10px] uppercase font-bold text-ink-muted bg-surface-sunken px-1.5 py-0.5 rounded border border-border">
+                            <span className="rounded border border-border bg-surface-sunken px-1.5 py-0.5 text-[10px] font-bold text-ink-muted uppercase">
                               {actorInfo.sub}
                             </span>
 
                             {/* Floating User / System Tooltip */}
-                            <div className="absolute bottom-full left-0 mb-2 hidden group-hover:flex flex-col gap-1 w-64 p-3 bg-surface text-ink rounded-xl border border-border shadow-2xl z-50 animate-in fade-in duration-150 pointer-events-none text-xs">
+                            <div className="animate-in fade-in pointer-events-none absolute bottom-full left-0 z-50 mb-2 hidden w-64 flex-col gap-1 rounded-xl border border-border bg-surface p-3 text-xs text-ink shadow-2xl duration-150 group-hover:flex">
                               <div className="flex items-center justify-between border-b border-border pb-1.5">
-                                <span className="font-bold text-xs text-ink truncate">
+                                <span className="truncate text-xs font-bold text-ink">
                                   {actorInfo.label}
                                 </span>
-                                <span className="text-[9px] font-mono uppercase font-black px-1.5 py-0.5 rounded bg-accent-subtle text-accent border border-accent/20">
+                                <span className="rounded border border-accent/20 bg-accent-subtle px-1.5 py-0.5 font-mono text-[9px] font-black text-accent uppercase">
                                   {entry.actor}
                                 </span>
                               </div>
-                              <div className="text-[11px] space-y-0.5 text-ink-muted pt-0.5">
+                              <div className="space-y-0.5 pt-0.5 text-[11px] text-ink-muted">
                                 <p>
-                                  <strong className="text-ink">Component:</strong> {actorInfo.sub}
+                                  <strong className="text-ink">
+                                    Component:
+                                  </strong>{' '}
+                                  {actorInfo.sub}
                                 </p>
                                 <p>
-                                  <strong className="text-ink">Audit ID:</strong> #{entry.entry_id.slice(0, 12)}
+                                  <strong className="text-ink">
+                                    Audit ID:
+                                  </strong>{' '}
+                                  #{entry.entry_id.slice(0, 12)}
                                 </p>
                                 <p>
-                                  <strong className="text-ink">Case Scope:</strong> #{entry.case_id.slice(0, 8)}
+                                  <strong className="text-ink">
+                                    Case Scope:
+                                  </strong>{' '}
+                                  #{entry.case_id.slice(0, 8)}
                                 </p>
                                 {entry.cost_incurred_paise > 0 && (
                                   <p className="text-failed">
-                                    <strong className="text-ink">Cost Incurred:</strong> INR {(entry.cost_incurred_paise / 100).toFixed(2)}
+                                    <strong className="text-ink">
+                                      Cost Incurred:
+                                    </strong>{' '}
+                                    INR{' '}
+                                    {(entry.cost_incurred_paise / 100).toFixed(
+                                      2,
+                                    )}
                                   </p>
                                 )}
                               </div>
@@ -431,13 +481,15 @@ export function AuditView({
                         </td>
 
                         {/* Details Toggle */}
-                        <td className="py-3.5 px-4">
+                        <td className="px-4 py-3.5">
                           <button
                             type="button"
                             onClick={() => {
-                              setExpandedEntryId(isExpanded ? null : entry.entry_id)
+                              setExpandedEntryId(
+                                isExpanded ? null : entry.entry_id,
+                              )
                             }}
-                            className="inline-flex items-center gap-1 text-accent hover:underline font-semibold text-[11px] cursor-pointer"
+                            className="inline-flex cursor-pointer items-center gap-1 text-[11px] font-semibold text-accent hover:underline"
                           >
                             {isExpanded ? (
                               <>
@@ -457,9 +509,11 @@ export function AuditView({
                       {/* Expandable Payload Row */}
                       {isExpanded && (
                         <tr className="bg-surface-sunken/40">
-                          <td colSpan={6} className="py-3 px-6">
-                            <div className="bg-surface border border-border rounded-xl p-3 text-[11px] font-mono overflow-x-auto text-ink space-y-1">
-                              <pre>{JSON.stringify(entry.decision_inputs, null, 2)}</pre>
+                          <td colSpan={6} className="px-6 py-3">
+                            <div className="space-y-1 overflow-x-auto rounded-xl border border-border bg-surface p-3 font-mono text-[11px] text-ink">
+                              <pre>
+                                {JSON.stringify(entry.decision_inputs, null, 2)}
+                              </pre>
                             </div>
                           </td>
                         </tr>
@@ -473,9 +527,10 @@ export function AuditView({
         </div>
 
         {/* 4. Pagination Bar */}
-        <div className="flex items-center justify-between px-4 py-3 border-t border-border bg-surface-sunken/20">
-          <p className="text-xs text-ink-muted font-medium">
-            Showing {paginatedEntries.length.toString()} of {total.toString()} audit records
+        <div className="flex items-center justify-between border-t border-border bg-surface-sunken/20 px-4 py-3">
+          <p className="text-xs font-medium text-ink-muted">
+            Showing {paginatedEntries.length.toString()} of {total.toString()}{' '}
+            audit records
           </p>
           <div className="flex items-center gap-2">
             <button
@@ -484,11 +539,11 @@ export function AuditView({
                 setPage((p) => Math.max(1, p - 1))
               }}
               disabled={page <= 1}
-              className="p-1.5 rounded-lg border border-border bg-surface hover:bg-surface-sunken text-ink disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
+              className="cursor-pointer rounded-lg border border-border bg-surface p-1.5 text-ink transition-colors hover:bg-surface-sunken disabled:cursor-not-allowed disabled:opacity-40"
             >
               <ChevronLeft className="h-4 w-4" />
             </button>
-            <span className="text-xs font-semibold px-2 text-ink">
+            <span className="px-2 text-xs font-semibold text-ink">
               Page {page.toString()} of {totalPages.toString()}
             </span>
             <button
@@ -497,7 +552,7 @@ export function AuditView({
                 setPage((p) => Math.min(totalPages, p + 1))
               }}
               disabled={page >= totalPages}
-              className="p-1.5 rounded-lg border border-border bg-surface hover:bg-surface-sunken text-ink disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
+              className="cursor-pointer rounded-lg border border-border bg-surface p-1.5 text-ink transition-colors hover:bg-surface-sunken disabled:cursor-not-allowed disabled:opacity-40"
             >
               <ChevronRight className="h-4 w-4" />
             </button>

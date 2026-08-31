@@ -1,7 +1,15 @@
 'use client'
 
 import React from 'react'
-import { Building2, CreditCard, FileText, Mail, MessageSquareText, Phone, RefreshCw } from 'lucide-react'
+import {
+  Building2,
+  CreditCard,
+  FileText,
+  Mail,
+  MessageSquareText,
+  Phone,
+  RefreshCw,
+} from 'lucide-react'
 import type { OutreachChannelValue } from '@/lib/constants'
 
 interface BrandIconProps {
@@ -34,10 +42,7 @@ export function RazorpayIcon({ className = 'h-5 w-5', size }: BrandIconProps) {
         d="M342.3 277.1l-43.2 78.5H231l43.2-78.5h68.1z"
         className="dark:fill-blue-400"
       />
-      <path
-        fill="#528FF0"
-        d="M285.5 380.3l-43.2 78.5H174.2l43.2-78.5h68.1z"
-      />
+      <path fill="#528FF0" d="M285.5 380.3l-43.2 78.5H174.2l43.2-78.5h68.1z" />
     </svg>
   )
 }
@@ -61,10 +66,7 @@ export function RazorpaySymbol({ className = 'h-4 w-4' }: BrandIconProps) {
         fill="#02042B"
         className="dark:fill-blue-300"
       />
-      <path
-        d="M13.9 17.8l-2.1 3.9H8.4l2.1-3.9h3.4z"
-        fill="#528FF0"
-      />
+      <path d="M13.9 17.8l-2.1 3.9H8.4l2.1-3.9h3.4z" fill="#528FF0" />
     </svg>
   )
 }
@@ -123,8 +125,14 @@ export function RuPayIcon({ className = 'h-4 w-4' }: BrandIconProps) {
       aria-label="RuPay"
     >
       <rect width="36" height="24" rx="3" fill="#092873" />
-      <path d="M7 6h7.5c2.5 0 4 1.2 4 3.2s-1.5 3.2-4 3.2H10v5.6H7V6zm3 4.4h4.2c1 0 1.6-.4 1.6-1.2s-.6-1.2-1.6-1.2H10v2.4z" fill="#FFF" />
-      <path d="M19 12.4l4.5 5.6h3.8l-4.8-6 4.3-6h-3.7L19 12.4z" fill="#00A651" />
+      <path
+        d="M7 6h7.5c2.5 0 4 1.2 4 3.2s-1.5 3.2-4 3.2H10v5.6H7V6zm3 4.4h4.2c1 0 1.6-.4 1.6-1.2s-.6-1.2-1.6-1.2H10v2.4z"
+        fill="#FFF"
+      />
+      <path
+        d="M19 12.4l4.5 5.6h3.8l-4.8-6 4.3-6h-3.7L19 12.4z"
+        fill="#00A651"
+      />
       <path d="M25 6h4l3.5 12h-3.8L27 12h-2V6z" fill="#ED1C24" />
     </svg>
   )
@@ -142,7 +150,9 @@ export function OutreachChannelIcon({
     case 'WHATSAPP':
       return <WhatsAppIcon className={className} />
     case 'SMS':
-      return <MessageSquareText className={`text-accent ${className}`} aria-hidden />
+      return (
+        <MessageSquareText className={`text-accent ${className}`} aria-hidden />
+      )
     case 'EMAIL':
       return <Mail className={`text-ink-muted ${className}`} aria-hidden />
     case 'VOICE_CALL':
@@ -173,7 +183,11 @@ export function RailBadge({
   } else if (norm.includes('NETBANK') || norm.includes('NB')) {
     icon = <Building2 className="h-3.5 w-3.5 text-accent" />
     label = 'NetBanking'
-  } else if (norm.includes('NACH') || norm.includes('MANDATE') || norm.includes('ENACH')) {
+  } else if (
+    norm.includes('NACH') ||
+    norm.includes('MANDATE') ||
+    norm.includes('ENACH')
+  ) {
     icon = <RefreshCw className="h-3.5 w-3.5 text-recovered" />
     label = 'eNACH / AutoPay'
   } else if (norm.includes('INVOICE') || norm.includes('B2B')) {
@@ -183,7 +197,7 @@ export function RailBadge({
 
   return (
     <span
-      className={`inline-flex items-center gap-1.5 rounded-control bg-surface-sunken/80 border border-border px-2 py-0.5 font-mono text-[11px] text-ink font-medium ${className}`}
+      className={`inline-flex items-center gap-1.5 rounded-control border border-border bg-surface-sunken/80 px-2 py-0.5 font-mono text-[11px] font-medium text-ink ${className}`}
       title={`Payment Rail: ${label}`}
     >
       {icon}

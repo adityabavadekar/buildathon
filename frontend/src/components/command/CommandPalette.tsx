@@ -88,16 +88,20 @@ export function CommandPalette({
     .filter(
       (c) =>
         c.case_id.toLowerCase().includes(query.toLowerCase()) ||
-        c.failure_event.payment_id.toLowerCase().includes(query.toLowerCase()) ||
+        c.failure_event.payment_id
+          .toLowerCase()
+          .includes(query.toLowerCase()) ||
         c.failure_event.customer_id.toLowerCase().includes(query.toLowerCase()),
     )
     .slice(0, 5)
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-20 bg-black/60 backdrop-blur-xs p-4">
-      <div className="w-full max-w-xl rounded-panel bg-surface border border-border shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-        <div className="flex items-center border-b border-border px-4 py-3 bg-surface-sunken/40">
-          <span className="text-xs font-mono text-ink-subtle mr-2 font-bold">[⌘K]</span>
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 p-4 pt-20 backdrop-blur-xs">
+      <div className="animate-in fade-in zoom-in-95 w-full max-w-xl overflow-hidden rounded-panel border border-border bg-surface shadow-2xl duration-150">
+        <div className="flex items-center border-b border-border bg-surface-sunken/40 px-4 py-3">
+          <span className="mr-2 font-mono text-xs font-bold text-ink-subtle">
+            [⌘K]
+          </span>
           <input
             type="text"
             autoFocus
@@ -106,20 +110,20 @@ export function CommandPalette({
             onChange={(e) => {
               setQuery(e.target.value)
             }}
-            className="flex-1 bg-transparent text-xs font-mono text-ink placeholder:text-ink-subtle focus:outline-none"
+            className="flex-1 bg-transparent font-mono text-xs text-ink placeholder:text-ink-subtle focus:outline-none"
           />
           <button
             type="button"
             onClick={onClose}
-            className="text-[10px] font-mono text-ink-muted hover:text-ink cursor-pointer"
+            className="cursor-pointer font-mono text-[10px] text-ink-muted hover:text-ink"
           >
             [Esc]
           </button>
         </div>
 
-        <div className="max-h-96 overflow-y-auto p-2 space-y-3 font-mono text-xs">
+        <div className="max-h-96 space-y-3 overflow-y-auto p-2 font-mono text-xs">
           <div className="space-y-1">
-            <div className="px-2 py-1 text-[10px] uppercase tracking-wider text-ink-subtle">
+            <div className="px-2 py-1 text-[10px] tracking-wider text-ink-subtle uppercase">
               Quick Actions
             </div>
             <button
@@ -128,10 +132,12 @@ export function CommandPalette({
                 onSeed()
                 onClose()
               }}
-              className="flex w-full items-center justify-between px-3 py-2 rounded-control hover:bg-surface-sunken text-ink text-left cursor-pointer transition-colors"
+              className="flex w-full cursor-pointer items-center justify-between rounded-control px-3 py-2 text-left text-ink transition-colors hover:bg-surface-sunken"
             >
               <span>Seed 50 Synthetic Recovery Cases</span>
-              <span className="text-[10px] text-accent font-semibold">Simulation</span>
+              <span className="text-[10px] font-semibold text-accent">
+                Simulation
+              </span>
             </button>
             <button
               type="button"
@@ -139,16 +145,18 @@ export function CommandPalette({
                 onReset()
                 onClose()
               }}
-              className="flex w-full items-center justify-between px-3 py-2 rounded-control hover:bg-surface-sunken text-ink text-left cursor-pointer transition-colors"
+              className="flex w-full cursor-pointer items-center justify-between rounded-control px-3 py-2 text-left text-ink transition-colors hover:bg-surface-sunken"
             >
               <span>Reset & Purge All Simulation Data</span>
-              <span className="text-[10px] text-failed font-semibold">Purge</span>
+              <span className="text-[10px] font-semibold text-failed">
+                Purge
+              </span>
             </button>
           </div>
 
           {filteredNav.length > 0 && (
-            <div className="space-y-1 pt-1 border-t border-border/50">
-              <div className="px-2 py-1 text-[10px] uppercase tracking-wider text-ink-subtle">
+            <div className="space-y-1 border-t border-border/50 pt-1">
+              <div className="px-2 py-1 text-[10px] tracking-wider text-ink-subtle uppercase">
                 Navigation
               </div>
               {filteredNav.map((item) => (
@@ -159,11 +167,13 @@ export function CommandPalette({
                     onNavigate(item.id)
                     onClose()
                   }}
-                  className="flex w-full items-center justify-between px-3 py-2 rounded-control hover:bg-surface-sunken text-ink text-left cursor-pointer transition-colors"
+                  className="flex w-full cursor-pointer items-center justify-between rounded-control px-3 py-2 text-left text-ink transition-colors hover:bg-surface-sunken"
                 >
                   <div>
-                    <span className="font-semibold block">{item.label}</span>
-                    <span className="text-[10px] text-ink-muted block">{item.desc}</span>
+                    <span className="block font-semibold">{item.label}</span>
+                    <span className="block text-[10px] text-ink-muted">
+                      {item.desc}
+                    </span>
                   </div>
                   <span className="text-[10px] text-ink-subtle">Jump</span>
                 </button>
@@ -172,8 +182,8 @@ export function CommandPalette({
           )}
 
           {filteredCases.length > 0 && (
-            <div className="space-y-1 pt-1 border-t border-border/50">
-              <div className="px-2 py-1 text-[10px] uppercase tracking-wider text-ink-subtle">
+            <div className="space-y-1 border-t border-border/50 pt-1">
+              <div className="px-2 py-1 text-[10px] tracking-wider text-ink-subtle uppercase">
                 Matching Cases
               </div>
               {filteredCases.map((c) => (
@@ -184,12 +194,13 @@ export function CommandPalette({
                     onSelectCase(c)
                     onClose()
                   }}
-                  className="flex w-full items-center justify-between px-3 py-2 rounded-control hover:bg-surface-sunken text-ink text-left cursor-pointer transition-colors"
+                  className="flex w-full cursor-pointer items-center justify-between rounded-control px-3 py-2 text-left text-ink transition-colors hover:bg-surface-sunken"
                 >
                   <div>
-                    <span className="font-semibold block">{c.case_id}</span>
-                    <span className="text-[10px] text-ink-muted block">
-                      {c.failure_event.customer_id} · {c.failure_event.payment_rail} · INR{' '}
+                    <span className="block font-semibold">{c.case_id}</span>
+                    <span className="block text-[10px] text-ink-muted">
+                      {c.failure_event.customer_id} ·{' '}
+                      {c.failure_event.payment_rail} · INR{' '}
                       {(c.amount_paise / 100).toFixed(0)}
                     </span>
                   </div>

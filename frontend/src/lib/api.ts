@@ -510,18 +510,9 @@ export type WorkflowTriggerType =
   | 'checkout.abandoned'
   | 'rail.degraded'
 export type WorkflowAction =
-  | 'diagnose'
-  | 'retry'
-  | 'notify'
-  | 'payment_link'
-  | 'escalate'
+  'diagnose' | 'retry' | 'notify' | 'payment_link' | 'escalate'
 export type WorkflowNodeType =
-  | 'trigger'
-  | 'decision'
-  | 'action'
-  | 'wait'
-  | 'human_handoff'
-  | 'terminal'
+  'trigger' | 'decision' | 'action' | 'wait' | 'human_handoff' | 'terminal'
 export type WorkflowTemplateStatus = 'draft' | 'published'
 
 export interface WorkflowSignal {
@@ -727,7 +718,9 @@ export function getPolicies(): Promise<PolicyResponse> {
   return request<PolicyResponse>('/policies')
 }
 
-export function updatePolicies(policy: MerchantPolicyPayload): Promise<PolicyResponse> {
+export function updatePolicies(
+  policy: MerchantPolicyPayload,
+): Promise<PolicyResponse> {
   return request<PolicyResponse>('/policies', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
