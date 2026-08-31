@@ -47,6 +47,7 @@ class CaseActionRequest(BaseModel):
 )
 async def list_cases(  # noqa: PLR0917
     merchant_id: Annotated[str | None, Query()] = None,
+    role: Annotated[str, Query()] = "operator",
     state: Annotated[RecoveryState | None, Query()] = None,
     states: Annotated[
         str | None, Query(description="Comma-separated list of states")
@@ -177,11 +178,17 @@ async def list_cases(  # noqa: PLR0917
         q=q,
         model_used=model_used,
     )
+    visible_cases = list(cases)
+    if role.lower() in {"viewer", "analyst"}:
+        visible_cases = [
+            item.model_copy(update={"user_ref": None, "contact_email": None, "contact_phone": None})
+            for item in visible_cases
+        ]
     return CaseListResponse(
         total=total,
         offset=offset,
         limit=limit,
-        items=list(cases),
+        items=visible_cases,
     )
 
 

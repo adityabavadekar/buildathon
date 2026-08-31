@@ -80,18 +80,20 @@ def _extract_json_block(text: str) -> dict[str, Any]:
         clean.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
     )
 
+    def parse(candidate: str) -> dict[str, Any]:
+        repaired = re.sub(r",\s*([}\]])", r"\1", candidate)
+        repaired = re.sub(r"([{,])\s*([A-Za-z_][A-Za-z0-9_]*)\s*:", r'\1 "\2":', repaired)
+        parsed_value: Any = json.loads(repaired)
+        if not isinstance(parsed_value, dict):
+            raise TypeError("LLM response is not a JSON object")
+        return cast("dict[str, Any]", parsed_value)
+
     try:
-        parsed: Any = json.loads(clean)
-        if isinstance(parsed, dict):
-            return cast("dict[str, Any]", parsed)
-        msg = "LLM response is not a JSON object"
-        raise ValueError(msg)
-    except (json.JSONDecodeError, ValueError):
+        return parse(clean)
+    except (json.JSONDecodeError, TypeError, ValueError):
         match = re.search(r"\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}", clean, re.DOTALL)
         if match:
-            fallback_parsed: Any = json.loads(match.group(0))
-            if isinstance(fallback_parsed, dict):
-                return cast("dict[str, Any]", fallback_parsed)
+            return parse(match.group(0))
         raise
 
 

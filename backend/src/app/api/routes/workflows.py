@@ -7,6 +7,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from app.audit.repository import get_case_repository
 from app.workflow.engine import get_workflow_engine
 from app.workflow.models import (
     WorkflowAction,
@@ -34,6 +35,12 @@ class SignalRequest(BaseModel):
 class LaunchRequest(BaseModel):
     case_id: str = Field(min_length=1)
     template: WorkflowTemplate | None = None
+
+
+class CohortLaunchRequest(BaseModel):
+    campaign_id: str = Field(min_length=1)
+    template: WorkflowTemplate | None = None
+    limit: int = Field(default=200, ge=1, le=1000)
 
 
 @router.get("/options")
@@ -81,6 +88,18 @@ async def launch_workflow(req: LaunchRequest) -> WorkflowInstance:
     if not result:
         raise HTTPException(status_code=404, detail="Recovery case not found")
     return result
+
+
+@router.post("/launch-cohort", response_model=list[WorkflowInstance], status_code=201)
+async def launch_workflow_cohort(req: CohortLaunchRequest) -> list[WorkflowInstance]:
+    cases = get_case_repository().list_cases(campaign_id=req.campaign_id, limit=req.limit)
+    engine = get_workflow_engine()
+    launched: list[WorkflowInstance] = []
+    for case in cases:
+        instance = await engine.start_existing_case(case.case_id, req.template)
+        if instance:
+            launched.append(instance)
+    return launched
 
 
 @router.get("", response_model=list[WorkflowInstance])
