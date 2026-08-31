@@ -5,13 +5,18 @@ from __future__ import annotations
 from typing import Annotated, Any
 
 from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.workflow.engine import get_workflow_engine
 from app.workflow.models import (
+    WorkflowAction,
     WorkflowInstance,
+    WorkflowNodeType,
     WorkflowSignal,
     WorkflowSignalType,
+    WorkflowTemplate,
+    WorkflowTemplateDefinition,
+    WorkflowTriggerType,
 )
 from app.workflow.repository import get_workflow_repository
 
@@ -24,6 +29,58 @@ class SignalRequest(BaseModel):
     signal_type: WorkflowSignalType
     payload: dict[str, Any] = {}
     source: str = "operator_ui"
+
+
+class LaunchRequest(BaseModel):
+    case_id: str = Field(min_length=1)
+    template: WorkflowTemplate | None = None
+
+
+@router.get("/options")
+def workflow_options() -> dict[str, list[str]]:
+    return {
+        "trigger_types": [item.value for item in WorkflowTriggerType],
+        "actions": [item.value for item in WorkflowAction],
+        "node_types": [item.value for item in WorkflowNodeType],
+        "signal_types": [item.value for item in WorkflowSignalType],
+    }
+
+
+@router.get("/templates", response_model=list[WorkflowTemplateDefinition])
+def list_workflow_templates() -> list[WorkflowTemplateDefinition]:
+    return get_workflow_repository().list_template_definitions()
+
+
+@router.post("/templates", response_model=WorkflowTemplateDefinition, status_code=201)
+def create_workflow_template(
+    definition: WorkflowTemplateDefinition,
+) -> WorkflowTemplateDefinition:
+    return get_workflow_repository().save_template_definition(definition)
+
+
+@router.put("/templates/{template_id}", response_model=WorkflowTemplateDefinition)
+def update_workflow_template(
+    template_id: str, definition: WorkflowTemplateDefinition
+) -> WorkflowTemplateDefinition:
+    if template_id != definition.template_id:
+        raise HTTPException(status_code=400, detail="Template ID does not match path")
+    if not get_workflow_repository().get_template_definition(template_id):
+        raise HTTPException(status_code=404, detail="Workflow template not found")
+    return get_workflow_repository().save_template_definition(definition)
+
+
+@router.delete("/templates/{template_id}", status_code=204)
+def delete_workflow_template(template_id: str) -> None:
+    if not get_workflow_repository().delete_template_definition(template_id):
+        raise HTTPException(status_code=404, detail="Workflow template not found")
+
+
+@router.post("/launch", response_model=WorkflowInstance, status_code=201)
+async def launch_workflow(req: LaunchRequest) -> WorkflowInstance:
+    result = await get_workflow_engine().start_existing_case(req.case_id, req.template)
+    if not result:
+        raise HTTPException(status_code=404, detail="Recovery case not found")
+    return result
 
 
 @router.get("", response_model=list[WorkflowInstance])

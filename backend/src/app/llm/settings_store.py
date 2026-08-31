@@ -22,7 +22,6 @@ DEFAULT_MODELS: dict[str, list[str]] = {
         "nvidia/nemotron-nano-9b-v2:free",
         "nvidia/nemotron-3-super-120b-a12b:free",
         "poolside/laguna-s-2.1:free",
-        "anthropic/claude-3.7-sonnet",
         "openai/gpt-4o",
         "deepseek/deepseek-r1",
         "meta-llama/llama-3.3-70b-instruct",
@@ -104,7 +103,7 @@ class LLMSettingsStore:
                     enabled=True,
                     priority=1,
                     active_model=settings.openrouter_model
-                    or "anthropic/claude-3.7-sonnet",
+                    or DEFAULT_MODELS["openrouter"][0],
                     available_models=DEFAULT_MODELS["openrouter"],
                     has_api_key=has_openrouter,
                 ),
@@ -190,6 +189,17 @@ class LLMSettingsStore:
                     if settings.openrouter_model not in p.available_models:
                         p.available_models.insert(0, settings.openrouter_model)
                     p.active_model = clean_env_model
+            existing_names = {provider.name for provider in state.providers}
+            for provider in default.providers:
+                if provider.name not in existing_names:
+                    state.providers.append(provider)
+            state.providers.sort(key=lambda provider: provider.priority)
+            state.providers = [
+                provider.model_copy(update={"priority": index})
+                for index, provider in enumerate(state.providers, start=1)
+            ]
+            self.file_path.parent.mkdir(parents=True, exist_ok=True)
+            self.file_path.write_text(state.model_dump_json(indent=2), encoding="utf-8")
             return state
         except Exception as exc:  # noqa: BLE001
             logger.warning("llm.settings_store.load_error", error=str(exc))

@@ -7,6 +7,17 @@ from app.core.enums import ExperimentArm, InterventionType, PolicyCheckResult
 from app.detection.rail_health import get_rail_health_registry
 from app.intervention.models import InterventionPlan, MerchantPolicy, PolicyEvaluation
 
+_ACTIVE_POLICY: MerchantPolicy = MerchantPolicy()
+
+
+def get_active_policy() -> MerchantPolicy:
+    return _ACTIVE_POLICY.model_copy(deep=True)
+
+
+def set_active_policy(policy: MerchantPolicy) -> MerchantPolicy:
+    _ACTIVE_POLICY.__dict__.update(policy.model_copy(deep=True).__dict__)
+    return get_active_policy()
+
 
 class PolicyGate:
     """Evaluates recovery plans against deterministic policy invariants.
@@ -23,7 +34,7 @@ class PolicyGate:
         policy: MerchantPolicy | None = None,
     ) -> PolicyEvaluation:
         """Deterministically evaluate if an intervention plan is permissible."""
-        active_policy = policy or MerchantPolicy()
+        active_policy = policy or get_active_policy()
         now = datetime.now(UTC)
 
         # Run primary gate checks

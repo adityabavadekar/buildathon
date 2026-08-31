@@ -33,6 +33,33 @@ def _extract_secret(val: SecretStr | str | None) -> str | None:
     return str(val).strip()
 
 
+def _identity_value(values: dict[str, Any], *keys: str) -> str | None:
+    """Return the first non-empty merchant-provided identity value."""
+    for key in keys:
+        value = values.get(key)
+        if value is not None and str(value).strip():
+            return str(value)
+    return None
+
+
+def _extract_payment_identity(payment_entity: dict[str, Any]) -> dict[str, str | None]:
+    """Extract merchant identity without changing the raw webhook payload."""
+    notes = payment_entity.get("notes")
+    notes_data = notes if isinstance(notes, dict) else {}
+    metadata = payment_entity.get("metadata")
+    metadata_data = metadata if isinstance(metadata, dict) else {}
+    return {
+        "campaign_id": _identity_value(notes_data, "campaign_id", "utm_campaign")
+        or _identity_value(metadata_data, "campaign_id"),
+        "user_ref": _identity_value(
+            notes_data, "user_id", "customer_ref", "reference_id", "order_id"
+        ),
+        "reference_id": _identity_value(notes_data, "reference_id"),
+        "contact_email": _identity_value(payment_entity, "email"),
+        "contact_phone": _identity_value(payment_entity, "contact"),
+    }
+
+
 class WebhookResponse(BaseModel):
     """Standard response for ingested webhook events."""
 
@@ -172,6 +199,7 @@ async def handle_razorpay_webhook(  # noqa: PLR0911, PLR0912, PLR0915
             "NACH": PaymentRail.ENACH,
         }
         rail = rail_map.get(method, PaymentRail.UNKNOWN)
+        identity = _extract_payment_identity(payment_entity)
 
         event = RawFailureEvent(
             event_id=f"evt_{payment_id}",
@@ -191,6 +219,11 @@ async def handle_razorpay_webhook(  # noqa: PLR0911, PLR0912, PLR0915
             occurred_at=datetime.now(UTC),
             invoice_id=payment_entity.get("invoice_id"),
             subscription_id=payment_entity.get("subscription_id"),
+            campaign_id=identity["campaign_id"],
+            user_ref=identity["user_ref"],
+            reference_id=identity["reference_id"],
+            contact_email=identity["contact_email"],
+            contact_phone=identity["contact_phone"],
             metadata=payment_entity,
         )
 
@@ -204,6 +237,11 @@ async def handle_razorpay_webhook(  # noqa: PLR0911, PLR0912, PLR0915
             amount_paise=event.amount_paise,
             currency=event.currency,
             failure_event=event,
+            campaign_id=event.campaign_id,
+            user_ref=event.user_ref,
+            reference_id=event.reference_id,
+            contact_email=event.contact_email,
+            contact_phone=event.contact_phone,
             created_at=now,
             updated_at=now,
         )

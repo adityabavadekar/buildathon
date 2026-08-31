@@ -76,6 +76,11 @@ class RecoveryCase(BaseModel):
     amount_paise: int = Field(gt=0)
     currency: str = Field(default=DEFAULT_CURRENCY)
     failure_event: RawFailureEvent
+    campaign_id: str | None = None
+    user_ref: str | None = None
+    reference_id: str | None = None
+    contact_email: str | None = None
+    contact_phone: str | None = None
 
     touches_count: int = 0
     retry_count: int = 0

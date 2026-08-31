@@ -79,6 +79,9 @@ async def list_cases(  # noqa: PLR0917
     payment_id: Annotated[str | None, Query()] = None,
     invoice_id: Annotated[str | None, Query()] = None,
     subscription_id: Annotated[str | None, Query()] = None,
+    campaign_id: Annotated[str | None, Query()] = None,
+    user_ref: Annotated[str | None, Query()] = None,
+    reference_id: Annotated[str | None, Query()] = None,
     q: Annotated[str | None, Query(description="Free-text parameterized query")] = None,
     model_used: Annotated[
         str | None, Query(description="Filter by model recorded in plan formulation")
@@ -136,6 +139,9 @@ async def list_cases(  # noqa: PLR0917
         payment_id=payment_id,
         invoice_id=invoice_id,
         subscription_id=subscription_id,
+        campaign_id=campaign_id,
+        user_ref=user_ref,
+        reference_id=reference_id,
         q=q,
         model_used=model_used,
         sort_by=sort_by,
@@ -165,6 +171,9 @@ async def list_cases(  # noqa: PLR0917
         payment_id=payment_id,
         invoice_id=invoice_id,
         subscription_id=subscription_id,
+        campaign_id=campaign_id,
+        user_ref=user_ref,
+        reference_id=reference_id,
         q=q,
         model_used=model_used,
     )

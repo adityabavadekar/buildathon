@@ -6,10 +6,10 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 
 from app.intervention.models import MerchantPolicy
+from app.intervention.policy_gate import get_active_policy, set_active_policy
 
 router = APIRouter(prefix="/policies", tags=["policies"])
 
-_ACTIVE_POLICY = MerchantPolicy()
 
 
 class PolicyRuleDetail(BaseModel):
@@ -37,6 +37,7 @@ class PolicyResponse(BaseModel):
 @router.get("", response_model=PolicyResponse, summary="Get Active Policies")
 async def get_active_policies() -> PolicyResponse:
     """Retrieve active recovery policy rules, limits, and guardrails."""
+    _ACTIVE_POLICY = get_active_policy()
     rules = [
         PolicyRuleDetail(
             id="max_touches",
@@ -84,3 +85,8 @@ async def get_active_policies() -> PolicyResponse:
         require_human_above_paise=_ACTIVE_POLICY.require_human_above_paise,
         rules=rules,
     )
+
+
+@router.put("", response_model=MerchantPolicy)
+async def update_active_policies(policy: MerchantPolicy) -> MerchantPolicy:
+    return set_active_policy(policy)

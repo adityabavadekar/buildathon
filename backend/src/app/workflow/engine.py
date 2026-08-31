@@ -6,8 +6,10 @@ import functools
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
+from app.audit.models import AuditEntry
 from app.audit.repository import get_case_repository
 from app.core.enums import (
+    AuditActor,
     ExperimentArm,
     RecoveryState,
 )
@@ -46,6 +48,59 @@ class WorkflowEngine:
         self.policy_gate = policy_gate or PolicyGate()
         self.case_repo = get_case_repository()
 
+    async def start_existing_case(
+        self, case_id: str, template: WorkflowTemplate | None = None
+    ) -> WorkflowInstance | None:
+        """Attach a durable workflow to an already ingested recovery case."""
+        case = self.case_repo.get_by_id(case_id)
+        if not case:
+            return None
+        existing = self.repository.get_workflow_by_case(case_id)
+        if existing:
+            return existing
+        chosen_template = template or WorkflowTemplate.FAILED_PAYMENT
+        stopping_rules = configure_stopping_rules(chosen_template, case.amount_paise)
+        instance = WorkflowInstance(
+            case_id=case.case_id,
+            template=chosen_template,
+            recovery_state=case.state,
+            context={
+                "payment_id": case.failure_event.payment_id,
+                "merchant_id": case.merchant_id,
+                "customer_id": case.failure_event.customer_id,
+                "amount_paise": case.amount_paise,
+                "currency": case.currency,
+                "experiment_arm": case.experiment_arm.value,
+            },
+            stopping_rules=stopping_rules,
+        )
+        self.repository.save_workflow(instance)
+        self.repository.append_history(
+            instance.workflow_id,
+            WorkflowHistoryEvent(
+                to_stage=WorkflowStage.TRIGGERED,
+                event_name="workflow.started_existing_case",
+                details={"case_id": case_id, "template": chosen_template.value},
+            ),
+        )
+        case.audit_trail.append(
+            AuditEntry(
+                case_id=case.case_id,
+                actor=AuditActor.SYSTEM,
+                event_name="workflow.started",
+                notes="Durable workflow launched from operator UI",
+                decision_inputs={"template": chosen_template.value, "workflow_layer": "durable"},
+            )
+        )
+        self.case_repo.save(case)
+        if case.experiment_arm == ExperimentArm.HOLDOUT_CONTROL:
+            instance.current_stage = WorkflowStage.COMPLETED
+            instance.is_terminal = True
+            instance.terminal_outcome = "HOLDOUT_CONTROL_OBSERVATION"
+            self.repository.save_workflow(instance)
+            return instance
+        return await self.advance_workflow(instance.workflow_id)
+
     async def start_workflow(
         self,
         event: RawFailureEvent,
@@ -57,6 +112,19 @@ class WorkflowEngine:
 
         # 1. Ingest case into core repository (with holdout arm assignment & initial state)
         case = await self.orchestrator.process_failure_event(event)
+        case.audit_trail.append(
+            AuditEntry(
+                case_id=case.case_id,
+                actor=AuditActor.SYSTEM,
+                event_name="workflow.started",
+                notes="Durable workflow created from recovery case",
+                decision_inputs={
+                    "template": chosen_template.value,
+                    "workflow_layer": "durable",
+                },
+            )
+        )
+        self.case_repo.save(case)
 
         instance = WorkflowInstance(
             case_id=case.case_id,
@@ -234,6 +302,22 @@ class WorkflowEngine:
             return None
 
         self.repository.record_signal(instance.workflow_id, signal)
+        case = self.case_repo.get_by_id(instance.case_id)
+        if case:
+            case.audit_trail.append(
+                AuditEntry(
+                    case_id=case.case_id,
+                    actor=AuditActor.SYSTEM,
+                    event_name="workflow.signal_received",
+                    notes=f"Workflow signal received: {signal.signal_type.value}",
+                    decision_inputs={
+                        "workflow_id": instance.workflow_id,
+                        "signal_type": signal.signal_type.value,
+                    },
+                    decision_outputs=signal.payload,
+                )
+            )
+            self.case_repo.save(case)
         prev_stage = instance.current_stage
 
         # Handle specific signals

@@ -35,7 +35,7 @@ class RelationalCaseStore:
         self._conn.row_factory = sqlite3.Row
         self._init_db()
 
-    def _init_db(self) -> None:
+    def _init_db(self) -> None:  # noqa: PLR0915
         """Initialize relational schema with indexes and migrations."""
         with self._lock:
             cur = self._conn.cursor()
@@ -86,6 +86,11 @@ class RelationalCaseStore:
                 ("occurred_at", "TEXT"),
                 ("invoice_id", "TEXT"),
                 ("subscription_id", "TEXT"),
+                ("campaign_id", "TEXT"),
+                ("user_ref", "TEXT"),
+                ("reference_id", "TEXT"),
+                ("contact_email", "TEXT"),
+                ("contact_phone", "TEXT"),
                 ("experiment_tag", "TEXT"),
                 ("virtual_account_id", "TEXT"),
                 ("bank_transfer_id", "TEXT"),
@@ -127,6 +132,56 @@ class RelationalCaseStore:
             cur.execute(
                 "CREATE INDEX IF NOT EXISTS idx_cases_exp_tag ON cases(experiment_tag);"
             )
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_cases_campaign ON cases(campaign_id);"
+            )
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_cases_user_ref ON cases(user_ref);"
+            )
+
+            # Lift legacy webhook notes into indexed columns while preserving raw data.
+            cur.execute(
+                "SELECT case_id, data_json FROM cases WHERE campaign_id IS NULL OR user_ref IS NULL OR reference_id IS NULL;"
+            )
+            for legacy_row in cur.fetchall():
+                try:
+                    raw_case = json.loads(legacy_row["data_json"])
+                    event = raw_case.get("failure_event", {})
+                    notes = event.get("metadata", {}).get("notes", {})
+                    if not isinstance(notes, dict):
+                        notes = {}
+                    updates = {
+                        "campaign_id": notes.get("campaign_id")
+                        or notes.get("utm_campaign"),
+                        "user_ref": notes.get("user_id")
+                        or notes.get("customer_ref")
+                        or notes.get("reference_id")
+                        or notes.get("order_id"),
+                        "reference_id": notes.get("reference_id"),
+                        "contact_email": event.get("contact_email"),
+                        "contact_phone": event.get("contact_phone"),
+                    }
+                    changed = False
+                    for key, value in updates.items():
+                        if (
+                            value is not None
+                            and not event.get(key)
+                            and not raw_case.get(key)
+                        ):
+                            event[key] = value
+                            raw_case[key] = value
+                            changed = True
+                    if changed:
+                        cur.execute(
+                            "UPDATE cases SET campaign_id = COALESCE(campaign_id, ?), user_ref = COALESCE(user_ref, ?), reference_id = COALESCE(reference_id, ?), contact_email = COALESCE(contact_email, ?), contact_phone = COALESCE(contact_phone, ?), data_json = ? WHERE case_id = ?;",
+                            (
+                                *updates.values(),
+                                json.dumps(raw_case),
+                                legacy_row["case_id"],
+                            ),
+                        )
+                except (TypeError, ValueError, json.JSONDecodeError):
+                    continue
 
             # 2. Idempotency Key Index Table
             cur.execute("""
@@ -257,12 +312,13 @@ class RelationalCaseStore:
                         amount_paise, currency, touches_count, retry_count, outreach_count,
                         discount_paise_granted, recovered_amount_paise, total_cost_paise,
                         net_recovered_value_paise, is_opted_out, occurred_at, invoice_id,
-                        subscription_id, experiment_tag, due_at, next_action,
+                        subscription_id, campaign_id, user_ref, reference_id,
+                        contact_email, contact_phone, experiment_tag, due_at, next_action,
                         strategy_tag, virtual_account_id, bank_transfer_id,
                         collected_amount_paise, collection_mode, collected_at,
                         payment_link_id, payment_link_url, payment_link_expires_at,
                         version, data_json, created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(case_id) DO UPDATE SET
                         state = excluded.state,
                         touches_count = excluded.touches_count,
@@ -284,6 +340,11 @@ class RelationalCaseStore:
                         payment_link_id = excluded.payment_link_id,
                         payment_link_url = excluded.payment_link_url,
                         payment_link_expires_at = excluded.payment_link_expires_at,
+                        campaign_id = excluded.campaign_id,
+                        user_ref = excluded.user_ref,
+                        reference_id = excluded.reference_id,
+                        contact_email = excluded.contact_email,
+                        contact_phone = excluded.contact_phone,
                         version = cases.version + 1,
                         data_json = excluded.data_json,
                         updated_at = excluded.updated_at;
@@ -311,6 +372,11 @@ class RelationalCaseStore:
                         occurred_str,
                         case.failure_event.invoice_id,
                         case.failure_event.subscription_id,
+                        case.campaign_id or case.failure_event.campaign_id,
+                        case.user_ref or case.failure_event.user_ref,
+                        case.reference_id or case.failure_event.reference_id,
+                        case.contact_email or case.failure_event.contact_email,
+                        case.contact_phone or case.failure_event.contact_phone,
                         exp_tag,
                         due_at_str,
                         case.next_action,
@@ -442,6 +508,9 @@ class RelationalCaseStore:
         payment_id: str | None = None,
         invoice_id: str | None = None,
         subscription_id: str | None = None,
+        campaign_id: str | None = None,
+        user_ref: str | None = None,
+        reference_id: str | None = None,
         q: str | None = None,
         model_used: str | None = None,
     ) -> tuple[str, list[Any]]:
@@ -544,6 +613,18 @@ class RelationalCaseStore:
             clauses.append("subscription_id LIKE ?")
             params.append(f"{subscription_id}%")
 
+        if campaign_id:
+            clauses.append("campaign_id LIKE ?")
+            params.append(f"{campaign_id}%")
+
+        if user_ref:
+            clauses.append("user_ref LIKE ?")
+            params.append(f"{user_ref}%")
+
+        if reference_id:
+            clauses.append("reference_id LIKE ?")
+            params.append(f"{reference_id}%")
+
         if q and q.strip():
             term = f"%{q.strip()}%"
             clauses.append(
@@ -584,6 +665,9 @@ class RelationalCaseStore:
         payment_id: str | None = None,
         invoice_id: str | None = None,
         subscription_id: str | None = None,
+        campaign_id: str | None = None,
+        user_ref: str | None = None,
+        reference_id: str | None = None,
         q: str | None = None,
         model_used: str | None = None,
         sort_by: str = "created_at",
@@ -619,6 +703,9 @@ class RelationalCaseStore:
             payment_id=payment_id,
             invoice_id=invoice_id,
             subscription_id=subscription_id,
+            campaign_id=campaign_id,
+            user_ref=user_ref,
+            reference_id=reference_id,
             q=q,
             model_used=model_used,
         )
@@ -669,6 +756,9 @@ class RelationalCaseStore:
         payment_id: str | None = None,
         invoice_id: str | None = None,
         subscription_id: str | None = None,
+        campaign_id: str | None = None,
+        user_ref: str | None = None,
+        reference_id: str | None = None,
         q: str | None = None,
         model_used: str | None = None,
     ) -> int:
@@ -700,6 +790,9 @@ class RelationalCaseStore:
             payment_id=payment_id,
             invoice_id=invoice_id,
             subscription_id=subscription_id,
+            campaign_id=campaign_id,
+            user_ref=user_ref,
+            reference_id=reference_id,
             q=q,
             model_used=model_used,
         )

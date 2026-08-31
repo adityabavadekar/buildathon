@@ -43,6 +43,50 @@ def test_webhook_payment_failed_ingestion(client: TestClient) -> None:
     assert data["action_taken"] == "QUEUED"
 
 
+def test_webhook_persists_merchant_identity_and_case_filters(
+    client: TestClient,
+) -> None:
+    payload = {
+        "event": "payment.failed",
+        "payload": {
+            "payment": {
+                "entity": {
+                    "id": "pay_campaign_identity_1",
+                    "amount": 150000,
+                    "currency": "INR",
+                    "method": "upi",
+                    "customer_id": "cust_identity_1",
+                    "email": "identity@example.test",
+                    "contact": "+919876500001",
+                    "error_code": "BAD_REQUEST_ERROR",
+                    "notes": {
+                        "campaign_id": "campaign_festive",
+                        "user_id": "merchant_user_1",
+                        "reference_id": "merchant_ref_1",
+                    },
+                }
+            }
+        },
+    }
+
+    response = client.post("/api/webhooks/razorpay", json=payload)
+    assert response.status_code == 202
+    case_id = response.json()["case_id"]
+    assert case_id is not None
+
+    case = client.get(f"/api/cases/{case_id}").json()
+    assert case["campaign_id"] == "campaign_festive"
+    assert case["user_ref"] == "merchant_user_1"
+    assert case["reference_id"] == "merchant_ref_1"
+    assert case["contact_email"] == "identity@example.test"
+    assert case["contact_phone"] == "+919876500001"
+    assert case["failure_event"]["campaign_id"] == "campaign_festive"
+
+    filtered = client.get("/api/cases?campaign_id=campaign_festive").json()
+    assert filtered["total"] == 1
+    assert filtered["items"][0]["case_id"] == case_id
+
+
 def test_webhook_payment_captured_ingestion(client: TestClient) -> None:
     # First ingest failure
     fail_payload = {

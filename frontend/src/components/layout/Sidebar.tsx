@@ -6,6 +6,7 @@ import {
   BarChart3,
   Bot,
   Coins,
+  GitBranch,
   History,
   LayoutDashboard,
   Radio,
@@ -17,6 +18,7 @@ import { RazorpaySymbol } from '@/components/ui/BrandIcons'
 export type NavSection =
   | 'overview'
   | 'pipeline'
+  | 'workflows'
   | 'recovery'
   | 'analytics'
   | 'agent'
@@ -46,6 +48,7 @@ export function Sidebar({
   }[] = [
     { id: 'overview', label: 'Overview', icon: LayoutDashboard },
     { id: 'pipeline', label: 'Data Pipeline', icon: Radio },
+    { id: 'workflows', label: 'Workflows', icon: GitBranch },
     { id: 'recovery', label: 'Recovery Cases', icon: Coins, badge: casesCount },
     { id: 'analytics', label: 'Analytics & Lift', icon: BarChart3 },
     { id: 'agent', label: 'AI Agent Telemetry', icon: Bot },
@@ -56,25 +59,25 @@ export function Sidebar({
   ]
 
   return (
-    <aside className="flex h-screen w-64 flex-col border-r border-border bg-surface shrink-0 select-none">
+    <aside className="flex h-screen w-64 shrink-0 flex-col border-r border-border bg-surface select-none">
       {/* Brand Header */}
       <div className="flex h-16 items-center gap-3 border-b border-border px-5">
-        <div className="flex h-9 w-9 items-center justify-center rounded-control bg-accent/10 border border-accent/30 text-accent">
+        <div className="flex h-9 w-9 items-center justify-center rounded-control border border-accent/30 bg-accent/10 text-accent">
           <RazorpaySymbol className="h-5 w-5" />
         </div>
         <div>
-          <span className="text-base font-bold tracking-tight text-ink block">
-            Revenue Recovery
+          <span className="block text-base font-bold tracking-tight text-ink">
+            FORTX
           </span>
-          <span className="text-xs font-mono text-ink-subtle block uppercase tracking-wider">
-            Autonomous Engine
+          <span className="block font-mono text-xs tracking-wider text-ink-subtle uppercase">
+            Flow Orchestration
           </span>
         </div>
       </div>
 
       {/* Navigation Links */}
-      <nav className="flex-1 space-y-1.5 p-3 overflow-y-auto">
-        <div className="px-2 py-1.5 text-xs font-mono font-bold uppercase tracking-wider text-ink-subtle">
+      <nav className="flex-1 space-y-1.5 overflow-y-auto p-3">
+        <div className="px-2 py-1.5 font-mono text-xs font-bold tracking-wider text-ink-subtle uppercase">
           Main Navigation
         </div>
         {navItems.map((item) => {
@@ -87,22 +90,24 @@ export function Sidebar({
               onClick={() => {
                 onSelectSection(item.id)
               }}
-              className={`group flex w-full items-center justify-between rounded-control px-3.5 py-2.5 text-sm font-medium transition-colors cursor-pointer ${
+              className={`group flex w-full cursor-pointer items-center justify-between rounded-control px-3.5 py-2.5 text-sm font-medium transition-colors ${
                 isActive
-                  ? 'bg-surface-sunken font-bold text-ink shadow-xs border border-border/80'
-                  : 'text-ink-muted hover:bg-surface-sunken/60 hover:text-ink border border-transparent'
+                  ? 'border border-border/80 bg-surface-sunken font-bold text-ink shadow-xs'
+                  : 'border border-transparent text-ink-muted hover:bg-surface-sunken/60 hover:text-ink'
               }`}
             >
               <div className="flex items-center gap-3">
-                <Icon className={`h-4.5 w-4.5 shrink-0 ${isActive ? 'text-accent' : 'text-ink-muted group-hover:text-ink'}`} />
+                <Icon
+                  className={`h-4.5 w-4.5 shrink-0 ${isActive ? 'text-accent' : 'text-ink-muted group-hover:text-ink'}`}
+                />
                 <span className="text-sm font-semibold">{item.label}</span>
               </div>
               {item.badge !== undefined && item.badge > 0 && (
                 <span
-                  className={`rounded-control px-2 py-0.5 text-xs font-mono font-bold ${
+                  className={`rounded-control px-2 py-0.5 font-mono text-xs font-bold ${
                     item.id === 'recovery' && escalatedCount > 0
-                      ? 'bg-escalated-subtle text-escalated border border-escalated/30'
-                      : 'bg-surface-sunken text-ink-muted border border-border'
+                      ? 'border border-escalated/30 bg-escalated-subtle text-escalated'
+                      : 'border border-border bg-surface-sunken text-ink-muted'
                   }`}
                 >
                   {item.badge.toString()}
@@ -114,17 +119,17 @@ export function Sidebar({
       </nav>
 
       {/* Footer Status Widget */}
-      <div className="border-t border-border p-4 bg-surface-sunken/40">
+      <div className="border-t border-border bg-surface-sunken/40 p-4">
         <button
           type="button"
           onClick={() => {
             onSelectSection('status')
           }}
-          className="flex w-full items-center justify-between text-sm text-ink-muted font-mono hover:text-ink transition-colors cursor-pointer"
+          className="flex w-full cursor-pointer items-center justify-between font-mono text-sm text-ink-muted transition-colors hover:text-ink"
         >
           <span className="font-semibold">Engine Health</span>
-          <span className="flex items-center gap-1.5 text-recovered font-bold text-xs">
-            <span className="h-2 w-2 rounded-full bg-recovered animate-pulse" />
+          <span className="flex items-center gap-1.5 text-xs font-bold text-recovered">
+            <span className="h-2 w-2 animate-pulse rounded-full bg-recovered" />
             Operational
           </span>
         </button>

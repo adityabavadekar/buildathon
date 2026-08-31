@@ -23,9 +23,7 @@ export type RecoveryState =
 export type ExperimentArm = 'TREATMENT' | 'HOLDOUT_CONTROL'
 
 export type OperatorAutonomyMode =
-  | 'FULL_AUTONOMY'
-  | 'HUMAN_IN_THE_LOOP'
-  | 'MONITORING_ONLY'
+  'FULL_AUTONOMY' | 'HUMAN_IN_THE_LOOP' | 'MONITORING_ONLY'
 
 export interface OperatorModeState {
   mode: OperatorAutonomyMode
@@ -86,6 +84,9 @@ export interface RawFailureEvent {
   subscription_id?: string | null
   contact_email?: string | null
   contact_phone?: string | null
+  campaign_id?: string | null
+  user_ref?: string | null
+  reference_id?: string | null
   experiment_tag?: string | null
   model_override?: string | null
   metadata?: Record<string, unknown>
@@ -105,6 +106,11 @@ export interface RecoveryCase {
   retry_count: number
   outreach_count: number
   failure_event: RawFailureEvent
+  campaign_id?: string | null
+  user_ref?: string | null
+  reference_id?: string | null
+  contact_email?: string | null
+  contact_phone?: string | null
   audit_trail: AuditEntry[]
   created_at: string
   updated_at: string
@@ -352,6 +358,9 @@ export interface CaseFilterParams {
   payment_id?: string
   invoice_id?: string
   subscription_id?: string
+  campaign_id?: string
+  user_ref?: string
+  reference_id?: string
   q?: string
   model_used?: string
   sort_by?: string
@@ -450,6 +459,151 @@ export interface ScheduledJobItem {
   updated_at: string
 }
 
+export type WorkflowTemplate =
+  | 'FAILED_PAYMENT'
+  | 'SUBSCRIPTION_FAILURE'
+  | 'OVERDUE_INVOICE'
+  | 'ABANDONED_PAYMENT'
+  | 'PAYMENT_DEGRADATION'
+
+export type WorkflowStage =
+  | 'TRIGGERED'
+  | 'CONTEXT_HYDRATED'
+  | 'DIAGNOSING'
+  | 'POLICY_EVALUATING'
+  | 'ACTION_EXECUTING'
+  | 'WAITING_SIGNAL_OR_TIMER'
+  | 'EVALUATING_OUTCOME'
+  | 'REPLANNING'
+  | 'HUMAN_ESCALATED'
+  | 'COMPLETED'
+  | 'FAILED'
+  | 'CANCELLED'
+
+export type WorkflowSignalType =
+  | 'PAYMENT_CAPTURED'
+  | 'PAYMENT_FAILED'
+  | 'INVOICE_PAID'
+  | 'CUSTOMER_RESPONSE'
+  | 'RAIL_DEGRADED'
+  | 'PROMISED_PAYMENT'
+  | 'HUMAN_APPROVAL'
+  | 'TIMER_EXPIRED'
+
+export type WorkflowTriggerType =
+  | 'payment.failed'
+  | 'subscription.halted'
+  | 'invoice.overdue'
+  | 'checkout.abandoned'
+  | 'rail.degraded'
+export type WorkflowAction =
+  | 'diagnose'
+  | 'retry'
+  | 'notify'
+  | 'payment_link'
+  | 'escalate'
+export type WorkflowNodeType =
+  | 'trigger'
+  | 'decision'
+  | 'action'
+  | 'wait'
+  | 'human_handoff'
+  | 'terminal'
+export type WorkflowTemplateStatus = 'draft' | 'published'
+
+export interface WorkflowSignal {
+  signal_id: string
+  signal_type: WorkflowSignalType
+  payload: Record<string, unknown>
+  source: string
+  timestamp: string
+}
+
+export interface WorkflowHistoryEvent {
+  event_id: string
+  timestamp: string
+  from_stage: WorkflowStage | null
+  to_stage: WorkflowStage
+  event_name: string
+  details: Record<string, unknown>
+}
+
+export interface WorkflowTimer {
+  timer_id: string
+  timer_type: string
+  fire_at: string
+  is_active: boolean
+  metadata: Record<string, unknown>
+}
+
+export interface WorkflowStoppingRules {
+  max_retries: number
+  max_touches: number
+  max_duration_hours: number
+  max_discount_bps: number
+  stop_on_recovered: boolean
+  stop_on_human_pause: boolean
+}
+
+export interface WorkflowInstance {
+  workflow_id: string
+  case_id: string
+  template: WorkflowTemplate
+  current_stage: WorkflowStage
+  recovery_state: RecoveryState
+  context: Record<string, unknown>
+  stopping_rules: WorkflowStoppingRules
+  timers: WorkflowTimer[]
+  signals_received: WorkflowSignal[]
+  history: WorkflowHistoryEvent[]
+  attempts_count: number
+  touches_count: number
+  is_terminal: boolean
+  terminal_outcome: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface WorkflowAnalyticsResponse {
+  total_workflows: number
+  stage_counts: Record<string, number>
+  template_counts: Record<string, number>
+}
+
+export interface WorkflowTemplateDefinition {
+  template_id: string
+  name: string
+  description?: string
+  status?: WorkflowTemplateStatus
+  base_template: WorkflowTemplate
+  trigger_type: WorkflowTriggerType
+  allowed_actions: WorkflowAction[]
+  graph_nodes: Array<Record<string, string>>
+  graph_edges: Array<Record<string, string>>
+  stopping_rules: WorkflowStoppingRules
+  created_at: string
+  updated_at: string
+}
+
+export interface WorkflowListParams {
+  limit?: number
+  stage?: WorkflowStage
+  template?: WorkflowTemplate
+}
+
+export interface SendWorkflowSignalRequest {
+  signal_type: WorkflowSignalType
+  payload?: Record<string, unknown>
+  source?: string
+}
+
+export interface WorkflowOptionsResponse {
+  trigger_types: WorkflowTriggerType[]
+  actions: WorkflowAction[]
+  node_types: WorkflowNodeType[]
+  signal_types: WorkflowSignalType[]
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const url = `${API_BASE_URL}${path}`
   const response = await fetch(url, options)
@@ -457,7 +611,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   if (!response.ok) {
     const body = await response.text().catch(() => '')
     throw new Error(
-      `API error ${response.status.toString()} from ${path}: ${body || response.statusText}`
+      `API error ${response.status.toString()} from ${path}: ${body || response.statusText}`,
     )
   }
 
@@ -468,7 +622,9 @@ export function getHealth(): Promise<HealthResponse> {
   return request<HealthResponse>('/health')
 }
 
-export function listCases(params?: CaseFilterParams): Promise<CaseListResponse> {
+export function listCases(
+  params?: CaseFilterParams,
+): Promise<CaseListResponse> {
   if (!params) {
     return request<CaseListResponse>('/cases?limit=50')
   }
@@ -492,7 +648,7 @@ export function getCaseAudit(id: string): Promise<AuditEntry[]> {
 export function approveCase(
   id: string,
   notes: string,
-  overrideDiscountBps?: number
+  overrideDiscountBps?: number,
 ): Promise<RecoveryCase> {
   return request<RecoveryCase>(`/cases/${encodeURIComponent(id)}/approve`, {
     method: 'POST',
@@ -524,7 +680,9 @@ export function getLlmConfig(): Promise<LLMSettingsState> {
   return request<LLMSettingsState>('/settings/llm-config')
 }
 
-export function updateLlmConfig(state: LLMSettingsState): Promise<LLMSettingsState> {
+export function updateLlmConfig(
+  state: LLMSettingsState,
+): Promise<LLMSettingsState> {
   return request<LLMSettingsState>('/settings/llm-config', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
@@ -546,7 +704,7 @@ export function getOperatorMode(): Promise<OperatorModeState> {
 
 export function updateOperatorMode(
   mode: OperatorAutonomyMode,
-  reason: string
+  reason: string,
 ): Promise<OperatorModeState> {
   return request<OperatorModeState>('/operator/mode', {
     method: 'PUT',
@@ -569,8 +727,12 @@ export function seedSimulation(
   count: number = 50,
   simulateResolutions: boolean = true,
   experimentTag?: string,
-  modelOverride?: string
-): Promise<{ seeded_count: number; recovered_count: number; case_ids: string[] }> {
+  modelOverride?: string,
+): Promise<{
+  seeded_count: number
+  recovered_count: number
+  case_ids: string[]
+}> {
   return request('/simulation/seed', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -591,8 +753,12 @@ export function resetSimulation(): Promise<{ status: string }> {
 
 export function simulateResolveCase(
   caseId: string,
-  amountPaise?: number
-): Promise<{ status: string; case_id: string; net_recovered_value_paise?: number }> {
+  amountPaise?: number,
+): Promise<{
+  status: string
+  case_id: string
+  net_recovered_value_paise?: number
+}> {
   return request('/simulation/resolve-case', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -612,10 +778,10 @@ export function getPipelineOverview(): Promise<PipelineOverviewResponse> {
 
 export function getPipelineTimeseries(
   bucketMinutes: number = 60,
-  hours: number = 24
+  hours: number = 24,
 ): Promise<PipelineTimeseriesPoint[]> {
   return request<PipelineTimeseriesPoint[]>(
-    `/pipeline/timeseries?bucket_minutes=${bucketMinutes.toString()}&hours=${hours.toString()}`
+    `/pipeline/timeseries?bucket_minutes=${bucketMinutes.toString()}&hours=${hours.toString()}`,
   )
 }
 
@@ -625,7 +791,7 @@ export function getPipelineHeatmap(): Promise<PipelineHeatmapCell[]> {
 
 export function getQueuedJobs(
   limit: number = 50,
-  statuses?: string
+  statuses?: string,
 ): Promise<ScheduledJobItem[]> {
   const query = statuses
     ? `/pipeline/queued?limit=${limit.toString()}&statuses=${encodeURIComponent(statuses)}`
@@ -634,7 +800,7 @@ export function getQueuedJobs(
 }
 
 export function ingestSingleEvent(
-  payload: Record<string, unknown>
+  payload: Record<string, unknown>,
 ): Promise<{ status: string; case_id: string; job_id: string }> {
   return request('/pipeline/ingest', {
     method: 'POST',
@@ -644,7 +810,7 @@ export function ingestSingleEvent(
 }
 
 export function startFleetSimulation(
-  config: Record<string, unknown>
+  config: Record<string, unknown>,
 ): Promise<FleetStatusResponse> {
   return request<FleetStatusResponse>('/pipeline/fleet/start', {
     method: 'POST',
@@ -673,4 +839,91 @@ export function resumeFleetSimulation(): Promise<FleetStatusResponse> {
 
 export function getFleetStatus(): Promise<FleetStatusResponse> {
   return request<FleetStatusResponse>('/pipeline/fleet/status')
+}
+
+export function listWorkflows(
+  params?: WorkflowListParams,
+): Promise<WorkflowInstance[]> {
+  const query = new URLSearchParams()
+  if (params?.limit !== undefined) query.set('limit', params.limit.toString())
+  if (params?.stage) query.set('stage', params.stage)
+  if (params?.template) query.set('template', params.template)
+  const suffix = query.size > 0 ? `?${query.toString()}` : ''
+  return request<WorkflowInstance[]>(`/workflows${suffix}`)
+}
+
+export function getWorkflowAnalytics(): Promise<WorkflowAnalyticsResponse> {
+  return request<WorkflowAnalyticsResponse>('/workflows/analytics')
+}
+
+export function listWorkflowTemplates(): Promise<WorkflowTemplateDefinition[]> {
+  return request<WorkflowTemplateDefinition[]>('/workflows/templates')
+}
+
+export function getWorkflowOptions(): Promise<WorkflowOptionsResponse> {
+  return request<WorkflowOptionsResponse>('/workflows/options')
+}
+
+export function launchWorkflow(
+  caseId: string,
+  template?: WorkflowTemplate,
+): Promise<WorkflowInstance> {
+  return request<WorkflowInstance>('/workflows/launch', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ case_id: caseId, template }),
+  })
+}
+
+export function createWorkflowTemplate(
+  definition: Omit<
+    WorkflowTemplateDefinition,
+    'template_id' | 'created_at' | 'updated_at'
+  >,
+): Promise<WorkflowTemplateDefinition> {
+  return request<WorkflowTemplateDefinition>('/workflows/templates', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(definition),
+  })
+}
+
+export function updateWorkflowTemplate(
+  definition: WorkflowTemplateDefinition,
+): Promise<WorkflowTemplateDefinition> {
+  return request<WorkflowTemplateDefinition>(
+    `/workflows/templates/${encodeURIComponent(definition.template_id)}`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(definition),
+    },
+  )
+}
+
+export function deleteWorkflowTemplate(templateId: string): Promise<void> {
+  return request<void>(
+    `/workflows/templates/${encodeURIComponent(templateId)}`,
+    { method: 'DELETE' },
+  )
+}
+
+export function getWorkflow(workflowId: string): Promise<WorkflowInstance> {
+  return request<WorkflowInstance>(
+    `/workflows/${encodeURIComponent(workflowId)}`,
+  )
+}
+
+export function sendWorkflowSignal(
+  workflowId: string,
+  signal: SendWorkflowSignalRequest,
+): Promise<WorkflowInstance> {
+  return request<WorkflowInstance>(
+    `/workflows/${encodeURIComponent(workflowId)}/signal`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(signal),
+    },
+  )
 }

@@ -23,6 +23,7 @@ import { AnalyticsView } from '@/components/views/AnalyticsView'
 import { AuditView } from '@/components/views/AuditView'
 import { OverviewView } from '@/components/views/OverviewView'
 import { PipelineView } from '@/components/views/PipelineView'
+import { WorkflowView } from '@/components/views/WorkflowView'
 import { PoliciesView } from '@/components/views/PoliciesView'
 import { RecoveryView } from '@/components/views/RecoveryView'
 import { SettingsView } from '@/components/views/SettingsView'
@@ -36,10 +37,14 @@ export default function DashboardPage() {
   const [healthLoading, setHealthLoading] = useState<boolean>(true)
   const [cases, setCases] = useState<RecoveryCase[]>([])
   const [casesLoading, setCasesLoading] = useState<boolean>(true)
-  const [analytics, setAnalytics] = useState<AnalyticsSummaryResponse | null>(null)
+  const [analytics, setAnalytics] = useState<AnalyticsSummaryResponse | null>(
+    null,
+  )
   const [policies, setPolicies] = useState<PolicyResponse | null>(null)
   const [settings, setSettings] = useState<SystemSettingsResponse | null>(null)
-  const [systemStatus, setSystemStatus] = useState<SystemStatusResponse | null>(null)
+  const [systemStatus, setSystemStatus] = useState<SystemStatusResponse | null>(
+    null,
+  )
   const [selectedCase, setSelectedCase] = useState<RecoveryCase | null>(null)
   const [commandOpen, setCommandOpen] = useState<boolean>(false)
   const [lastRefreshedAt, setLastRefreshedAt] = useState<Date | null>(null)
@@ -132,21 +137,25 @@ export default function DashboardPage() {
     }
   }, [])
 
-  const escalatedCount = analytics?.escalated_cases !== undefined ? analytics.escalated_cases : cases.filter((c) => c.state === 'ESCALATED').length
+  const escalatedCount =
+    analytics?.escalated_cases !== undefined
+      ? analytics.escalated_cases
+      : cases.filter((c) => c.state === 'ESCALATED').length
 
   return (
-    <div className="flex h-screen w-full flex-col bg-surface-sunken overflow-hidden">
+    <div className="flex h-screen w-full flex-col overflow-hidden bg-surface-sunken">
       {/* High-Visibility Red Bold Top Banner when API Offline or Connection Issue */}
       {isOffline && (
-        <div className="w-full bg-[#dc2626] text-white px-6 py-3 text-sm font-extrabold font-mono uppercase tracking-wide flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xl z-50 border-b-4 border-red-950 animate-pulse">
+        <div className="z-50 flex w-full animate-pulse flex-col justify-between gap-3 border-b-4 border-red-950 bg-[#dc2626] px-6 py-3 font-mono text-sm font-extrabold tracking-wide text-white uppercase shadow-2xl sm:flex-row sm:items-center">
           <div className="flex items-center gap-3">
             <AlertOctagon className="h-5 w-5 shrink-0 animate-bounce" />
-            <span className="font-extrabold text-sm sm:text-base tracking-wide">
-              API OFFLINE: {connectionError || 'Unable to communicate with Recovery Engine'}
+            <span className="text-sm font-extrabold tracking-wide sm:text-base">
+              API OFFLINE:{' '}
+              {connectionError || 'Unable to communicate with Recovery Engine'}
             </span>
           </div>
           <div className="flex items-center gap-3 self-end sm:self-auto">
-            <span className="text-xs opacity-90 hidden md:inline font-mono">
+            <span className="hidden font-mono text-xs opacity-90 md:inline">
               Auto-reconnecting...
             </span>
             <button
@@ -154,7 +163,7 @@ export default function DashboardPage() {
               onClick={() => {
                 void fetchData()
               }}
-              className="flex items-center gap-1.5 px-4 py-1.5 bg-white text-[#dc2626] hover:bg-white/90 rounded-control text-xs font-extrabold font-mono transition-colors cursor-pointer shadow-md"
+              className="flex cursor-pointer items-center gap-1.5 rounded-control bg-white px-4 py-1.5 font-mono text-xs font-extrabold text-[#dc2626] shadow-md transition-colors hover:bg-white/90"
             >
               <RefreshCw className="h-3.5 w-3.5" />
               <span>Retry Connection</span>
@@ -210,6 +219,8 @@ export default function DashboardPage() {
               )}
 
               {activeSection === 'pipeline' && <PipelineView />}
+
+              {activeSection === 'workflows' && <WorkflowView />}
 
               {activeSection === 'recovery' && (
                 <RecoveryView

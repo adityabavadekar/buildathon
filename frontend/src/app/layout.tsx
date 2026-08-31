@@ -2,8 +2,11 @@ import type { Metadata } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'Revenue Recovery - AI Operations',
-  description: 'AI Revenue Recovery Agent Dashboard',
+  title: 'FORTX - Flow Orchestration & Revenue Trust eXecution',
+  description: 'FORTX revenue recovery agent dashboard',
+  icons: {
+    icon: '/favicon.svg',
+  },
 }
 
 export default function RootLayout({

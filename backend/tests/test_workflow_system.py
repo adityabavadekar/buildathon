@@ -194,6 +194,35 @@ def test_workflow_api_endpoints(client: Any) -> None:
     assert res.status_code == 200
     data = res.json()
     assert "total_workflows" in data
+
+    definition = {
+        "name": "Identity recovery",
+        "base_template": "FAILED_PAYMENT",
+        "trigger_type": "payment.failed",
+        "allowed_actions": ["retry", "payment_link"],
+        "stopping_rules": {
+            "max_retries": 2,
+            "max_touches": 3,
+            "max_duration_hours": 48,
+            "max_discount_bps": 500,
+            "stop_on_recovered": True,
+            "stop_on_human_pause": True,
+        },
+    }
+    created = client.post("/api/workflows/templates", json=definition)
+    assert created.status_code == 201
+    template_id = created.json()["template_id"]
+    assert (
+        client.get("/api/workflows/templates").json()[0]["template_id"] == template_id
+    )
+    definition["name"] = "Updated recovery"
+    updated = client.put(
+        f"/api/workflows/templates/{template_id}",
+        json={**definition, "template_id": template_id},
+    )
+    assert updated.status_code == 200
+    assert updated.json()["name"] == "Updated recovery"
+    assert client.delete(f"/api/workflows/templates/{template_id}").status_code == 204
     assert "stage_counts" in data
 
     # 2. List workflows

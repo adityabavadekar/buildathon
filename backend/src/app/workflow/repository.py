@@ -16,7 +16,9 @@ from app.workflow.models import (
     WorkflowInstance,
     WorkflowSignal,
     WorkflowStage,
+    WorkflowStoppingRules,
     WorkflowTemplate,
+    WorkflowTemplateDefinition,
 )
 
 logger = get_logger(__name__)
@@ -100,6 +102,112 @@ class WorkflowRepository:
             cur.execute(
                 "CREATE INDEX IF NOT EXISTS idx_workflow_signals_wid ON workflow_signals(workflow_id);"
             )
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS workflow_template_definitions (
+                    template_id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    base_template TEXT NOT NULL,
+                    trigger_type TEXT NOT NULL,
+                    allowed_actions_json TEXT NOT NULL,
+                    stopping_rules_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+            """)
+            for column in ("graph_nodes_json", "graph_edges_json"):
+                try:
+                    cur.execute(
+                        f"ALTER TABLE workflow_template_definitions ADD COLUMN {column} TEXT NOT NULL DEFAULT '[]';"
+                    )
+                except sqlite3.OperationalError:
+                    pass
+            try:
+                cur.execute("ALTER TABLE workflow_template_definitions ADD COLUMN description TEXT NOT NULL DEFAULT '';" )
+            except sqlite3.OperationalError:
+                pass
+            try:
+                cur.execute("ALTER TABLE workflow_template_definitions ADD COLUMN status TEXT NOT NULL DEFAULT 'draft';")
+            except sqlite3.OperationalError:
+                pass
+            defaults = (
+                (
+                    "Failed payment recovery",
+                    WorkflowTemplate.FAILED_PAYMENT,
+                    "payment.failed",
+                ),
+                (
+                    "Subscription renewal recovery",
+                    WorkflowTemplate.SUBSCRIPTION_FAILURE,
+                    "subscription.halted",
+                ),
+                (
+                    "Overdue invoice collection",
+                    WorkflowTemplate.OVERDUE_INVOICE,
+                    "invoice.overdue",
+                ),
+                (
+                    "Abandoned payment recovery",
+                    WorkflowTemplate.ABANDONED_PAYMENT,
+                    "checkout.abandoned",
+                ),
+                (
+                    "Payment rail degradation",
+                    WorkflowTemplate.PAYMENT_DEGRADATION,
+                    "rail.degraded",
+                ),
+            )
+            for name, base_template, trigger_type in defaults:
+                template_id = f"builtin_{base_template.value.lower()}"
+                now_iso = datetime.now(UTC).isoformat()
+                cur.execute(
+                    """INSERT OR IGNORE INTO workflow_template_definitions
+                    (template_id, name, base_template, trigger_type, allowed_actions_json,
+                     stopping_rules_json, graph_nodes_json, graph_edges_json, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);""",
+                    (
+                        template_id,
+                        name,
+                        base_template.value,
+                        trigger_type,
+                        json.dumps(
+                            ["diagnose", "retry", "notify", "payment_link", "escalate"]
+                        ),
+                        WorkflowStoppingRules().model_dump_json(),
+                        json.dumps(
+                            [
+                                {
+                                    "id": "trigger",
+                                    "label": "Trigger",
+                                    "type": "trigger",
+                                },
+                                {
+                                    "id": "diagnose",
+                                    "label": "Diagnose",
+                                    "type": "decision",
+                                },
+                                {
+                                    "id": "action",
+                                    "label": "Bounded action",
+                                    "type": "action",
+                                },
+                                {
+                                    "id": "wait",
+                                    "label": "Wait for signal",
+                                    "type": "wait",
+                                },
+                            ]
+                        ),
+                        json.dumps(
+                            [
+                                {"source": "trigger", "target": "diagnose"},
+                                {"source": "diagnose", "target": "action"},
+                                {"source": "action", "target": "wait"},
+                            ]
+                        ),
+                        now_iso,
+                        now_iso,
+                    ),
+                )
 
     def save_workflow(self, instance: WorkflowInstance) -> None:
         """Upsert a workflow instance atomically."""
@@ -255,6 +363,91 @@ class WorkflowRepository:
                 "stage_counts": stage_counts,
                 "template_counts": template_counts,
             }
+
+    def list_template_definitions(self) -> list[WorkflowTemplateDefinition]:
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT * FROM workflow_template_definitions ORDER BY created_at DESC;"
+            ).fetchall()
+            return [self._row_to_template_definition(row) for row in rows]
+
+    def get_template_definition(
+        self, template_id: str
+    ) -> WorkflowTemplateDefinition | None:
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT * FROM workflow_template_definitions WHERE template_id = ?;",
+                (template_id,),
+            ).fetchone()
+            return self._row_to_template_definition(row) if row else None
+
+    def save_template_definition(
+        self, definition: WorkflowTemplateDefinition
+    ) -> WorkflowTemplateDefinition:
+        with self._lock:
+            now = datetime.now(UTC)
+            definition.updated_at = now
+            self._conn.execute(
+                """INSERT INTO workflow_template_definitions
+                (template_id, name, description, status, base_template, trigger_type, allowed_actions_json,
+                 stopping_rules_json, graph_nodes_json, graph_edges_json, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(template_id) DO UPDATE SET name=excluded.name,
+                description=excluded.description,
+                status=excluded.status,
+                base_template=excluded.base_template, trigger_type=excluded.trigger_type,
+                allowed_actions_json=excluded.allowed_actions_json,
+                stopping_rules_json=excluded.stopping_rules_json,
+                graph_nodes_json=excluded.graph_nodes_json,
+                graph_edges_json=excluded.graph_edges_json, updated_at=excluded.updated_at;""",
+                (
+                    definition.template_id,
+                    definition.name,
+                    definition.description,
+                    definition.status.value,
+                    definition.base_template.value,
+                    definition.trigger_type,
+                    json.dumps(definition.allowed_actions),
+                    definition.stopping_rules.model_dump_json(),
+                    json.dumps(definition.graph_nodes),
+                    json.dumps(definition.graph_edges),
+                    definition.created_at.isoformat(),
+                    now.isoformat(),
+                ),
+            )
+            return definition
+
+    def delete_template_definition(self, template_id: str) -> bool:
+        with self._lock:
+            cur = self._conn.execute(
+                "DELETE FROM workflow_template_definitions WHERE template_id = ?;",
+                (template_id,),
+            )
+            return cur.rowcount > 0
+
+    @staticmethod
+    def _row_to_template_definition(row: sqlite3.Row) -> WorkflowTemplateDefinition:
+        graph_nodes = json.loads(row["graph_nodes_json"])
+        graph_edges = json.loads(row["graph_edges_json"])
+        # Older built-ins predate terminal nodes; normalize them on read.
+        if graph_nodes and not any(node.get("type") == "terminal" for node in graph_nodes):
+            last_id = graph_nodes[-1].get("id", "last")
+            graph_nodes.append({"id": "terminal", "label": "Complete", "type": "terminal"})
+            graph_edges.append({"id": "terminal-edge", "source": last_id, "target": "terminal"})
+        return WorkflowTemplateDefinition(
+            template_id=row["template_id"],
+            name=row["name"],
+            description=row["description"] or f"Durable recovery path for {row['name'].lower()}.",
+            status=row["status"],
+            base_template=WorkflowTemplate(row["base_template"]),
+            trigger_type=row["trigger_type"],
+            allowed_actions=json.loads(row["allowed_actions_json"]),
+            stopping_rules=json.loads(row["stopping_rules_json"]),
+            graph_nodes=graph_nodes,
+            graph_edges=graph_edges,
+            created_at=datetime.fromisoformat(row["created_at"]),
+            updated_at=datetime.fromisoformat(row["updated_at"]),
+        )
 
     def _row_to_instance(self, row: sqlite3.Row) -> WorkflowInstance:
         """Convert a database row into a fully hydrated WorkflowInstance."""
