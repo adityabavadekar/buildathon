@@ -12,6 +12,8 @@ from fastapi import Depends
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app.core.constants import DEFAULT_AGENTIC_MODEL
+
 
 class Settings(BaseSettings):
     """Environment-backed settings.
@@ -40,14 +42,7 @@ class Settings(BaseSettings):
     )
 
     cors_origins: list[str] = Field(
-        default=[
-            "http://localhost:5173",
-            "http://127.0.0.1:5173",
-            "http://localhost:3000",
-            "http://127.0.0.1:3000",
-            "http://192.168.1.4:5173",
-            "http://192.168.1.4:3000",
-        ],
+        default=["*"],
         description="Allowed browser origins for local development and network access.",
     )
 
@@ -68,6 +63,12 @@ class Settings(BaseSettings):
     groq_api_key: SecretStr | None = Field(
         default=None, validation_alias="GROQ_API_KEY"
     )
+    agentic_model: str = Field(
+        default=DEFAULT_AGENTIC_MODEL,
+        validation_alias="APP_AGENTIC_MODEL",
+        description="Model used for agentic recovery simulation and served as the "
+        "Groq default. Single source of truth; consumers must not hardcode it.",
+    )
 
     # Razorpay Gateway & Webhook Credentials
     razorpay_key_id: str | None = Field(
@@ -79,6 +80,15 @@ class Settings(BaseSettings):
     razorpay_webhook_secret: SecretStr | None = Field(
         default=None, validation_alias="RAZORPAY_WEBHOOK_SECRET"
     )
+    # Partner/OAuth access token and target account id for fetching the linked
+    # merchant account profile via GET /v2/accounts/:account_id. Requires a
+    # real RazorpayX/partner token; absent in test mode the fetch is skipped.
+    razorpay_access_token: SecretStr | None = Field(
+        default=None, validation_alias="RAZORPAY_ACCESS_TOKEN"
+    )
+    razorpay_account_id: str | None = Field(
+        default=None, validation_alias="RAZORPAY_ACCOUNT_ID"
+    )
 
     # Customer Outreach & Notification Webhook
     notification_webhook_url: str | None = Field(
@@ -88,16 +98,31 @@ class Settings(BaseSettings):
         default=None, validation_alias="WHATSAPP_API_TOKEN"
     )
 
-    # Durable merchant policy store
-    policy_config_path: str = Field(
-        default="data/policy_config.json",
-        description="File path for the persisted active MerchantPolicy.",
+    # PostgreSQL ACID persistence datasource
+    database_url: str = Field(
+        default="postgresql://postgres:postgres@127.0.0.1:5432/fortx",
+        validation_alias="DATABASE_URL",
+        description="PostgreSQL DSN for the shared relational store.",
     )
-
-    # ACID case storage database
-    database_path: str = Field(
-        default="data/recovery_engine.db",
-        description="File path for the relational case engine database.",
+    postgres_pool_size: int = Field(
+        default=10,
+        validation_alias="POSTGRES_POOL_SIZE",
+        description="Maximum persistent connections in the engine pool.",
+    )
+    postgres_max_overflow: int = Field(
+        default=20,
+        validation_alias="POSTGRES_MAX_OVERFLOW",
+        description="Maximum temporary connections beyond pool_size.",
+    )
+    postgres_pool_timeout_seconds: float = Field(
+        default=30.0,
+        validation_alias="POSTGRES_POOL_TIMEOUT_SECONDS",
+        description="Seconds to wait before raising a pool timeout error.",
+    )
+    postgres_statement_timeout_ms: int = Field(
+        default=30000,
+        validation_alias="POSTGRES_STATEMENT_TIMEOUT_MS",
+        description="Statement execution timeout in milliseconds.",
     )
 
     @property

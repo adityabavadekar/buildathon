@@ -196,6 +196,20 @@ class RecoveryForecast(BaseModel):
     segments: list[SegmentForecast] = Field(default_factory=list)
 
 
+class CampaignMetrics(BaseModel):
+    """Per-campaign recovery performance breakdown sourced from Razorpay notes."""
+
+    campaign_id: str
+    total_cases: int
+    recovered_cases: int
+    escalated_cases: int
+    at_risk_paise: int
+    recovered_paise: int
+    net_recovered_value_paise: int
+    recovery_rate_pct: float
+    avg_amount_paise: int
+
+
 class AnalyticsSummaryResponse(BaseModel):
     """Comprehensive recovery performance, queue sizes, and attribution summary."""
 
@@ -233,6 +247,7 @@ class AnalyticsSummaryResponse(BaseModel):
     time_to_recovery_buckets: list[TTRBucket] = Field(default_factory=list)
     daily_metrics: list[DailyMetricPoint] = Field(default_factory=list)
     monthly_metrics: list[MonthlyMetricPoint] = Field(default_factory=list)
+    campaign_metrics: list[CampaignMetrics] = Field(default_factory=list)
 
 
 def _compute_rail_performance(cases: Sequence[RecoveryCase]) -> list[RailPerformance]:
@@ -595,6 +610,7 @@ async def get_analytics_summary() -> AnalyticsSummaryResponse:
     )
     streak = min(24, treatment_rec)
     forecast_data = _compute_recovery_forecast(cases, lift)
+    campaign_list = _compute_campaign_metrics(cases)
 
     return AnalyticsSummaryResponse(
         total_cases=total_cases,
@@ -626,7 +642,58 @@ async def get_analytics_summary() -> AnalyticsSummaryResponse:
         time_to_recovery_buckets=ttr_buckets,
         daily_metrics=daily_metrics,
         monthly_metrics=monthly_metrics,
+        campaign_metrics=campaign_list,
     )
+
+
+def _compute_campaign_metrics(
+    cases: Sequence[RecoveryCase],
+) -> list[CampaignMetrics]:
+    """Aggregate recovery metrics per campaign_id extracted from Razorpay notes."""
+    buckets: dict[str, dict[str, int]] = defaultdict(
+        lambda: {
+            "total": 0,
+            "recovered": 0,
+            "escalated": 0,
+            "at_risk": 0,
+            "recovered_paise": 0,
+            "nrv": 0,
+        }
+    )
+    for c in cases:
+        cid = getattr(c, "campaign_id", None) or getattr(
+            c.failure_event, "campaign_id", None
+        )
+        if not cid:
+            cid = "untagged"
+        b = buckets[cid]
+        b["total"] += 1
+        b["at_risk"] += c.amount_paise
+        if c.state == RecoveryState.RECOVERED:
+            b["recovered"] += 1
+            b["recovered_paise"] += c.recovered_amount_paise
+            b["nrv"] += c.net_recovered_value_paise
+        if c.state == RecoveryState.ESCALATED:
+            b["escalated"] += 1
+
+    result: list[CampaignMetrics] = []
+    for campaign_id, b in sorted(buckets.items(), key=lambda x: x[1]["at_risk"], reverse=True):
+        rate = round((b["recovered"] / b["total"] * 100.0) if b["total"] else 0.0, 1)
+        avg = b["at_risk"] // max(1, b["total"])
+        result.append(
+            CampaignMetrics(
+                campaign_id=campaign_id,
+                total_cases=b["total"],
+                recovered_cases=b["recovered"],
+                escalated_cases=b["escalated"],
+                at_risk_paise=b["at_risk"],
+                recovered_paise=b["recovered_paise"],
+                net_recovered_value_paise=b["nrv"],
+                recovery_rate_pct=rate,
+                avg_amount_paise=avg,
+            )
+        )
+    return result
 
 
 def _compute_recovery_forecast(
@@ -742,8 +809,20 @@ async def get_escalation_queue() -> list[EscalationQueueItem]:
                 "intervention.escalated",
                 "policy.blocked",
                 "case.escalated",
-            ) or entry.actor in (AuditActor.POLICY_GATE, AuditActor.HUMAN_OPERATOR):
-                reason_found = entry.notes or getattr(entry, "reason", None)
+            ) or entry.actor in (
+                AuditActor.POLICY_GATE,
+                AuditActor.HUMAN_OPERATOR,
+                AuditActor.SYSTEM,
+            ):
+                reason_found = (
+                    entry.notes
+                    or getattr(entry, "reason", None)
+                    or (
+                        entry.decision_inputs.get("plan", {}).get("rationale")
+                        if isinstance(entry.decision_inputs.get("plan"), dict)
+                        else None
+                    )
+                )
                 if reason_found:
                     break
 

@@ -46,6 +46,9 @@ export interface ModelTelemetrySnapshot {
   fallback_reason?: string | null
   experiment_tag?: string | null
   config_snapshot?: Record<string, unknown> | null
+  request_prompt?: string | null
+  response_content?: string | null
+  error_detail?: string | null
 }
 
 export interface AuditEntry {
@@ -118,6 +121,8 @@ export interface RecoveryCase {
   is_opted_out?: boolean
   due_at?: string | null
   next_action?: string | null
+  dunning_message_en?: string | null
+  dunning_message_hi?: string | null
 }
 
 export interface CaseListResponse {
@@ -207,6 +212,18 @@ export interface EscalationQueueItem {
   state: string
 }
 
+export interface CampaignMetrics {
+  campaign_id: string
+  total_cases: number
+  recovered_cases: number
+  escalated_cases: number
+  at_risk_paise: number
+  recovered_paise: number
+  net_recovered_value_paise: number
+  recovery_rate_pct: number
+  avg_amount_paise: number
+}
+
 export interface AnalyticsSummaryResponse {
   total_cases: number
   active_cases?: number
@@ -236,6 +253,7 @@ export interface AnalyticsSummaryResponse {
   time_to_recovery_buckets: TTRBucket[]
   daily_metrics?: DailyMetricPoint[]
   monthly_metrics?: MonthlyMetricPoint[]
+  campaign_metrics?: CampaignMetrics[]
 }
 
 export interface PolicyRuleDetail {
@@ -274,6 +292,11 @@ export interface SystemSettingsResponse {
   webhook_ingress_url: string
   webhook_secret_configured: boolean
   razorpay_key_id: string | null
+  razorpay_mode: string | null
+  razorpay_account_id: string | null
+  razorpay_account_name: string | null
+  razorpay_account_type: string | null
+  razorpay_account_status: string | null
   primary_llm_provider: string
   active_llm_model: string
   configured_llm_providers: string[]
@@ -426,7 +449,6 @@ export interface PipelineOverviewResponse {
   events_received_last_minute: number
   events_processed_total: number
   events_processed_last_minute: number
-  current_processing_rate_per_min: number
   backlog_depth: number
   oldest_queued_age_seconds: number
   last_event_timestamp: string | null

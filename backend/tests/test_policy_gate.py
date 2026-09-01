@@ -171,3 +171,39 @@ def test_policy_gate_allows_configured_outreach_channel() -> None:
 
     evaluation = gate.evaluate(case, plan, policy)
     assert evaluation.is_allowed
+
+
+def test_policy_gate_escalates_manual_escalation_intervention() -> None:
+    gate = PolicyGate()
+    case = create_sample_case()
+    plan = InterventionPlan(
+        plan_id="plan_esc_1",
+        case_id=case.case_id,
+        intervention_type=InterventionType.MANUAL_ESCALATION,
+        scheduled_at=datetime.now(UTC),
+        idempotency_key="idem_esc_1",
+        rationale="Unrecognized risk pattern requiring manual review",
+    )
+
+    evaluation = gate.evaluate(case, plan)
+    assert evaluation.result == PolicyCheckResult.ESCALATE_REQUIRED
+    assert not evaluation.is_allowed
+    assert "human operations queue" in evaluation.reason
+
+
+def test_policy_gate_escalates_requires_human_approval_flag() -> None:
+    gate = PolicyGate()
+    case = create_sample_case()
+    plan = InterventionPlan(
+        plan_id="plan_esc_2",
+        case_id=case.case_id,
+        intervention_type=InterventionType.SMART_PAYMENT_LINK,
+        scheduled_at=datetime.now(UTC),
+        idempotency_key="idem_esc_2",
+        rationale="Low confidence formulation",
+        requires_human_approval=True,
+    )
+
+    evaluation = gate.evaluate(case, plan)
+    assert evaluation.result == PolicyCheckResult.ESCALATE_REQUIRED
+    assert not evaluation.is_allowed

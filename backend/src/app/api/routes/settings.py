@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import time
+from typing import Any
 
+import httpx2
 from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
 from app.audit.repository import get_case_repository
 from app.core.config import get_settings
+from app.core.logging import get_logger
 from app.llm.client import configured_providers
 from app.llm.settings_store import (
     LLMSettingsState,
@@ -18,6 +21,8 @@ from app.llm.settings_store import (
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
+logger = get_logger("api.settings")
+
 
 class SystemSettingsResponse(BaseModel):
     """Dynamic operational settings and integration details."""
@@ -26,6 +31,11 @@ class SystemSettingsResponse(BaseModel):
     webhook_ingress_url: str
     webhook_secret_configured: bool
     razorpay_key_id: str | None
+    razorpay_mode: str | None
+    razorpay_account_id: str | None
+    razorpay_account_name: str | None
+    razorpay_account_type: str | None
+    razorpay_account_status: str | None
     primary_llm_provider: str
     active_llm_model: str
     configured_llm_providers: list[str]
@@ -73,6 +83,67 @@ class LLMReportResponse(BaseModel):
     providers: list[ProviderSetting]
 
 
+def _derive_razorpay_account(
+    key_id: str | None,
+) -> tuple[str | None, str | None]:
+    """Derive gateway mode and embedded account id from the Razorpay key id.
+
+    Razorpay key ids take the form rzp_<mode>_<account_id> where mode is either
+    'test' or 'live'. The trailing segment is the per-account credential
+    identifier Razorpay issues alongside the key. We surface it rather than
+    fabricate merchant metadata the key does not carry.
+    """
+    if not key_id:
+        return None, None
+    for mode, prefix in (("TEST", "rzp_test_"), ("LIVE", "rzp_live_")):
+        if key_id.startswith(prefix):
+            return mode, key_id[len(prefix) :]
+    return None, None
+
+
+async def _fetch_razorpay_account(
+    access_token: str,
+    account_id: str,
+) -> dict[str, str] | None:
+    """Fetch the linked merchant account profile from Razorpay via OAuth token.
+
+    Requires a real partner/OAuth access token; without one (test mode) this is
+    never reached. Returns only display-safe fields and never the token itself.
+    Failures degrade to None so the Integrations screen still renders.
+    """
+    try:
+        async with httpx2.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(
+                f"https://api.razorpay.com/v2/accounts/{account_id}",
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
+        if not resp.is_success:
+            logger.warning(
+                "razorpay.api.account_fetch_failed",
+                account_id=account_id,
+                status_code=resp.status_code,
+            )
+            return None
+        data: dict[str, Any] = resp.json()
+        name = (
+            data.get("customer_facing_business_name")
+            or data.get("legal_business_name")
+            or None
+        )
+        return {
+            "name": str(name) if name else "",
+            "type": str(data.get("type") or ""),
+            "status": str(data.get("status") or ""),
+        }
+    except (httpx2.HTTPError, OSError, ValueError) as exc:
+        logger.warning(
+            "razorpay.api.account_fetch_errored",
+            account_id=account_id,
+            error=str(exc),
+        )
+        return None
+
+
 @router.get("", response_model=SystemSettingsResponse, summary="Get System Settings")
 async def get_system_settings(request: Request) -> SystemSettingsResponse:
     """Retrieve runtime engine settings, active models, and webhook ingress configurations."""
@@ -107,11 +178,36 @@ async def get_system_settings(request: Request) -> SystemSettingsResponse:
         and settings.razorpay_webhook_secret.get_secret_value().strip()
     )
 
+    razorpay_mode, razorpay_account_id = _derive_razorpay_account(
+        settings.razorpay_key_id
+    )
+
+    account_name: str | None = None
+    account_type: str | None = None
+    account_status: str | None = None
+    access_token = (
+        settings.razorpay_access_token.get_secret_value().strip()
+        if settings.razorpay_access_token
+        else None
+    )
+    fetch_account_id = settings.razorpay_account_id or razorpay_account_id
+    if access_token and fetch_account_id:
+        fetched = await _fetch_razorpay_account(access_token, fetch_account_id)
+        if fetched:
+            account_name = fetched["name"] or None
+            account_type = fetched["type"] or None
+            account_status = fetched["status"] or None
+
     return SystemSettingsResponse(
         environment=settings.env,
         webhook_ingress_url=webhook_url,
         webhook_secret_configured=webhook_secret_configured,
         razorpay_key_id=settings.razorpay_key_id,
+        razorpay_mode=razorpay_mode,
+        razorpay_account_id=fetch_account_id,
+        razorpay_account_name=account_name,
+        razorpay_account_type=account_type,
+        razorpay_account_status=account_status,
         primary_llm_provider=primary_provider,
         active_llm_model=active_model,
         configured_llm_providers=providers,

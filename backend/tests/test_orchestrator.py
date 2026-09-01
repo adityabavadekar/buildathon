@@ -131,3 +131,54 @@ async def test_orchestrator_payment_captured_resolution() -> None:
     assert (
         resolved.net_recovered_value_paise == 499750
     )  # 500000 - 250 (gateway retry cost)
+
+
+@pytest.mark.anyio
+async def test_orchestrator_unclassified_routes_to_escalated() -> None:
+    repo = _isolated_repo()
+    orchestrator = RecoveryOrchestrator(repository=repo)
+
+    event = RawFailureEvent(
+        event_id="evt_orch_esc_1",
+        payment_id="pay_orch_esc_1",
+        customer_id="cust_orch_esc_1",
+        amount_paise=150000,
+        payment_rail=PaymentRail.CARD,
+        error_code="SUSPECTED_FRAUD_HOLD",
+        error_reason="Risk engine flagged anomaly on card authorization",
+        occurred_at=datetime.now(UTC),
+    )
+
+    case = await orchestrator.process_failure_event(
+        event, experiment_arm_override=ExperimentArm.TREATMENT
+    )
+    assert case.state == RecoveryState.ESCALATED
+    assert case.touches_count == 0  # Escalation does not increment customer touches
+    events = [e.event_name for e in case.audit_trail]
+    assert "intervention.escalated" in events
+
+
+@pytest.mark.anyio
+async def test_orchestrator_high_value_routes_to_escalated() -> None:
+    repo = _isolated_repo()
+    orchestrator = RecoveryOrchestrator(repository=repo)
+
+    # 15,000,000 paise = INR 1,50,000 (above default 10,000,000 paise threshold)
+    event = RawFailureEvent(
+        event_id="evt_orch_esc_2",
+        payment_id="pay_orch_esc_2",
+        customer_id="cust_orch_esc_2",
+        amount_paise=15000000,
+        payment_rail=PaymentRail.B2B_INVOICE,
+        error_code="OVERDUE_RECEIVABLE",
+        error_reason="Invoice overdue",
+        occurred_at=datetime.now(UTC),
+    )
+
+    case = await orchestrator.process_failure_event(
+        event, experiment_arm_override=ExperimentArm.TREATMENT
+    )
+    assert case.state == RecoveryState.ESCALATED
+    assert case.touches_count == 0
+    events = [e.event_name for e in case.audit_trail]
+    assert "intervention.escalated" in events

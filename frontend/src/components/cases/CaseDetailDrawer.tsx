@@ -2,9 +2,11 @@
 
 import React, { useEffect, useState } from 'react'
 import {
+  Brain,
   DollarSign,
   MessageSquare,
   ShieldCheck,
+  Sparkles,
   X,
 } from 'lucide-react'
 import {
@@ -104,8 +106,16 @@ export function CaseDetailDrawer({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/50">
-      <div className="flex h-full w-full max-w-3xl flex-col border-l border-border bg-surface">
+    <div
+      className="fixed inset-0 z-50 flex justify-end bg-black/50"
+      onClick={onClose}
+    >
+      <div
+        className="flex h-full w-full max-w-3xl flex-col border-l border-border bg-surface"
+        onClick={(e) => {
+          e.stopPropagation()
+        }}
+      >
         <div className="border-b border-border bg-surface-sunken/50 px-5 py-4">
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
@@ -190,6 +200,127 @@ export function CaseDetailDrawer({
         <div className="flex-1 space-y-5 overflow-y-auto p-5">
           {activeTab === 'overview' && (
             <>
+              {/* AI Agent Reasoning & Decision Card */}
+              {(() => {
+                const planEntry = caseItem.audit_trail.find(
+                  (a) =>
+                    a.event_name === 'agent.plan_formulated' ||
+                    a.event_name === 'agent.message_drafted' ||
+                    a.actor.toLowerCase().includes('agent'),
+                )
+                const meta = planEntry?.model_metadata
+                const planObj =
+                  planEntry &&
+                  typeof planEntry.decision_outputs.plan === 'object' &&
+                  planEntry.decision_outputs.plan !== null
+                    ? (planEntry.decision_outputs.plan as Record<string, unknown>)
+                    : null
+                const rationale =
+                  (typeof planObj?.rationale === 'string'
+                    ? planObj.rationale
+                    : null) ||
+                  planEntry?.notes ||
+                  caseItem.failure_event.error_description ||
+                  null
+                const strategy =
+                  (typeof planObj?.intervention_type === 'string'
+                    ? planObj.intervention_type
+                    : null) ||
+                  caseItem.next_action ||
+                  'DYNAMIC_INTERVENTION'
+
+                const msgEn =
+                  caseItem.dunning_message_en ||
+                  (planEntry &&
+                  typeof planEntry.decision_outputs.dunning_message_en === 'string'
+                    ? planEntry.decision_outputs.dunning_message_en
+                    : null)
+                const msgHi =
+                  caseItem.dunning_message_hi ||
+                  (planEntry &&
+                  typeof planEntry.decision_outputs.dunning_message_hi === 'string'
+                    ? planEntry.decision_outputs.dunning_message_hi
+                    : null)
+
+                return (
+                  <section className="space-y-3 rounded-panel border border-accent/30 bg-accent/5 p-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="flex h-6 w-6 items-center justify-center rounded-control bg-accent/20 text-accent">
+                          <Brain className="h-3.5 w-3.5" />
+                        </div>
+                        <h3 className="text-sm font-bold text-ink">
+                          AI Agent Diagnostic Reasoning
+                        </h3>
+                      </div>
+                      <Badge
+                        variant="default"
+                        className="border-accent/30 bg-accent/10 text-accent font-mono text-[10px]"
+                      >
+                        {strategy.replaceAll('_', ' ')}
+                      </Badge>
+                    </div>
+
+                    {rationale ? (
+                      <div className="rounded-control border border-border/80 bg-surface p-3 text-xs leading-relaxed text-ink shadow-2xs">
+                        <p className="font-semibold text-ink-muted text-[10px] uppercase tracking-wider mb-1 font-mono">
+                          Diagnostic Rationale & Strategy
+                        </p>
+                        <p className="text-ink font-medium">{rationale}</p>
+                      </div>
+                    ) : null}
+
+                    {/* Model Metadata Bar */}
+                    <div className="flex flex-wrap items-center gap-2 font-mono text-[11px] text-ink-muted">
+                      <span className="inline-flex items-center gap-1 rounded-control bg-surface px-2 py-1 border border-border">
+                        <Sparkles className="h-3 w-3 text-accent" />
+                        <span>Model: {meta?.model || 'deterministic-rules-v1'}</span>
+                      </span>
+                      {typeof meta?.latency_ms === 'number' && (
+                        <span className="inline-flex items-center gap-1 rounded-control bg-surface px-2 py-1 border border-border">
+                          <span>Latency: {meta.latency_ms.toFixed(1)}ms</span>
+                        </span>
+                      )}
+                      {typeof meta?.cost_usd === 'number' && meta.cost_usd > 0 && (
+                        <span className="inline-flex items-center gap-1 rounded-control bg-surface px-2 py-1 border border-border">
+                          <span>Cost: ${meta.cost_usd.toFixed(5)}</span>
+                        </span>
+                      )}
+                      {typeof meta?.input_tokens === 'number' && meta.input_tokens > 0 && (
+                        <span className="inline-flex items-center gap-1 rounded-control bg-surface px-2 py-1 border border-border">
+                          <span>Tokens: {meta.input_tokens + (meta.output_tokens ?? 0)}</span>
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Drafted Messages Preview if present */}
+                    {(msgEn || msgHi) && (
+                      <div className="mt-2 space-y-2 border-t border-border/40 pt-2">
+                        <p className="text-[10px] font-mono font-bold uppercase tracking-wider text-ink-subtle">
+                          Drafted Recovery Outreach
+                        </p>
+                        {msgEn && (
+                          <div className="rounded-control border border-border bg-surface p-2.5 text-xs text-ink">
+                            <span className="block font-mono text-[9px] font-bold uppercase text-accent mb-0.5">
+                              English Draft
+                            </span>
+                            <span>{msgEn}</span>
+                          </div>
+                        )}
+                        {msgHi && (
+                          <div className="rounded-control border border-border bg-surface p-2.5 text-xs text-ink">
+                            <span className="block font-mono text-[9px] font-bold uppercase text-accent mb-0.5">
+                              Hinglish Draft
+                            </span>
+                            <span>{msgHi}</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </section>
+                )
+              })()}
+
               <section className="space-y-3">
                 <h3 className="text-sm font-semibold text-ink">
                   Failure details
@@ -268,61 +399,237 @@ export function CaseDetailDrawer({
           )}
 
           {activeTab === 'outreach' && (
-            <section className="space-y-3">
-              <div className="flex items-center gap-2">
-                <MessageSquare className="h-4 w-4 text-accent" />
-                <h3 className="text-sm font-semibold text-ink">
-                  Customer outreach preview
-                </h3>
+            <section className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <MessageSquare className="h-4 w-4 text-accent" />
+                  <h3 className="text-sm font-semibold text-ink">
+                    Customer outreach preview
+                  </h3>
+                </div>
+                {caseItem.dunning_message_en && (
+                  <Badge
+                    variant="default"
+                    className="border-accent/30 bg-accent/10 text-accent font-mono text-[10px]"
+                  >
+                    AI Personalized
+                  </Badge>
+                )}
               </div>
               <p className="text-sm text-ink-muted">
-                Message the customer would receive for this failed payment,
-                including any payment link or discount.
+                Personalized message drafted for this customer grounded in failure details,
+                including single-use payment link and applied concessions.
               </p>
               <WhatsAppPreview caseItem={caseItem} />
+
+              {(caseItem.dunning_message_en || caseItem.dunning_message_hi) && (
+                <div className="space-y-3 rounded-panel border border-border bg-surface-sunken/40 p-4">
+                  <h4 className="font-mono text-xs font-bold uppercase tracking-wider text-ink">
+                    Drafted Outreach Copy
+                  </h4>
+                  {caseItem.dunning_message_en && (
+                    <div className="space-y-1">
+                      <span className="font-mono text-[10px] font-semibold text-ink-muted">
+                        English Copy
+                      </span>
+                      <div className="rounded-control border border-border bg-surface p-3 font-mono text-xs text-ink">
+                        {caseItem.dunning_message_en}
+                      </div>
+                    </div>
+                  )}
+                  {caseItem.dunning_message_hi && (
+                    <div className="space-y-1">
+                      <span className="font-mono text-[10px] font-semibold text-ink-muted">
+                        Hinglish Copy
+                      </span>
+                      <div className="rounded-control border border-border bg-surface p-3 font-mono text-xs text-ink">
+                        {caseItem.dunning_message_hi}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </section>
           )}
 
           {activeTab === 'audit' && (
             <section className="space-y-4">
-              <h3 className="text-sm font-semibold text-ink">
-                Immutable state machine chronology
-              </h3>
-              {caseItem.audit_trail.map((entry) => (
-                <div
-                  key={entry.entry_id}
-                  className="relative border-l-2 border-border pb-4 pl-5 last:pb-0"
-                >
-                  <div className="absolute top-1 -left-[5px] h-2 w-2 rounded-full bg-accent" />
-                  <div className="flex items-center justify-between text-xs text-ink-muted">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium text-ink">
-                        {entry.event_name.replaceAll('_', ' ')}
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-ink">
+                  Immutable state machine chronology
+                </h3>
+                <span className="font-mono text-xs text-ink-muted">
+                  {caseItem.audit_trail.length} audit checkpoints
+                </span>
+              </div>
+              {caseItem.audit_trail.map((entry) => {
+                const isAgent =
+                  entry.actor.toLowerCase().includes('agent') ||
+                  entry.event_name.startsWith('agent.') ||
+                  Boolean(entry.model_metadata)
+                const planObj =
+                  typeof entry.decision_outputs.plan === 'object' &&
+                  entry.decision_outputs.plan !== null
+                    ? (entry.decision_outputs.plan as Record<string, unknown>)
+                    : null
+                const rationale =
+                  typeof planObj?.rationale === 'string'
+                    ? planObj.rationale
+                    : null
+                const msgEn =
+                  typeof entry.decision_outputs.dunning_message_en === 'string'
+                    ? entry.decision_outputs.dunning_message_en
+                    : null
+                const msgHi =
+                  typeof entry.decision_outputs.dunning_message_hi === 'string'
+                    ? entry.decision_outputs.dunning_message_hi
+                    : null
+                const decisionConfidence =
+                  typeof entry.decision_inputs.confidence === 'string'
+                    ? entry.decision_inputs.confidence
+                    : null
+                const decisionThreshold =
+                  typeof entry.decision_inputs.confidence_threshold === 'string'
+                    ? entry.decision_inputs.confidence_threshold
+                    : null
+                return (
+                  <div
+                    key={entry.entry_id}
+                    className="relative border-l-2 border-border pb-4 pl-5 last:pb-0"
+                  >
+                    <div
+                      className={`absolute top-1 -left-[5px] h-2 w-2 rounded-full ${
+                        isAgent
+                          ? 'bg-accent ring-2 ring-accent/30'
+                          : entry.event_name.includes('policy')
+                            ? 'bg-recovered'
+                            : 'bg-border'
+                      }`}
+                    />
+                    <div className="flex items-center justify-between text-xs text-ink-muted">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-ink">
+                          {entry.event_name.replaceAll('_', ' ')}
+                        </span>
+                        <Badge
+                          variant={isAgent ? 'default' : 'outline'}
+                          className={`font-mono text-[10px] ${
+                            isAgent
+                              ? 'border-accent/30 bg-accent/10 text-accent'
+                              : ''
+                          }`}
+                        >
+                          {entry.actor}
+                        </Badge>
+                      </div>
+                      <span className="font-mono text-[10px]">
+                        {new Date(entry.timestamp).toLocaleString()}
                       </span>
-                      <Badge variant="outline">{entry.actor}</Badge>
                     </div>
-                    <span>
-                      {new Date(entry.timestamp).toLocaleString()}
-                    </span>
+
+                    {/* Agent Diagnostic Reasoning Callout */}
+                    {rationale && (
+                      <div className="mt-2 rounded-control border border-accent/30 bg-accent/5 p-2.5 text-xs text-ink">
+                        <div className="flex items-center gap-1.5 font-mono text-[10px] font-bold text-accent mb-1">
+                          <Brain className="h-3 w-3" />
+                          <span>Agent Strategy Rationale</span>
+                        </div>
+                        <p className="text-ink font-medium">{rationale}</p>
+                      </div>
+                    )}
+
+                    {/* Decision Confidence Callout */}
+                    {(decisionConfidence || decisionThreshold) && (
+                      <div className="mt-2 flex flex-wrap items-center gap-2 rounded-control border border-border/80 bg-surface-sunken/60 p-2 font-mono text-[11px] text-ink-muted">
+                        <span className="font-bold text-ink-muted uppercase tracking-wider text-[10px]">
+                          Model confidence
+                        </span>
+                        {decisionConfidence && (
+                          <span className="rounded bg-surface-sunken px-1.5 py-0.5 border border-border/80 text-ink">
+                            {decisionConfidence}
+                          </span>
+                        )}
+                        <span className="text-border">/</span>
+                        {decisionThreshold && (
+                          <span>
+                            threshold{' '}
+                            <span className="font-bold text-ink">
+                              {decisionThreshold}
+                            </span>
+                          </span>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Drafted Customer Message Callout in Timeline */}
+                    {(msgEn || msgHi) && (
+                      <div className="mt-2 space-y-1.5 rounded-control border border-border bg-surface-sunken/60 p-2.5 text-xs">
+                        <div className="flex items-center gap-1.5 font-mono text-[10px] font-bold text-ink-muted">
+                          <MessageSquare className="h-3 w-3 text-accent" />
+                          <span>Customer Outreach Message Drafted</span>
+                        </div>
+                        {msgEn && (
+                          <div className="rounded border border-border/70 bg-surface p-2 text-ink text-[11px]">
+                            <span className="font-bold text-accent">EN: </span>
+                            {msgEn}
+                          </div>
+                        )}
+                        {msgHi && (
+                          <div className="rounded border border-border/70 bg-surface p-2 text-ink text-[11px]">
+                            <span className="font-bold text-accent">HI: </span>
+                            {msgHi}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* General Notes or Reason */}
+                    {entry.notes && !rationale ? (
+                      <p className="mt-1.5 text-xs text-ink-muted">{entry.notes}</p>
+                    ) : null}
+
+                    {/* Model Telemetry Chips */}
+                    {entry.model_metadata && (
+                      <div className="mt-2 flex flex-wrap gap-1.5 font-mono text-[10px] text-ink-muted">
+                        <span className="rounded bg-surface-sunken px-1.5 py-0.5 border border-border/80">
+                          {entry.model_metadata.model}
+                        </span>
+                        {entry.model_metadata.latency_ms !== undefined && (
+                          <span className="rounded bg-surface-sunken px-1.5 py-0.5 border border-border/80">
+                            {entry.model_metadata.latency_ms.toFixed(1)}ms
+                          </span>
+                        )}
+                        {entry.model_metadata.cost_usd !== undefined &&
+                          entry.model_metadata.cost_usd > 0 && (
+                            <span className="rounded bg-surface-sunken px-1.5 py-0.5 border border-border/80">
+                              ${entry.model_metadata.cost_usd.toFixed(5)}
+                            </span>
+                          )}
+                      </div>
+                    )}
+
+                    {entry.model_metadata?.error_detail ? (
+                      <div className="mt-2 rounded-control border border-failed/40 bg-failed/5 p-2">
+                        <p className="mb-1 text-[10px] font-bold text-failed uppercase">
+                          LLM error trace
+                        </p>
+                        <pre className="max-h-40 overflow-auto whitespace-pre-wrap rounded bg-surface-sunken p-2 font-mono text-[10px] leading-relaxed text-failed">
+                          {entry.model_metadata.error_detail}
+                        </pre>
+                      </div>
+                    ) : null}
+
+                    {entry.cost_incurred_paise > 0 ? (
+                      <span className="mt-0.5 block text-xs font-medium text-failed font-mono">
+                        Cost incurred: -
+                        {formatINR(entry.cost_incurred_paise, {
+                          maximumFractionDigits: 2,
+                        })}
+                      </span>
+                    ) : null}
                   </div>
-                  {entry.reason ? (
-                    <p className="mt-1.5 text-sm text-ink">{entry.reason}</p>
-                  ) : null}
-                  {entry.cost_incurred_paise > 0 ? (
-                    <span className="mt-0.5 block text-xs font-medium text-failed">
-                      Cost incurred: -
-                      {formatINR(entry.cost_incurred_paise, {
-                        maximumFractionDigits: 2,
-                      })}
-                    </span>
-                  ) : null}
-                  {Object.keys(entry.decision_inputs).length > 0 ? (
-                    <pre className="mt-2 overflow-x-auto rounded-control border border-border/60 bg-surface-sunken p-2 font-mono text-[10px] text-ink-muted">
-                      {JSON.stringify(entry.decision_inputs, null, 2)}
-                    </pre>
-                  ) : null}
-                </div>
-              ))}
+                )
+              })}
             </section>
           )}
 

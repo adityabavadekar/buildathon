@@ -43,18 +43,24 @@ def _identity_value(values: dict[str, Any], *keys: str) -> str | None:
 
 
 def _extract_payment_identity(payment_entity: dict[str, Any]) -> dict[str, str | None]:
-    """Extract merchant identity without changing the raw webhook payload."""
+    """Extract merchant identity from notes and entity without changing the raw webhook payload."""
     notes = payment_entity.get("notes")
     notes_data = notes if isinstance(notes, dict) else {}
     metadata = payment_entity.get("metadata")
     metadata_data = metadata if isinstance(metadata, dict) else {}
     return {
-        "campaign_id": _identity_value(notes_data, "campaign_id", "utm_campaign")
-        or _identity_value(metadata_data, "campaign_id"),
+        "campaign_id": _identity_value(
+            notes_data, "recovery_campaign", "campaign_id", "utm_campaign", "campaign"
+        )
+        or _identity_value(metadata_data, "recovery_campaign", "campaign_id", "campaign"),
         "user_ref": _identity_value(
-            notes_data, "user_id", "customer_ref", "reference_id", "order_id"
+            notes_data, "user_id", "customer_ref", "reference_id", "order_id", "user_ref"
         ),
-        "reference_id": _identity_value(notes_data, "reference_id"),
+        "reference_id": _identity_value(notes_data, "reference_id", "order_id"),
+        "subscription_id": _identity_value(notes_data, "subscription_id")
+        or _identity_value(payment_entity, "subscription_id"),
+        "invoice_id": _identity_value(notes_data, "invoice_id")
+        or _identity_value(payment_entity, "invoice_id"),
         "contact_email": _identity_value(payment_entity, "email"),
         "contact_phone": _identity_value(payment_entity, "contact"),
     }
@@ -217,8 +223,10 @@ async def handle_razorpay_webhook(  # noqa: PLR0911, PLR0912, PLR0915
             error_reason=error_reason,
             npci_response_code=str(npci_code) if npci_code else None,
             occurred_at=datetime.now(UTC),
-            invoice_id=payment_entity.get("invoice_id"),
-            subscription_id=payment_entity.get("subscription_id"),
+            invoice_id=identity["invoice_id"]
+            or payment_entity.get("invoice_id"),
+            subscription_id=identity["subscription_id"]
+            or payment_entity.get("subscription_id"),
             campaign_id=identity["campaign_id"],
             user_ref=identity["user_ref"],
             reference_id=identity["reference_id"],

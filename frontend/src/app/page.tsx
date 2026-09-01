@@ -58,7 +58,7 @@ export default function DashboardPage() {
     try {
       const [hRes, cRes, aRes, pRes, sRes, statusRes] = await Promise.all([
         getHealth(),
-        listCases().catch(() => ({
+        listCases({ limit: 100 }).catch(() => ({
           total: 0,
           offset: 0,
           limit: 100,
@@ -210,6 +210,9 @@ export default function DashboardPage() {
                   onNavigateToRecovery={() => {
                     setActiveSection('recovery')
                   }}
+                  onNavigateToSection={(sec) => {
+                    setActiveSection(sec)
+                  }}
                   onRefresh={() => {
                     void fetchData()
                   }}
@@ -254,6 +257,9 @@ export default function DashboardPage() {
                   onRefresh={() => {
                     void fetchData()
                   }}
+                  onSelectCase={(c) => {
+                    setSelectedCase(c)
+                  }}
                 />
               )}
 
@@ -274,6 +280,9 @@ export default function DashboardPage() {
                   refreshing={casesLoading}
                   onRefresh={() => {
                     void fetchData()
+                  }}
+                  onSelectCase={(c) => {
+                    setSelectedCase(c)
                   }}
                 />
               )}

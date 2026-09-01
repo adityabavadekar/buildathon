@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState } from 'react'
-import { CheckCheck, ExternalLink, ShieldCheck } from 'lucide-react'
+import { CheckCheck, ExternalLink, ShieldCheck, Volume2, VolumeX } from 'lucide-react'
 import type { RecoveryCase } from '@/lib/api'
 import { formatCustomerName } from '@/lib/format'
 import { RazorpaySymbol, WhatsAppIcon } from '@/components/ui/BrandIcons'
@@ -41,7 +41,40 @@ export function WhatsAppPreview({ caseItem }: WhatsAppPreviewProps) {
       ? `Namaste ${customerName}, aapka ${formatINR(amountPaise)} ka payment complete nahi ho paya. Abhi pay karein aur payein instant ${formatINR(discountPaise)} discount!`
       : `Namaste ${customerName}, aapka ${formatINR(amountPaise)} ka payment process nahi ho paya. Kripya neeche diye link se turant payment complete karein.`
 
-  const messageText = lang === 'en' ? defaultMsgEn : defaultMsgHi
+  const draftedEn = caseItem.dunning_message_en
+  const draftedHi = caseItem.dunning_message_hi
+
+  // Discover drafting model or engine from audit trail
+  const draftEntry = caseItem.audit_trail.find(
+    (a) => a.event_name === 'agent.message_drafted' || a.event_name === 'agent.plan_formulated'
+  )
+  const modelUsed = draftEntry?.model_metadata?.model || 'deterministic-rules-v1'
+  const isAgentDrafted = !draftEntry?.model_metadata?.used_fallback && modelUsed !== 'deterministic-rules-v1'
+
+  const messageText = lang === 'en' ? (draftedEn || defaultMsgEn) : (draftedHi || defaultMsgHi)
+  const [isPlayingAudio, setIsPlayingAudio] = useState(false)
+
+  const handleToggleVoice = () => {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return
+    if (isPlayingAudio) {
+      window.speechSynthesis.cancel()
+      setIsPlayingAudio(false)
+      return
+    }
+
+    const utterance = new SpeechSynthesisUtterance(messageText)
+    utterance.lang = lang === 'hi' ? 'hi-IN' : 'en-IN'
+    utterance.rate = 0.92
+    utterance.pitch = 1.0
+    utterance.onend = () => {
+      setIsPlayingAudio(false)
+    }
+    utterance.onerror = () => {
+      setIsPlayingAudio(false)
+    }
+    setIsPlayingAudio(true)
+    window.speechSynthesis.speak(utterance)
+  }
 
   return (
     <div className="overflow-hidden rounded-panel border border-border bg-surface shadow-sm">
@@ -65,35 +98,75 @@ export function WhatsAppPreview({ caseItem }: WhatsAppPreviewProps) {
           </div>
         </div>
 
-        {/* Language Switcher */}
-        <div className="flex items-center gap-1 rounded-control bg-black/20 p-0.5 font-mono text-[10px]">
+        {/* Controls: Voice Synthesis + Language Switcher */}
+        <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={() => {
-              setLang('en')
-            }}
-            className={`cursor-pointer rounded px-1.5 py-0.5 ${
-              lang === 'en'
-                ? 'bg-white font-bold text-[#075E54]'
-                : 'text-white/80'
+            onClick={handleToggleVoice}
+            title={isPlayingAudio ? 'Stop voice call' : 'Simulate voice recovery call'}
+            className={`flex items-center gap-1 rounded-control px-2 py-1 font-mono text-[10px] transition-colors ${
+              isPlayingAudio
+                ? 'bg-red-500 text-white animate-pulse'
+                : 'bg-black/20 text-white hover:bg-black/30'
             }`}
           >
-            EN
+            {isPlayingAudio ? (
+              <>
+                <VolumeX className="h-3 w-3" />
+                <span>Stop</span>
+              </>
+            ) : (
+              <>
+                <Volume2 className="h-3 w-3" />
+                <span>Voice</span>
+              </>
+            )}
           </button>
-          <button
-            type="button"
-            onClick={() => {
-              setLang('hi')
-            }}
-            className={`cursor-pointer rounded px-1.5 py-0.5 ${
-              lang === 'hi'
-                ? 'bg-white font-bold text-[#075E54]'
-                : 'text-white/80'
-            }`}
-          >
-            HI
-          </button>
+
+          <div className="flex items-center gap-1 rounded-control bg-black/20 p-0.5 font-mono text-[10px]">
+            <button
+              type="button"
+              onClick={() => {
+                if (isPlayingAudio && typeof window !== 'undefined') window.speechSynthesis.cancel()
+                setIsPlayingAudio(false)
+                setLang('en')
+              }}
+              className={`cursor-pointer rounded px-1.5 py-0.5 ${
+                lang === 'en'
+                  ? 'bg-white font-bold text-[#075E54]'
+                  : 'text-white/80'
+              }`}
+            >
+              EN
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (isPlayingAudio && typeof window !== 'undefined') window.speechSynthesis.cancel()
+                setIsPlayingAudio(false)
+                setLang('hi')
+              }}
+              className={`cursor-pointer rounded px-1.5 py-0.5 ${
+                lang === 'hi'
+                  ? 'bg-white font-bold text-[#075E54]'
+                  : 'text-white/80'
+              }`}
+            >
+              HI
+            </button>
+          </div>
         </div>
+      </div>
+
+      {/* Model & Drafting Origin Bar */}
+      <div className="flex items-center justify-between border-b border-black/5 bg-[#054C44] px-3.5 py-1 text-[10px] font-mono text-white/90">
+        <span className="flex items-center gap-1">
+          <span className={`h-1.5 w-1.5 rounded-full ${isAgentDrafted ? 'bg-[#25D366] animate-pulse' : 'bg-white/60'}`} />
+          {isAgentDrafted ? 'AI Personalized Outreach' : 'Deterministic Rules Template'}
+        </span>
+        <span className="truncate max-w-[180px] text-white/70">
+          {modelUsed}
+        </span>
       </div>
 
       {/* WhatsApp Chat Background Body */}

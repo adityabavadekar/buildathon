@@ -104,26 +104,34 @@ function GraphEditor({
     }),
     [],
   )
-  const mappedNodes: Node[] = nodes.map((node, index) => ({
-    id: node.id ?? `node-${index + 1}`,
-    position: { x: Number(node.x ?? index * 190), y: Number(node.y ?? 80) },
-    data: { label: node.label ?? 'Workflow step', type: node.type ?? 'action' },
-    type: 'workflow',
-  }))
-  const mappedEdges: Edge[] = edges.map((edge, index) => ({
-    id: edge.id ?? `edge-${index + 1}`,
-    source: edge.source ?? '',
-    target: edge.target ?? '',
-    animated: true,
-  }))
+  const mappedNodes: Node[] = React.useMemo(
+    () =>
+      nodes.map((node, index) => ({
+        id: node.id ?? `node-${index + 1}`,
+        position: { x: Number(node.x ?? index * 190), y: Number(node.y ?? 80) },
+        data: { label: node.label ?? 'Workflow step', type: node.type ?? 'action' },
+        type: 'workflow',
+      })),
+    [nodes],
+  )
+  const mappedEdges: Edge[] = React.useMemo(
+    () =>
+      edges.map((edge, index) => ({
+        id: edge.id ?? `edge-${index + 1}`,
+        source: edge.source ?? '',
+        target: edge.target ?? '',
+        animated: true,
+      })),
+    [edges],
+  )
   const [flowNodes, setFlowNodes] = React.useState<Node[]>(mappedNodes)
   const [flowEdges, setFlowEdges] = React.useState<Edge[]>(mappedEdges)
   React.useEffect(() => {
     setFlowNodes(mappedNodes)
-  }, [nodes])
+  }, [mappedNodes])
   React.useEffect(() => {
     setFlowEdges(mappedEdges)
-  }, [edges])
+  }, [mappedEdges])
   const handleNodesChange = (changes: NodeChange[]) => {
     const changed = applyNodeChanges(changes, flowNodes)
     setFlowNodes(changed)
@@ -263,8 +271,8 @@ export function WorkflowView() {
       setWorkflows(workflowResponse)
       setTemplates(templateResponse)
       setOptions(optionsResponse)
-      if (!templateBase && templateResponse.length > 0) {
-        setTemplateBase(templateResponse[0]?.base_template ?? '')
+      if (templateResponse.length > 0) {
+        setTemplateBase((prev) => (!prev ? (templateResponse[0]?.base_template ?? '') : prev))
       }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Unable to load workflows.')

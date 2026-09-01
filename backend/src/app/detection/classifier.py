@@ -22,6 +22,8 @@ class FailureClassifier:
 
     # Set of NPCI codes indicating transient window
     TRANSIENT_NPCI_CODES: ClassVar[set[str]] = {"XT", "XU", "XY"}
+    # Error codes indicating transient bank / PSP timeout (not NPCI codes)
+    TRANSIENT_ERROR_CODES: ClassVar[set[str]] = {"U30", "U31", "U32", "GATEWAY_TIMEOUT"}
     # NPCI codes indicating balance or liquidity
     LIQUIDITY_NPCI_CODES: ClassVar[set[str]] = {"AP15", "AP21", "U19", "U68", "ZM"}
     # NPCI codes indicating structural mandate breakdown
@@ -52,6 +54,8 @@ class FailureClassifier:
             "npci_code": npci,
         }
 
+        amt_inr = event.amount_paise // 100
+
         # 1. B2B Overdue Receivables
         if (
             "b2b" in reason
@@ -59,6 +63,10 @@ class FailureClassifier:
             or "overdue" in reason
             or event.payment_rail == PaymentRail.B2B_INVOICE
         ):
+            msg_en = f"Dear Customer, invoice #{event.payment_id} for INR {amt_inr} is overdue. Please complete settlement securely."
+            msg_hi = f"Priy Grahak, invoice #{event.payment_id} (INR {amt_inr}) overdue hai. Kripya diye gaye link se payment karein."
+            signals["dunning_message_en"] = msg_en
+            signals["dunning_message_hi"] = msg_hi
             return DiagnosisResult(
                 category=FailureCategory.B2B_RECEIVABLES_OVERDUE,
                 confidence=Decimal("0.92"),
@@ -70,6 +78,8 @@ class FailureClassifier:
                     "Automated multi-channel reconciliation dunning initiated with single-click payment link."
                 ),
                 requires_human_approval=False,
+                dunning_message_en=msg_en,
+                dunning_message_hi=msg_hi,
                 signals_evaluated=signals,
             )
 
@@ -79,7 +89,12 @@ class FailureClassifier:
             or "p2p" in reason
             or "customer_promised" in reason
             or "grace_period" in reason
+            or code == "P2P_PROMISED"
         ):
+            msg_en = f"Hi, this is a reminder regarding your scheduled payment of INR {amt_inr}. Complete it at your convenience."
+            msg_hi = f"Namaste, aapke INR {amt_inr} payment ka scheduled reminder. Kripya diye gaye link se payment poora karein."
+            signals["dunning_message_en"] = msg_en
+            signals["dunning_message_hi"] = msg_hi
             return DiagnosisResult(
                 category=FailureCategory.PROMISE_TO_PAY_DELAY,
                 confidence=Decimal("0.90"),
@@ -91,18 +106,25 @@ class FailureClassifier:
                     "Aggressive automated retries paused; scheduled gentle verification follow-up."
                 ),
                 requires_human_approval=False,
+                dunning_message_en=msg_en,
+                dunning_message_hi=msg_hi,
                 signals_evaluated=signals,
             )
 
         # 3. Transient Banking Window / CBS Cutoff
         if (
             npci in self.TRANSIENT_NPCI_CODES
+            or code in self.TRANSIENT_ERROR_CODES
             or "cutoff" in reason
             or "bank_cutoff" in reason
             or "bank_technical_error" in reason
             or "temporarily_unavailable" in reason
             or (source == "bank" and "down" in reason)
         ):
+            msg_en = f"Hi, your payment of INR {amt_inr} was delayed due to temporary bank network lag. We will auto-retry shortly."
+            msg_hi = f"Namaste, bank server me temporary issue ke karan INR {amt_inr} ka payment delay hua. Hum jald auto-retry karenge."
+            signals["dunning_message_en"] = msg_en
+            signals["dunning_message_hi"] = msg_hi
             return DiagnosisResult(
                 category=FailureCategory.TRANSIENT_BANK_WINDOW,
                 confidence=Decimal("0.95"),
@@ -114,6 +136,8 @@ class FailureClassifier:
                     "Background passive retry scheduled after the standard banking window."
                 ),
                 requires_human_approval=False,
+                dunning_message_en=msg_en,
+                dunning_message_hi=msg_hi,
                 signals_evaluated=signals,
             )
 
@@ -126,6 +150,10 @@ class FailureClassifier:
             or "account_closed" in reason
             or "invalid_mandate" in reason
         ):
+            msg_en = f"Hello, your auto-debit of INR {amt_inr} was interrupted. Please update your mandate or pay securely here."
+            msg_hi = f"Namaste, mandate issue ki wajah se aapka INR {amt_inr} ka auto-debit nahi ho paya. Kripya yahan pay karein."
+            signals["dunning_message_en"] = msg_en
+            signals["dunning_message_hi"] = msg_hi
             return DiagnosisResult(
                 category=FailureCategory.STRUCTURAL_MANDATE_FAILURE,
                 confidence=Decimal("0.95"),
@@ -137,6 +165,8 @@ class FailureClassifier:
                     "Auto-debit stopped; immediate smart fallback payment link issued to customer."
                 ),
                 requires_human_approval=False,
+                dunning_message_en=msg_en,
+                dunning_message_hi=msg_hi,
                 signals_evaluated=signals,
             )
 
@@ -148,6 +178,10 @@ class FailureClassifier:
             or "credit_limit_exceeded" in reason
             or "balance" in reason
         ):
+            msg_en = f"Hello, your payment of INR {amt_inr} was declined due to insufficient balance. Auto-retry scheduled in 48h."
+            msg_hi = f"Namaste, insufficient balance ki wajah se INR {amt_inr} ka payment decline hua. Auto-retry 48 ghante me hoga."
+            signals["dunning_message_en"] = msg_en
+            signals["dunning_message_hi"] = msg_hi
             return DiagnosisResult(
                 category=FailureCategory.LIQUIDITY_CONSTRAINT,
                 confidence=Decimal("0.90"),
@@ -159,6 +193,8 @@ class FailureClassifier:
                     "Scheduled retry with minimum 48h spacing aligned with liquidity windows."
                 ),
                 requires_human_approval=False,
+                dunning_message_en=msg_en,
+                dunning_message_hi=msg_hi,
                 signals_evaluated=signals,
             )
 
@@ -171,6 +207,10 @@ class FailureClassifier:
             or step == "payment_authentication"
             or (source == "customer" and "cancelled" in reason)
         ):
+            msg_en = f"Hi, your recent checkout of INR {amt_inr} was interrupted. Complete your payment with an instant 5% discount!"
+            msg_hi = f"Namaste, aapka INR {amt_inr} ka checkout poora nahi ho paya. Abhi pay karein aur 5% discount payein!"
+            signals["dunning_message_en"] = msg_en
+            signals["dunning_message_hi"] = msg_hi
             return DiagnosisResult(
                 category=FailureCategory.CHECKOUT_DROP_OFF,
                 confidence=Decimal("0.85"),
@@ -182,6 +222,8 @@ class FailureClassifier:
                     f"Dispatched short-lived ({CHECKOUT_DROP_OFF_LINK_VALIDITY_MINUTES}m) fallback link with time-decay incentive."
                 ),
                 requires_human_approval=False,
+                dunning_message_en=msg_en,
+                dunning_message_hi=msg_hi,
                 signals_evaluated=signals,
             )
 
@@ -190,6 +232,10 @@ class FailureClassifier:
             code in {"GATEWAY_ERROR", "SERVER_ERROR", "INTERNAL_SERVER_ERROR"}
             or source == "gateway"
         ):
+            msg_en = f"Hi, your payment of INR {amt_inr} experienced a technical gateway issue. We are automatically retrying."
+            msg_hi = f"Namaste, gateway error ke karan INR {amt_inr} ka payment ruk gaya tha. Hum auto-retry kar rahe hain."
+            signals["dunning_message_en"] = msg_en
+            signals["dunning_message_hi"] = msg_hi
             return DiagnosisResult(
                 category=FailureCategory.SYSTEMIC_GATEWAY_FAILURE,
                 confidence=Decimal("0.80"),
@@ -201,10 +247,16 @@ class FailureClassifier:
                     "Passive retry scheduled with 1-hour backoff."
                 ),
                 requires_human_approval=False,
+                dunning_message_en=msg_en,
+                dunning_message_hi=msg_hi,
                 signals_evaluated=signals,
             )
 
         # 8. Unclassified / Low Confidence -> Escalation
+        msg_en = f"Hi, your payment of INR {amt_inr} could not be processed. Our support team is reviewing your transaction."
+        msg_hi = f"Namaste, INR {amt_inr} ka payment process nahi ho paya. Humari support team review kar rahi hai."
+        signals["dunning_message_en"] = msg_en
+        signals["dunning_message_hi"] = msg_hi
         return DiagnosisResult(
             category=FailureCategory.UNCLASSIFIED,
             confidence=MIN_CONFIDENCE_THRESHOLD,
@@ -216,6 +268,8 @@ class FailureClassifier:
                 "Confidence is low; routing to human operations queue for review."
             ),
             requires_human_approval=True,
+            dunning_message_en=msg_en,
+            dunning_message_hi=msg_hi,
             signals_evaluated=signals,
         )
 

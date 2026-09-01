@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from app.audit.models import RecoveryCase
-from app.audit.sqlite_store import RelationalCaseStore
+from app.audit.postgres_store import RelationalCaseStore
 from app.core.enums import ExperimentArm, PaymentRail, RecoveryState
 from app.detection.customer_profile import (
     CustomerProfileRegistry,
@@ -18,11 +18,10 @@ if TYPE_CHECKING:
     from fastapi.testclient import TestClient
 
 
-def test_customer_profile_aggregation(tmp_path: Any) -> None:
-    """Verify customer profile computation over multiple historical cases."""
-    db_path = tmp_path / "test_cust_profile.db"
-    store = RelationalCaseStore(db_path=db_path)
-    registry = CustomerProfileRegistry(db_path=db_path)
+def test_customer_profile_aggregation() -> None:
+    """Verify customer profile computation over multiple historical cases in PostgreSQL."""
+    store = RelationalCaseStore()
+    registry = CustomerProfileRegistry()
 
     now = datetime.now(UTC)
     cust_id = "cust_loyal_1"

@@ -11,6 +11,7 @@ from uuid import uuid4
 from app.audit.models import AuditEntry, RecoveryCase, ScheduledJob
 from app.audit.repository import CaseRepository, get_case_repository
 from app.audit.state_machine import transition_case
+from app.core.constants import MIN_CONFIDENCE_THRESHOLD
 from app.core.enums import (
     AuditActor,
     ExperimentArm,
@@ -64,7 +65,7 @@ class RecoveryOrchestrator:
             return ExperimentArm.HOLDOUT_CONTROL
         return ExperimentArm.TREATMENT
 
-    async def process_failure_event(
+    async def process_failure_event(  # noqa: PLR0911, PLR0912, PLR0915
         self,
         failure_event: RawFailureEvent,
         *,
@@ -73,37 +74,47 @@ class RecoveryOrchestrator:
     ) -> RecoveryCase:
         """Ingest failure event, assign arm, formulate plan, gate policy, and execute or schedule."""
         existing_case = self.repository.get_by_payment_id(failure_event.payment_id)
-        if existing_case:
+        if existing_case and existing_case.state != RecoveryState.ANALYSIS_QUEUED:
             return existing_case
 
-        arm = experiment_arm_override or self._assign_experiment_arm(
-            failure_event.payment_id
-        )
-
-        case = RecoveryCase(
-            merchant_id=self.policy.merchant_id,
-            failure_event=failure_event,
-            amount_paise=failure_event.amount_paise,
-            currency=failure_event.currency,
-            experiment_arm=arm,
-            state=RecoveryState.ANALYSIS_QUEUED,
-        )
-
-        case.audit_trail.append(
-            AuditEntry(
-                case_id=case.case_id,
-                event_name="case.ingested",
-                actor=AuditActor.GATEWAY_WEBHOOK,
-                from_state=None,
-                to_state=RecoveryState.ANALYSIS_QUEUED,
-                decision_inputs={
-                    "payment_id": failure_event.payment_id,
-                    "amount_paise": failure_event.amount_paise,
-                    "rail": failure_event.payment_rail.value,
-                },
-                notes="Transaction failure ingested.",
+        arm = (
+            existing_case.experiment_arm
+            if existing_case
+            else (
+                experiment_arm_override
+                or self._assign_experiment_arm(failure_event.payment_id)
             )
         )
+
+        if existing_case:
+            case = existing_case
+            case.experiment_arm = arm
+        else:
+            case = RecoveryCase(
+                merchant_id=self.policy.merchant_id,
+                failure_event=failure_event,
+                amount_paise=failure_event.amount_paise,
+                currency=failure_event.currency,
+                experiment_arm=arm,
+                state=RecoveryState.ANALYSIS_QUEUED,
+            )
+
+        if not any(e.event_name == "case.ingested" for e in case.audit_trail):
+            case.audit_trail.append(
+                AuditEntry(
+                    case_id=case.case_id,
+                    event_name="case.ingested",
+                    actor=AuditActor.GATEWAY_WEBHOOK,
+                    from_state=None,
+                    to_state=RecoveryState.ANALYSIS_QUEUED,
+                    decision_inputs={
+                        "payment_id": failure_event.payment_id,
+                        "amount_paise": failure_event.amount_paise,
+                        "rail": failure_event.payment_rail.value,
+                    },
+                    notes="Transaction failure ingested.",
+                )
+            )
 
         if arm == ExperimentArm.HOLDOUT_CONTROL:
             logger.info(
@@ -137,17 +148,37 @@ class RecoveryOrchestrator:
                 case.amount_paise * (diagnosis.discount_bps_suggested / 10000)
             )
 
-        channel = (
-            OutreachChannel.WHATSAPP
-            if diagnosis.recommended_intervention
-            in (InterventionType.CUSTOMER_NUDGE, InterventionType.INCENTIVIZED_LINK)
-            else None
-        )
+        channel_str = diagnosis.signals_evaluated.get("suggested_channel")
+        channel: OutreachChannel | None = None
+        if channel_str:
+            try:
+                channel = OutreachChannel(channel_str)
+            except ValueError:
+                channel = None
+
+        if not channel:
+            if diagnosis.recommended_intervention in (
+                InterventionType.CUSTOMER_NUDGE,
+                InterventionType.INCENTIVIZED_LINK,
+                InterventionType.P2P_FOLLOWUP,
+            ):
+                channel = OutreachChannel.WHATSAPP
+            elif (
+                diagnosis.recommended_intervention
+                == InterventionType.B2B_INVOICE_CHASER
+            ):
+                channel = OutreachChannel.EMAIL
 
         scheduled_at = datetime.now(UTC) + timedelta(
             hours=diagnosis.recommended_delay_hours
         )
         idempotency_key = f"idem_{case.case_id}_{case.touches_count + 1}"
+        is_human_required = bool(
+            diagnosis.requires_human_approval
+            or (
+                diagnosis.recommended_intervention == InterventionType.MANUAL_ESCALATION
+            )
+        )
 
         plan = InterventionPlan(
             plan_id=f"plan_{uuid4().hex[:8]}",
@@ -159,7 +190,13 @@ class RecoveryOrchestrator:
             discount_paise=discount_paise,
             idempotency_key=idempotency_key,
             rationale=diagnosis.reasoning,
+            requires_human_approval=is_human_required,
+            dunning_message_en=diagnosis.dunning_message_en,
+            dunning_message_hi=diagnosis.dunning_message_hi,
         )
+
+        case.dunning_message_en = plan.dunning_message_en
+        case.dunning_message_hi = plan.dunning_message_hi
 
         case.audit_trail.append(
             AuditEntry(
@@ -168,12 +205,39 @@ class RecoveryOrchestrator:
                 actor=AuditActor.AGENT_LLM,
                 from_state=RecoveryState.ANALYSIS_QUEUED,
                 to_state=RecoveryState.ANALYSIS_QUEUED,
-                decision_inputs={"event": failure_event.model_dump(mode="json")},
+                decision_inputs={
+                    "event": failure_event.model_dump(mode="json"),
+                    "confidence": str(diagnosis.confidence),
+                    "confidence_threshold": str(MIN_CONFIDENCE_THRESHOLD),
+                },
                 decision_outputs={"plan": plan.model_dump(mode="json")},
                 model_metadata=metadata,
                 notes=f"Formulated strategy: {plan.intervention_type.value}. Rationale: {plan.rationale}",
             )
         )
+
+        if plan.dunning_message_en or plan.dunning_message_hi:
+            case.audit_trail.append(
+                AuditEntry(
+                    case_id=case.case_id,
+                    event_name="agent.message_drafted",
+                    actor=AuditActor.AGENT_LLM,
+                    from_state=RecoveryState.ANALYSIS_QUEUED,
+                    to_state=RecoveryState.ANALYSIS_QUEUED,
+                    decision_inputs={
+                        "category": diagnosis.category.value,
+                        "confidence": float(diagnosis.confidence),
+                        "discount_bps": plan.discount_bps,
+                        "channel": plan.channel.value if plan.channel else None,
+                    },
+                    decision_outputs={
+                        "dunning_message_en": plan.dunning_message_en,
+                        "dunning_message_hi": plan.dunning_message_hi,
+                    },
+                    model_metadata=metadata,
+                    notes="Drafted contextual recovery messages in English and Hinglish grounded in failure details.",
+                )
+            )
 
         # 2. Gate intervention through deterministic invariants
         eval_result = self.policy_gate.evaluate(case, plan, self.policy)
@@ -200,7 +264,13 @@ class RecoveryOrchestrator:
                     to_state=RecoveryState.ESCALATED,
                     actor=AuditActor.POLICY_GATE,
                     reason=eval_result.reason,
-                    event_name="case.escalated",
+                    event_name="intervention.escalated",
+                    decision_inputs={
+                        "plan": plan.model_dump(mode="json"),
+                        "confidence": str(diagnosis.confidence),
+                        "confidence_threshold": str(MIN_CONFIDENCE_THRESHOLD),
+                        "human_above_paise": self.policy.require_human_above_paise,
+                    },
                 )
             else:
                 transition_case(
@@ -209,12 +279,33 @@ class RecoveryOrchestrator:
                     actor=AuditActor.POLICY_GATE,
                     reason=f"Intervention rejected by safety gate: {eval_result.reason}",
                     event_name="intervention.blocked",
+                    decision_inputs={"plan": plan.model_dump(mode="json")},
                 )
             self.repository.save(case)
             return case
 
         # 3. Check live operator autonomy mode
         active_plan = eval_result.modified_plan or plan
+
+        # LLM or classifier explicitly routed this case to a human: escalate it
+        # to the operator queue as the intervention itself, in every autonomy
+        # mode. Escalation never executes customer outreach.
+        if active_plan.intervention_type == InterventionType.MANUAL_ESCALATION:
+            transition_case(
+                case,
+                to_state=RecoveryState.ESCALATED,
+                actor=AuditActor.SYSTEM,
+                reason=f"Escalated to human operations for review: {plan.rationale}",
+                event_name="intervention.escalated",
+                decision_inputs={
+                    "plan": active_plan.model_dump(mode="json"),
+                    "confidence": str(diagnosis.confidence),
+                    "confidence_threshold": str(MIN_CONFIDENCE_THRESHOLD),
+                },
+            )
+            self.repository.save(case)
+            return case
+
         operator_mode = get_operator_mode()
 
         if operator_mode == OperatorMode.MONITORING_ONLY:
@@ -259,6 +350,28 @@ class RecoveryOrchestrator:
 
     async def _execute_plan(self, case: RecoveryCase, plan: InterventionPlan) -> None:
         """Execute or schedule chosen intervention tool."""
+        if plan.intervention_type == InterventionType.MANUAL_ESCALATION:
+            transition_case(
+                case,
+                to_state=RecoveryState.ESCALATED,
+                actor=AuditActor.SYSTEM,
+                reason=f"Escalated to human operations for review: {plan.rationale}",
+                event_name="intervention.escalated",
+                decision_inputs={"plan": plan.model_dump(mode="json")},
+            )
+            return
+
+        if plan.intervention_type == InterventionType.NO_ACTION:
+            transition_case(
+                case,
+                to_state=RecoveryState.FAILED,
+                actor=AuditActor.SYSTEM,
+                reason=f"No automated recovery intervention taken: {plan.rationale}",
+                event_name="intervention.no_action",
+                decision_inputs={"plan": plan.model_dump(mode="json")},
+            )
+            return
+
         case.touches_count += 1
         case.last_touch_at = datetime.now(UTC)
         if plan.discount_paise > 0:
@@ -275,11 +388,16 @@ class RecoveryOrchestrator:
             InterventionType.SMART_PAYMENT_LINK,
             InterventionType.INCENTIVIZED_LINK,
             InterventionType.B2B_INVOICE_CHASER,
+            InterventionType.SMART_COLLECT,
         ):
             exec_res = await self.payment_link_tool.execute(case, plan)
             target_state = (
                 RecoveryState.IN_DUNNING
-                if plan.intervention_type == InterventionType.B2B_INVOICE_CHASER
+                if plan.intervention_type
+                in (
+                    InterventionType.B2B_INVOICE_CHASER,
+                    InterventionType.SMART_COLLECT,
+                )
                 else RecoveryState.OUTREACH_PENDING
             )
         elif plan.intervention_type == InterventionType.CUSTOMER_NUDGE:

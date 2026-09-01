@@ -18,15 +18,19 @@ _TEST_DATA_DIR = Path(tempfile.mkdtemp(prefix="fortx_test_"))
 os.environ["APP_DATABASE_PATH"] = str(_TEST_DATA_DIR / "test_recovery.db")
 os.environ["APP_POLICY_CONFIG_PATH"] = str(_TEST_DATA_DIR / "policy_config.json")
 
+from app.audit.repository import get_case_repository
 from app.core.operator import OperatorMode, set_operator_mode
 from app.main import create_app
 
 
 @pytest.fixture(autouse=True)
-def reset_operator_mode() -> Iterator[None]:
-    """Ensure tests run under default FULL_AUTONOMY mode and reset after."""
+def test_isolation() -> Iterator[None]:
+    """Ensure tests run against a clean database under default FULL_AUTONOMY mode."""
+    repo = get_case_repository()
+    repo.clear()
     set_operator_mode(OperatorMode.FULL_AUTONOMY, reason="Test isolation setup")
     yield
+    repo.clear()
     set_operator_mode(OperatorMode.FULL_AUTONOMY, reason="Test isolation teardown")
 
 

@@ -23,9 +23,15 @@ export function SkeletonCard() {
   )
 }
 
-export function SkeletonRow() {
-  return (
-    <div className="flex items-center justify-between border-b border-border/50 px-4 py-3.5">
+type SkeletonRowProps = {
+  variant?: 'div' | 'table'
+}
+
+export function SkeletonRow({
+  variant = 'div',
+}: SkeletonRowProps) {
+  const content = (
+    <>
       <div className="flex items-center gap-3">
         <Skeleton className="h-4 w-28" />
         <Skeleton className="h-3.5 w-36" />
@@ -34,6 +40,22 @@ export function SkeletonRow() {
         <Skeleton className="h-4 w-16" />
         <Skeleton className="h-5 w-20 rounded-full" />
       </div>
+    </>
+  )
+
+  if (variant === 'table') {
+    return (
+      <tr className="border-b border-border/50">
+        <td colSpan={99} className="flex items-center justify-between px-4 py-3.5">
+          {content}
+        </td>
+      </tr>
+    )
+  }
+
+  return (
+    <div className="flex items-center justify-between border-b border-border/50 px-4 py-3.5">
+      {content}
     </div>
   )
 }

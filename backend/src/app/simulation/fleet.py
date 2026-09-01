@@ -6,14 +6,15 @@ import asyncio
 import secrets
 from datetime import UTC, datetime
 from typing import Any
-from uuid import uuid4
 
-from app.audit.models import AuditEntry, RecoveryCase, ScheduledJob
+from app.audit.models import ScheduledJob
 from app.audit.repository import get_case_repository
-from app.core.enums import AuditActor, ExperimentArm, PaymentRail, RecoveryState
+from app.core.config import get_settings
+from app.core.enums import ExperimentArm, PaymentRail
 from app.core.logging import get_logger
 from app.detection.models import RawFailureEvent
-from app.simulation.seeder import CUSTOMER_NAMES, FAILURE_TEMPLATES
+from app.intervention.orchestrator import get_recovery_orchestrator
+from app.simulation.seeder import CAMPAIGN_TAGS, CUSTOMER_NAMES, FAILURE_TEMPLATES
 
 logger = get_logger(__name__)
 
@@ -31,8 +32,10 @@ class FleetSimulator:
             r.value for r in PaymentRail if r != PaymentRail.UNKNOWN
         ]
         self.min_amount_paise: int = 10000
-        self.max_amount_paise: int = 10000000
-        self.use_llm: bool = False
+        # Keep the cap well above require_human_above_paise so high-value cases
+        # actually exceed the human-approval threshold instead of clamping to it.
+        self.max_amount_paise: int = 50000000
+        self.use_llm: bool = True
         self.experiment_id: str | None = None
         self.events_emitted: int = 0
         self.started_at: datetime | None = None
@@ -52,8 +55,8 @@ class FleetSimulator:
         events_per_minute: int = 20,
         rails: list[str] | None = None,
         min_amount_paise: int = 10000,
-        max_amount_paise: int = 10000000,
-        use_llm: bool = False,
+        max_amount_paise: int = 50000000,
+        use_llm: bool = True,
         experiment_id: str | None = None,
     ) -> dict[str, Any]:
         """Start the continuous background failure generation loop."""
@@ -124,15 +127,15 @@ class FleetSimulator:
         while self.is_running:
             if not self.is_paused:
                 try:
-                    self._emit_single_event(repo)
+                    await self._emit_single_event(repo)
                 except Exception as exc:  # noqa: BLE001
                     logger.warning("simulation.fleet_emit_error", error=str(exc))
 
             interval_seconds = 60.0 / max(1, self.events_per_minute)
             await asyncio.sleep(interval_seconds)
 
-    def _emit_single_event(self, repo: Any) -> None:
-        """Generate and enqueue a single synthetic failure event."""
+    async def _emit_single_event(self, repo: Any) -> None:
+        """Generate, formulate strategy, and enqueue a single synthetic failure event."""
         # Pick template matching configured rails
         available_templates = [
             t for t in FAILURE_TEMPLATES if t["rail"].value in self.rails
@@ -146,9 +149,15 @@ class FleetSimulator:
         is_holdout = secrets.randbelow(10) == 0
         arm = ExperimentArm.HOLDOUT_CONTROL if is_holdout else ExperimentArm.TREATMENT
 
+        # Distribute 50% agentic cases and 50% deterministic cases in fleet mode
+        is_agentic = (self.events_emitted % 2 == 0) if self.use_llm else False
+        case_tag = self.experiment_id or (
+            "fleet_agentic" if is_agentic else "fleet_deterministic"
+        )
+        model_override = get_settings().agentic_model if is_agentic else None
+
         payment_id = f"pay_fleet_{secrets.token_hex(6)}"
         event_id = f"evt_fleet_{secrets.token_hex(6)}"
-        case_id = f"case_fl_{uuid4().hex[:8]}"
         now = datetime.now(UTC)
 
         raw_event = RawFailureEvent(
@@ -163,52 +172,31 @@ class FleetSimulator:
             error_reason=template["error_reason"],
             contact_email=cust[2],
             contact_phone=cust[1],
+            campaign_id=secrets.choice(CAMPAIGN_TAGS),
             occurred_at=now,
+            experiment_tag=case_tag,
+            model_override=model_override,
+            metadata={"is_agentic": is_agentic, "source": "fleet"},
         )
 
-        case = RecoveryCase(
-            case_id=case_id,
-            merchant_id="merchant_live_buildathon",
-            state=RecoveryState.ANALYSIS_QUEUED,
-            experiment_arm=arm,
-            amount_paise=amount,
-            currency="INR",
-            failure_event=raw_event,
-            created_at=now,
-            updated_at=now,
+        orchestrator = get_recovery_orchestrator()
+        case = await orchestrator.process_failure_event(
+            raw_event,
+            experiment_arm_override=arm,
+            use_llm=is_agentic,
         )
-        case.audit_trail.append(
-            AuditEntry(
-                case_id=case_id,
-                from_state=None,
-                to_state=RecoveryState.ANALYSIS_QUEUED,
-                actor=AuditActor.GATEWAY_WEBHOOK,
-                event_name="case.ingested",
-                notes=f"Fleet simulator generated failure event {payment_id} for rail {template['rail'].value}",
-                cost_incurred_paise=0,
-                decision_inputs={
-                    "payment_id": payment_id,
-                    "amount_paise": amount,
-                    "rail": template["rail"].value,
-                    "experiment_arm": arm.value,
-                },
-                timestamp=now,
-            )
-        )
-        case.recompute_nrv()
-        repo.save(case)
 
-        # Enqueue durable job for worker execution
+        # Record observable job record with status DONE
         job = ScheduledJob(
-            case_id=case_id,
+            case_id=case.case_id,
             job_type="INGESTION_DIAGNOSIS",
             due_at=now,
-            status="QUEUED",
+            status="DONE",
             idempotency_key=f"ingest_{payment_id}",
             payload={
                 "event_id": event_id,
                 "payment_id": payment_id,
-                "use_llm": self.use_llm,
+                "use_llm": is_agentic,
                 "experiment_arm": arm.value,
             },
             created_at=now,
@@ -220,8 +208,9 @@ class FleetSimulator:
         self.last_emitted_at = now
         logger.info(
             "simulation.fleet_event_emitted",
-            case_id=case_id,
+            case_id=case.case_id,
             payment_id=payment_id,
             rail=template["rail"].value,
             arm=arm.value,
+            is_agentic=is_agentic,
         )

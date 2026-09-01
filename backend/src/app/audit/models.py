@@ -114,6 +114,8 @@ class RecoveryCase(BaseModel):
     payment_link_url: str | None = None
     payment_link_expires_at: datetime | None = None
     strategy_tag: str | None = None
+    dunning_message_en: str | None = None
+    dunning_message_hi: str | None = None
 
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))

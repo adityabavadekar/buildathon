@@ -31,6 +31,7 @@ interface AgentViewProps {
   status: SystemStatusResponse | null
   loading: boolean
   onRefresh?: () => void
+  onSelectCase?: (c: RecoveryCase) => void
 }
 
 export function AgentView({
@@ -38,8 +39,17 @@ export function AgentView({
   status,
   loading,
   onRefresh,
+  onSelectCase,
 }: AgentViewProps) {
   const [seeding, setSeeding] = useState(false)
+
+  const caseById = new Map<string, RecoveryCase>()
+  for (const c of cases) caseById.set(c.case_id, c)
+
+  const openCase = (caseId: string) => {
+    const c = caseById.get(caseId)
+    if (c && onSelectCase) onSelectCase(c)
+  }
 
   const agentEntries: Array<{
     case_id: string
@@ -60,17 +70,23 @@ export function AgentView({
     fallback_reason: string | null
     experiment_tag: string | null
     config_snapshot: Record<string, unknown> | null
+    request_prompt: string | null
+    response_content: string | null
+    error_detail: string | null
   }> = []
 
   cases.forEach((c) => {
     c.audit_trail.forEach((entry) => {
-      if (
-        entry.actor === 'agent_llm' ||
-        entry.actor === 'AGENT_LLM' ||
-        entry.event_name === 'agent.plan_formulated' ||
+      const actorLower = entry.actor.toLowerCase()
+      const isAgentTrace =
+        actorLower.includes('agent') ||
+        actorLower.includes('llm') ||
         entry.event_name.startsWith('agent.') ||
-        entry.model_metadata
-      ) {
+        entry.event_name === 'agent.plan_formulated' ||
+        entry.event_name === 'agent.message_drafted' ||
+        Boolean(entry.model_metadata)
+
+      if (isAgentTrace) {
         const meta = entry.model_metadata
         const modelName = meta?.model || 'deterministic-rules-v1'
         const providerName = meta?.provider || 'engine'
@@ -110,6 +126,16 @@ export function AgentView({
           experiment_tag:
             meta?.experiment_tag || c.failure_event.experiment_tag || null,
           config_snapshot: meta?.config_snapshot || null,
+          request_prompt:
+            typeof meta?.request_prompt === 'string'
+              ? meta.request_prompt
+              : null,
+          response_content:
+            typeof meta?.response_content === 'string'
+              ? meta.response_content
+              : null,
+          error_detail:
+            typeof meta?.error_detail === 'string' ? meta.error_detail : null,
         })
       }
     })
@@ -244,6 +270,17 @@ export function AgentView({
               return (
                 <div
                   key={`${entry.case_id}-${idx.toString()}`}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => {
+                    openCase(entry.case_id)
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      openCase(entry.case_id)
+                    }
+                  }}
                   className="space-y-3 rounded-panel border border-border bg-surface-sunken/40 p-4 font-mono text-xs transition-colors hover:border-accent/40"
                 >
                   {/* Top Metadata Header */}
@@ -256,9 +293,17 @@ export function AgentView({
                         {entry.case_id.slice(0, 13)}...
                       </Badge>
                       <RailBadge rail={entry.payment_rail} />
-                      <span className="text-[11px] text-ink-subtle">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          openCase(entry.case_id)
+                        }}
+                        className="text-[11px] text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent"
+                        title="Open case detail"
+                      >
                         {entry.payment_id}
-                      </span>
+                      </button>
                       {entry.experiment_tag && (
                         <Badge
                           variant="outline"
@@ -344,12 +389,33 @@ export function AgentView({
                       <p className="text-xs leading-relaxed text-ink">
                         {entry.fallback_reason}
                       </p>
+                      {entry.error_detail ? (
+                        <div className="space-y-1 border-t border-failed/20 pt-1">
+                          <p className="text-[10px] font-bold text-failed uppercase">
+                            Exact error trace
+                          </p>
+                          <pre className="max-h-40 overflow-auto whitespace-pre-wrap rounded bg-surface-sunken p-2 text-[10px] leading-relaxed text-failed">
+                            {entry.error_detail}
+                          </pre>
+                        </div>
+                      ) : null}
                       <div className="flex items-center justify-between border-t border-failed/20 pt-1 text-[10px] text-ink-muted">
                         <span>
                           Fail-Safe: Gracefully fallen back to deterministic
                           rules engine.
                         </span>
                       </div>
+                    </div>
+                  )}
+
+                  {entry.response_content && (
+                    <div className="rounded-control border border-border bg-surface p-3 font-mono text-xs">
+                      <span className="mb-1 block text-[10px] font-semibold tracking-wider text-accent uppercase">
+                        LLM Response
+                      </span>
+                      <pre className="max-h-40 overflow-auto whitespace-pre-wrap rounded bg-surface-sunken p-2 text-[10px] leading-relaxed text-ink">
+                        {entry.response_content}
+                      </pre>
                     </div>
                   )}
                 </div>

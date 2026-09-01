@@ -7,16 +7,15 @@ for revenue recovery cases backed by an ACID relational database.
 from __future__ import annotations
 
 import functools
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from app.audit.sqlite_store import RelationalCaseStore
-from app.core.config import get_settings
+from app.audit.postgres_store import RelationalCaseStore
 from app.core.logging import get_logger
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
     from datetime import datetime
+    from pathlib import Path
 
     from app.audit.models import ModelTelemetryEntry, RecoveryCase, ScheduledJob
     from app.core.enums import ExperimentArm, RecoveryState
@@ -28,8 +27,7 @@ class CaseRepository:
     """Thread-safe, transaction-backed repository for recovery cases, audit trails, and scheduled jobs."""
 
     def __init__(self, storage_path: Path | str | None = None) -> None:
-        db_path = storage_path or "data/recovery_engine.db"
-        self._store = RelationalCaseStore(db_path=db_path)
+        self._store = RelationalCaseStore(db_path=storage_path)
 
     def save(self, case: RecoveryCase, idempotency_key: str | None = None) -> None:
         """Persist or update a recovery case and flush to durable storage."""
@@ -268,4 +266,4 @@ class CaseRepository:
 @functools.lru_cache(maxsize=1)
 def get_case_repository() -> CaseRepository:
     """Return singleton instance of CaseRepository with ACID database storage."""
-    return CaseRepository(storage_path=Path(get_settings().database_path))
+    return CaseRepository()

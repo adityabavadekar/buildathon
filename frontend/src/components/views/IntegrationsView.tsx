@@ -75,13 +75,77 @@ export function IntegrationsView({
             <SkeletonCard />
           ) : (
             <div className="grid grid-cols-1 gap-4 font-mono text-xs md:grid-cols-2">
+              <div className="space-y-2 rounded-control border border-accent/30 bg-accent/5 p-3 md:col-span-2">
+                <span className="block text-[11px] text-ink-muted">
+                  Linked Merchant Account
+                </span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-bold text-ink uppercase">
+                    {settings?.razorpay_account_name ||
+                      settings?.razorpay_account_id ||
+                      'Name unavailable in test mode'}
+                  </span>
+                  {settings?.razorpay_account_type && (
+                    <Badge
+                      variant="outline"
+                      className="text-[10px] uppercase"
+                    >
+                      {settings.razorpay_account_type}
+                    </Badge>
+                  )}
+                  {settings?.razorpay_account_status && (
+                    <Badge
+                      variant={
+                        settings.razorpay_account_status === 'active'
+                          ? 'recovered'
+                          : 'pending'
+                      }
+                      className="text-[10px] uppercase"
+                    >
+                      {settings.razorpay_account_status}
+                    </Badge>
+                  )}
+                </div>
+                {settings?.razorpay_account_id && (
+                  <div className="text-[11px] text-ink-muted">
+                    Account ID:{' '}
+                    <span className="text-ink select-all">
+                      {settings.razorpay_account_id}
+                    </span>
+                  </div>
+                )}
+              </div>
+
               <div className="space-y-1 rounded-control border border-border bg-surface-sunken p-3">
                 <span className="block text-[11px] text-ink-muted">
-                  Active Environment
+                  Deployment Environment
                 </span>
                 <span className="font-bold text-ink uppercase">
-                  {settings?.environment || 'LIVE / PRODUCTION'}
+                  {settings?.environment || 'Not configured'}
                 </span>
+              </div>
+
+              <div className="space-y-1 rounded-control border border-border bg-surface-sunken p-3">
+                <span className="block text-[11px] text-ink-muted">
+                  Gateway Mode
+                </span>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-bold text-ink uppercase">
+                    {settings?.razorpay_mode || 'Unset'}
+                  </span>
+                  <Badge
+                    variant={
+                      settings?.razorpay_mode === 'LIVE'
+                        ? 'recovered'
+                        : settings?.razorpay_mode === 'TEST'
+                          ? 'pending'
+                          : 'outline'
+                    }
+                    className="text-[10px]"
+                  >
+                    {settings?.razorpay_key_id ? 'derived from key' : 'no key'}
+                  </Badge>
+                </div>
               </div>
 
               <div className="space-y-1 rounded-control border border-border bg-surface-sunken p-3">
@@ -91,7 +155,7 @@ export function IntegrationsView({
                 <span className="font-semibold text-ink">
                   {settings?.razorpay_key_id
                     ? `${settings.razorpay_key_id.slice(0, 10)}...`
-                    : 'rzp_live_buildathon'}
+                    : 'Not configured'}
                 </span>
               </div>
 

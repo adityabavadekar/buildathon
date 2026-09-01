@@ -1,17 +1,20 @@
-"""Durable persistence repository for FORTX workflow instances and execution histories."""
+"""Durable persistence repository for FORTX workflow instances and execution histories in PostgreSQL."""
 
 from __future__ import annotations
 
 import functools
 import json
-import sqlite3
 import threading
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Any
 
+from sqlalchemy import text
+
+from app.core.db import get_db_connection
+from app.core.enums import RecoveryState
 from app.core.logging import get_logger
 from app.workflow.models import (
+    WorkflowAction,
     WorkflowHistoryEvent,
     WorkflowInstance,
     WorkflowSignal,
@@ -19,421 +22,668 @@ from app.workflow.models import (
     WorkflowStoppingRules,
     WorkflowTemplate,
     WorkflowTemplateDefinition,
+    WorkflowTimer,
+    WorkflowTriggerType,
 )
 
 logger = get_logger(__name__)
 
+BUILTIN_TEMPLATE_COUNT: int = 5
+
 
 class WorkflowRepository:
-    """Thread-safe ACID repository for durable workflow instances and event history."""
+    """Thread-safe ACID repository for durable workflow instances and event history in PostgreSQL."""
 
-    def __init__(self, db_path: Path | str = "data/recovery_engine.db") -> None:
-        self._db_path = Path(db_path)
-        self._db_path.parent.mkdir(parents=True, exist_ok=True)
+    def __init__(self, db_path: Any = None) -> None:
         self._lock = threading.RLock()
-        self._conn = sqlite3.connect(
-            str(self._db_path),
-            check_same_thread=False,
-            timeout=30.0,
-            isolation_level=None,
-        )
-        self._conn.row_factory = sqlite3.Row
-        self._init_db()
+        self._seed_builtin_templates()
 
-    def _init_db(self) -> None:
-        """Create workflow tables and indexes if not already present."""
+    def _seed_builtin_templates(self) -> None:
+        """Ensure the 5 built-in workflow template definitions are seeded in PostgreSQL."""
         with self._lock:
-            cur = self._conn.cursor()
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS workflows (
-                    workflow_id TEXT PRIMARY KEY,
-                    case_id TEXT UNIQUE NOT NULL,
-                    template TEXT NOT NULL,
-                    current_stage TEXT NOT NULL,
-                    recovery_state TEXT NOT NULL,
-                    context_json TEXT NOT NULL,
-                    stopping_rules_json TEXT NOT NULL,
-                    timers_json TEXT NOT NULL,
-                    attempts_count INTEGER NOT NULL DEFAULT 0,
-                    touches_count INTEGER NOT NULL DEFAULT 0,
-                    is_terminal INTEGER NOT NULL DEFAULT 0,
-                    terminal_outcome TEXT,
-                    created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL
-                );
-            """)
-            cur.execute(
-                "CREATE INDEX IF NOT EXISTS idx_workflows_case ON workflows(case_id);"
-            )
-            cur.execute(
-                "CREATE INDEX IF NOT EXISTS idx_workflows_stage ON workflows(current_stage);"
-            )
-            cur.execute(
-                "CREATE INDEX IF NOT EXISTS idx_workflows_template ON workflows(template);"
-            )
-
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS workflow_events (
-                    event_id TEXT PRIMARY KEY,
-                    workflow_id TEXT NOT NULL,
-                    timestamp TEXT NOT NULL,
-                    from_stage TEXT,
-                    to_stage TEXT NOT NULL,
-                    event_name TEXT NOT NULL,
-                    details_json TEXT NOT NULL,
-                    FOREIGN KEY(workflow_id) REFERENCES workflows(workflow_id)
-                );
-            """)
-            cur.execute(
-                "CREATE INDEX IF NOT EXISTS idx_workflow_events_wid ON workflow_events(workflow_id);"
-            )
-
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS workflow_signals (
-                    signal_id TEXT PRIMARY KEY,
-                    workflow_id TEXT NOT NULL,
-                    signal_type TEXT NOT NULL,
-                    payload_json TEXT NOT NULL,
-                    source TEXT NOT NULL,
-                    timestamp TEXT NOT NULL,
-                    FOREIGN KEY(workflow_id) REFERENCES workflows(workflow_id)
-                );
-            """)
-            cur.execute(
-                "CREATE INDEX IF NOT EXISTS idx_workflow_signals_wid ON workflow_signals(workflow_id);"
-            )
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS workflow_template_definitions (
-                    template_id TEXT PRIMARY KEY,
-                    name TEXT NOT NULL,
-                    base_template TEXT NOT NULL,
-                    trigger_type TEXT NOT NULL,
-                    allowed_actions_json TEXT NOT NULL,
-                    stopping_rules_json TEXT NOT NULL,
-                    created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL
-                );
-            """)
-            for column in ("graph_nodes_json", "graph_edges_json"):
-                try:
-                    cur.execute(
-                        f"ALTER TABLE workflow_template_definitions ADD COLUMN {column} TEXT NOT NULL DEFAULT '[]';"
+            try:
+                with get_db_connection() as conn:
+                    # Clean out any old/invalid builtin definitions
+                    conn.execute(
+                        text(
+                            "DELETE FROM workflow_template_definitions WHERE is_builtin = true"
+                        )
                     )
-                except sqlite3.OperationalError:
-                    pass
-            try:
-                cur.execute(
-                    "ALTER TABLE workflow_template_definitions ADD COLUMN description TEXT NOT NULL DEFAULT '';"
-                )
-            except sqlite3.OperationalError:
-                pass
-            try:
-                cur.execute(
-                    "ALTER TABLE workflow_template_definitions ADD COLUMN status TEXT NOT NULL DEFAULT 'draft';"
-                )
-            except sqlite3.OperationalError:
-                pass
-            defaults = (
-                (
-                    "Failed payment recovery",
-                    WorkflowTemplate.FAILED_PAYMENT,
-                    "payment.failed",
-                ),
-                (
-                    "Subscription renewal recovery",
-                    WorkflowTemplate.SUBSCRIPTION_FAILURE,
-                    "subscription.halted",
-                ),
-                (
-                    "Overdue invoice collection",
-                    WorkflowTemplate.OVERDUE_INVOICE,
-                    "invoice.overdue",
-                ),
-                (
-                    "Abandoned payment recovery",
-                    WorkflowTemplate.ABANDONED_PAYMENT,
-                    "checkout.abandoned",
-                ),
-                (
-                    "Payment rail degradation",
-                    WorkflowTemplate.PAYMENT_DEGRADATION,
-                    "rail.degraded",
-                ),
-            )
-            for name, base_template, trigger_type in defaults:
-                template_id = f"builtin_{base_template.value.lower()}"
-                now_iso = datetime.now(UTC).isoformat()
-                cur.execute(
-                    """INSERT OR IGNORE INTO workflow_template_definitions
-                    (template_id, name, base_template, trigger_type, allowed_actions_json,
-                     stopping_rules_json, graph_nodes_json, graph_edges_json, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);""",
-                    (
-                        template_id,
-                        name,
-                        base_template.value,
-                        trigger_type,
-                        json.dumps(
-                            ["diagnose", "retry", "notify", "payment_link", "escalate"]
-                        ),
-                        WorkflowStoppingRules().model_dump_json(),
-                        json.dumps(
+
+                    now = datetime.now(UTC)
+                    builtin_specs = [
+                        (
+                            "tpl_smart_dunning_v1",
+                            "Smart Dunning & Escalation",
+                            "Multi-channel dunning workflow with progressive messaging, smart wait windows, and human escalation.",
+                            "published",
+                            WorkflowTemplate.FAILED_PAYMENT.value,
+                            WorkflowTriggerType.PAYMENT_FAILED.value,
+                            [
+                                WorkflowAction.DIAGNOSE.value,
+                                WorkflowAction.RETRY.value,
+                                WorkflowAction.NOTIFY.value,
+                                WorkflowAction.PAYMENT_LINK.value,
+                                WorkflowAction.ESCALATE.value,
+                            ],
+                            WorkflowStoppingRules(
+                                max_retries=4,
+                                max_touches=5,
+                                max_duration_hours=72,
+                                max_discount_bps=1000,
+                            ).model_dump(mode="json"),
                             [
                                 {
                                     "id": "trigger",
-                                    "label": "Trigger",
+                                    "label": "Payment Failed",
                                     "type": "trigger",
                                 },
                                 {
                                     "id": "diagnose",
-                                    "label": "Diagnose",
-                                    "type": "decision",
+                                    "label": "Diagnose Rail & Customer",
+                                    "type": "action",
                                 },
                                 {
                                     "id": "action",
-                                    "label": "Bounded action",
+                                    "label": "Execute Smart Outreach",
                                     "type": "action",
                                 },
                                 {
                                     "id": "wait",
-                                    "label": "Wait for signal",
+                                    "label": "Wait for Settlement Window",
                                     "type": "wait",
                                 },
-                            ]
-                        ),
-                        json.dumps(
+                                {
+                                    "id": "terminal",
+                                    "label": "Complete",
+                                    "type": "terminal",
+                                },
+                            ],
                             [
-                                {"source": "trigger", "target": "diagnose"},
-                                {"source": "diagnose", "target": "action"},
-                                {"source": "action", "target": "wait"},
-                            ]
+                                {"id": "e1", "source": "trigger", "target": "diagnose"},
+                                {"id": "e2", "source": "diagnose", "target": "action"},
+                                {"id": "e3", "source": "action", "target": "wait"},
+                                {"id": "e4", "source": "wait", "target": "terminal"},
+                            ],
                         ),
-                        now_iso,
-                        now_iso,
-                    ),
-                )
+                        (
+                            "tpl_payment_degradation_v1",
+                            "Payment Rail Degradation Circuit Breaker",
+                            "Durable hold and auto-reroute workflow when issuer bank or rail degradation is detected.",
+                            "published",
+                            WorkflowTemplate.PAYMENT_DEGRADATION.value,
+                            WorkflowTriggerType.RAIL_DEGRADED.value,
+                            [
+                                WorkflowAction.DIAGNOSE.value,
+                                WorkflowAction.RETRY.value,
+                                WorkflowAction.PAYMENT_LINK.value,
+                                WorkflowAction.ESCALATE.value,
+                            ],
+                            WorkflowStoppingRules(
+                                max_retries=3,
+                                max_touches=4,
+                                max_duration_hours=24,
+                                max_discount_bps=500,
+                            ).model_dump(mode="json"),
+                            [
+                                {
+                                    "id": "trigger",
+                                    "label": "Rail Degraded",
+                                    "type": "trigger",
+                                },
+                                {
+                                    "id": "action",
+                                    "label": "Hold & Fallback Switch",
+                                    "type": "action",
+                                },
+                                {
+                                    "id": "wait",
+                                    "label": "Wait for Recovery",
+                                    "type": "wait",
+                                },
+                                {
+                                    "id": "terminal",
+                                    "label": "Complete",
+                                    "type": "terminal",
+                                },
+                            ],
+                            [
+                                {"id": "e1", "source": "trigger", "target": "action"},
+                                {"id": "e2", "source": "action", "target": "wait"},
+                                {"id": "e3", "source": "wait", "target": "terminal"},
+                            ],
+                        ),
+                        (
+                            "tpl_overdue_invoice_v1",
+                            "B2B Overdue Invoice Smart Collect",
+                            "Automated receivables collection creating virtual accounts with dynamic dunning cadence.",
+                            "published",
+                            WorkflowTemplate.OVERDUE_INVOICE.value,
+                            WorkflowTriggerType.INVOICE_OVERDUE.value,
+                            [
+                                WorkflowAction.DIAGNOSE.value,
+                                WorkflowAction.NOTIFY.value,
+                                WorkflowAction.PAYMENT_LINK.value,
+                                WorkflowAction.ESCALATE.value,
+                            ],
+                            WorkflowStoppingRules(
+                                max_retries=5,
+                                max_touches=6,
+                                max_duration_hours=168,
+                                max_discount_bps=1500,
+                            ).model_dump(mode="json"),
+                            [
+                                {
+                                    "id": "trigger",
+                                    "label": "Invoice Overdue",
+                                    "type": "trigger",
+                                },
+                                {
+                                    "id": "action",
+                                    "label": "Smart Collect Account",
+                                    "type": "action",
+                                },
+                                {
+                                    "id": "wait",
+                                    "label": "Reconciliation Wait",
+                                    "type": "wait",
+                                },
+                                {
+                                    "id": "terminal",
+                                    "label": "Complete",
+                                    "type": "terminal",
+                                },
+                            ],
+                            [
+                                {"id": "e1", "source": "trigger", "target": "action"},
+                                {"id": "e2", "source": "action", "target": "wait"},
+                                {"id": "e3", "source": "wait", "target": "terminal"},
+                            ],
+                        ),
+                        (
+                            "tpl_mandate_expiry_v1",
+                            "Recurring Mandate Pre-Debit & Renewal",
+                            "Proactive auto-pay mandate health check, pre-debit reminder, and seamless update link.",
+                            "published",
+                            WorkflowTemplate.SUBSCRIPTION_FAILURE.value,
+                            WorkflowTriggerType.SUBSCRIPTION_HALTED.value,
+                            [
+                                WorkflowAction.DIAGNOSE.value,
+                                WorkflowAction.RETRY.value,
+                                WorkflowAction.NOTIFY.value,
+                                WorkflowAction.PAYMENT_LINK.value,
+                            ],
+                            WorkflowStoppingRules(
+                                max_retries=3,
+                                max_touches=4,
+                                max_duration_hours=48,
+                                max_discount_bps=0,
+                            ).model_dump(mode="json"),
+                            [
+                                {
+                                    "id": "trigger",
+                                    "label": "Pre-Debit Window",
+                                    "type": "trigger",
+                                },
+                                {
+                                    "id": "action",
+                                    "label": "Send Pre-Debit Notification",
+                                    "type": "action",
+                                },
+                                {
+                                    "id": "wait",
+                                    "label": "Debit Execution Wait",
+                                    "type": "wait",
+                                },
+                                {
+                                    "id": "terminal",
+                                    "label": "Complete",
+                                    "type": "terminal",
+                                },
+                            ],
+                            [
+                                {"id": "e1", "source": "trigger", "target": "action"},
+                                {"id": "e2", "source": "action", "target": "wait"},
+                                {"id": "e3", "source": "wait", "target": "terminal"},
+                            ],
+                        ),
+                        (
+                            "tpl_checkout_abandonment_v1",
+                            "Checkout Abandonment Intent Re-engagement",
+                            "High-intent dropoff detection with timed nudge, dynamic concession, and single-click checkout.",
+                            "published",
+                            WorkflowTemplate.ABANDONED_PAYMENT.value,
+                            WorkflowTriggerType.CHECKOUT_ABANDONED.value,
+                            [
+                                WorkflowAction.DIAGNOSE.value,
+                                WorkflowAction.NOTIFY.value,
+                                WorkflowAction.PAYMENT_LINK.value,
+                            ],
+                            WorkflowStoppingRules(
+                                max_retries=2,
+                                max_touches=3,
+                                max_duration_hours=12,
+                                max_discount_bps=500,
+                            ).model_dump(mode="json"),
+                            [
+                                {
+                                    "id": "trigger",
+                                    "label": "Dropoff Detected",
+                                    "type": "trigger",
+                                },
+                                {
+                                    "id": "action",
+                                    "label": "Issue Dynamic Nudge & Link",
+                                    "type": "action",
+                                },
+                                {
+                                    "id": "wait",
+                                    "label": "Wait for Conversion",
+                                    "type": "wait",
+                                },
+                                {
+                                    "id": "terminal",
+                                    "label": "Complete",
+                                    "type": "terminal",
+                                },
+                            ],
+                            [
+                                {"id": "e1", "source": "trigger", "target": "action"},
+                                {"id": "e2", "source": "action", "target": "wait"},
+                                {"id": "e3", "source": "wait", "target": "terminal"},
+                            ],
+                        ),
+                    ]
 
-    def save_workflow(self, instance: WorkflowInstance) -> None:
-        """Upsert a workflow instance atomically."""
-        with self._lock:
-            cur = self._conn.cursor()
-            now_iso = datetime.now(UTC).isoformat()
-            cur.execute(
-                """
-                INSERT INTO workflows (
-                    workflow_id, case_id, template, current_stage, recovery_state,
-                    context_json, stopping_rules_json, timers_json, attempts_count,
-                    touches_count, is_terminal, terminal_outcome, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(workflow_id) DO UPDATE SET
-                    current_stage = excluded.current_stage,
-                    recovery_state = excluded.recovery_state,
-                    context_json = excluded.context_json,
-                    stopping_rules_json = excluded.stopping_rules_json,
-                    timers_json = excluded.timers_json,
-                    attempts_count = excluded.attempts_count,
-                    touches_count = excluded.touches_count,
-                    is_terminal = excluded.is_terminal,
-                    terminal_outcome = excluded.terminal_outcome,
-                    updated_at = excluded.updated_at;
-                """,
-                (
-                    instance.workflow_id,
-                    instance.case_id,
-                    instance.template.value,
-                    instance.current_stage.value,
-                    instance.recovery_state.value,
-                    json.dumps(instance.context),
-                    instance.stopping_rules.model_dump_json(),
-                    json.dumps([t.model_dump(mode="json") for t in instance.timers]),
-                    instance.attempts_count,
-                    instance.touches_count,
-                    1 if instance.is_terminal else 0,
-                    instance.terminal_outcome,
-                    instance.created_at.isoformat(),
-                    now_iso,
+                    for spec in builtin_specs:
+                        conn.execute(
+                            text(
+                                """
+                                INSERT INTO workflow_template_definitions (
+                                    template_id, name, description, status, base_template,
+                                    trigger_type, allowed_actions_json, stopping_rules_json,
+                                    graph_nodes_json, graph_edges_json, is_builtin, created_at, updated_at
+                                ) VALUES (
+                                    :tid, :name, :desc, :status, :btpl,
+                                    :trig, CAST(:acts AS jsonb), CAST(:stop AS jsonb),
+                                    CAST(:nodes AS jsonb), CAST(:edges AS jsonb), true, :cat, :uat
+                                ) ON CONFLICT (template_id) DO UPDATE SET
+                                    name = EXCLUDED.name,
+                                    description = EXCLUDED.description,
+                                    status = EXCLUDED.status,
+                                    base_template = EXCLUDED.base_template,
+                                    trigger_type = EXCLUDED.trigger_type,
+                                    allowed_actions_json = EXCLUDED.allowed_actions_json,
+                                    stopping_rules_json = EXCLUDED.stopping_rules_json,
+                                    graph_nodes_json = EXCLUDED.graph_nodes_json,
+                                    graph_edges_json = EXCLUDED.graph_edges_json,
+                                    updated_at = EXCLUDED.updated_at;
+                                """
+                            ),
+                            {
+                                "tid": spec[0],
+                                "name": spec[1],
+                                "desc": spec[2],
+                                "status": spec[3],
+                                "btpl": spec[4],
+                                "trig": spec[5],
+                                "acts": json.dumps(spec[6]),
+                                "stop": json.dumps(spec[7]),
+                                "nodes": json.dumps(spec[8]),
+                                "edges": json.dumps(spec[9]),
+                                "cat": now,
+                                "uat": now,
+                            },
+                        )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("workflow.seed_failed", error=str(exc))
+
+    def save_workflow(self, workflow: WorkflowInstance) -> None:
+        """Persist or update a workflow instance in PostgreSQL."""
+        with self._lock, get_db_connection() as conn:
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO workflows (
+                        workflow_id, case_id, template, current_stage, recovery_state,
+                        context_json, stopping_rules_json, timers_json, attempts_count,
+                        touches_count, is_terminal, terminal_outcome, created_at, updated_at
+                    ) VALUES (
+                        :wid, :cid, :tpl, :stage, :state,
+                        CAST(:ctx AS jsonb), CAST(:rules AS jsonb), CAST(:timers AS jsonb),
+                        :attempts, :touches, :term, :out, :cat, :uat
+                    ) ON CONFLICT (workflow_id) DO UPDATE SET
+                        case_id = EXCLUDED.case_id,
+                        template = EXCLUDED.template,
+                        current_stage = EXCLUDED.current_stage,
+                        recovery_state = EXCLUDED.recovery_state,
+                        context_json = EXCLUDED.context_json,
+                        stopping_rules_json = EXCLUDED.stopping_rules_json,
+                        timers_json = EXCLUDED.timers_json,
+                        attempts_count = EXCLUDED.attempts_count,
+                        touches_count = EXCLUDED.touches_count,
+                        is_terminal = EXCLUDED.is_terminal,
+                        terminal_outcome = EXCLUDED.terminal_outcome,
+                        updated_at = EXCLUDED.updated_at;
+                    """
                 ),
+                {
+                    "wid": workflow.workflow_id,
+                    "cid": workflow.case_id,
+                    "tpl": workflow.template.value
+                    if hasattr(workflow.template, "value")
+                    else str(workflow.template),
+                    "stage": workflow.current_stage.value,
+                    "state": workflow.recovery_state.value,
+                    "ctx": json.dumps(workflow.context),
+                    "rules": json.dumps(
+                        workflow.stopping_rules.model_dump(mode="json")
+                    ),
+                    "timers": json.dumps(
+                        [t.model_dump(mode="json") for t in workflow.timers]
+                    ),
+                    "attempts": workflow.attempts_count,
+                    "touches": workflow.touches_count,
+                    "term": workflow.is_terminal,
+                    "out": workflow.terminal_outcome,
+                    "cat": workflow.created_at,
+                    "uat": workflow.updated_at,
+                },
             )
 
     def append_history(self, workflow_id: str, event: WorkflowHistoryEvent) -> None:
-        """Append an execution history event to a workflow."""
-        with self._lock:
-            cur = self._conn.cursor()
-            cur.execute(
-                """
-                INSERT INTO workflow_events (
-                    event_id, workflow_id, timestamp, from_stage, to_stage, event_name, details_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?);
-                """,
-                (
-                    event.event_id,
-                    workflow_id,
-                    event.timestamp.isoformat(),
-                    event.from_stage.value if event.from_stage else None,
-                    event.to_stage.value,
-                    event.event_name,
-                    json.dumps(event.details),
+        """Append an execution history event to a workflow in PostgreSQL."""
+        with self._lock, get_db_connection() as conn:
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO workflow_events (
+                        event_id, workflow_id, timestamp, from_stage, to_stage, event_name, details_json
+                    ) VALUES (
+                        :eid, :wid, :ts, :f_stage, :t_stage, :ename, CAST(:details AS jsonb)
+                    ) ON CONFLICT (event_id) DO NOTHING;
+                    """
                 ),
+                {
+                    "eid": event.event_id,
+                    "wid": workflow_id,
+                    "ts": event.timestamp,
+                    "f_stage": event.from_stage.value if event.from_stage else None,
+                    "t_stage": event.to_stage.value,
+                    "ename": event.event_name,
+                    "details": json.dumps(event.details),
+                },
             )
 
     def record_signal(self, workflow_id: str, signal: WorkflowSignal) -> None:
-        """Record an incoming signal delivered to a workflow."""
-        with self._lock:
-            cur = self._conn.cursor()
-            cur.execute(
-                """
-                INSERT INTO workflow_signals (
-                    signal_id, workflow_id, signal_type, payload_json, source, timestamp
-                ) VALUES (?, ?, ?, ?, ?, ?);
-                """,
-                (
-                    signal.signal_id,
-                    workflow_id,
-                    signal.signal_type.value,
-                    json.dumps(signal.payload),
-                    signal.source,
-                    signal.timestamp.isoformat(),
+        """Record an incoming signal delivered to a workflow in PostgreSQL."""
+        with self._lock, get_db_connection() as conn:
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO workflow_signals (
+                        signal_id, workflow_id, signal_type, payload_json, source, timestamp
+                    ) VALUES (
+                        :sid, :wid, :stype, CAST(:payload AS jsonb), :src, :ts
+                    ) ON CONFLICT (signal_id) DO NOTHING;
+                    """
                 ),
+                {
+                    "sid": signal.signal_id,
+                    "wid": workflow_id,
+                    "stype": signal.signal_type.value
+                    if hasattr(signal.signal_type, "value")
+                    else str(signal.signal_type),
+                    "payload": json.dumps(signal.payload),
+                    "src": signal.source,
+                    "ts": signal.timestamp,
+                },
             )
 
     def get_workflow(self, workflow_id: str) -> WorkflowInstance | None:
-        """Fetch workflow instance with full history and signals."""
-        with self._lock:
-            cur = self._conn.cursor()
-            cur.execute(
-                "SELECT * FROM workflows WHERE workflow_id = ?;", (workflow_id,)
+        """Fetch workflow instance with full history and signals from PostgreSQL."""
+        with self._lock, get_db_connection() as conn:
+            row = (
+                conn.execute(
+                    text("SELECT * FROM workflows WHERE workflow_id = :wid"),
+                    {"wid": workflow_id},
+                )
+                .mappings()
+                .fetchone()
             )
-            row = cur.fetchone()
             if not row:
                 return None
-            return self._row_to_instance(row)
+            return self._row_to_instance(conn, row)
 
     def get_workflow_by_case(self, case_id: str) -> WorkflowInstance | None:
-        """Fetch workflow instance matching a specific case_id."""
-        with self._lock:
-            cur = self._conn.cursor()
-            cur.execute("SELECT * FROM workflows WHERE case_id = ?;", (case_id,))
-            row = cur.fetchone()
+        """Fetch workflow instance matching a specific case_id from PostgreSQL."""
+        with self._lock, get_db_connection() as conn:
+            row = (
+                conn.execute(
+                    text("SELECT * FROM workflows WHERE case_id = :cid"),
+                    {"cid": case_id},
+                )
+                .mappings()
+                .fetchone()
+            )
             if not row:
                 return None
-            return self._row_to_instance(row)
+            return self._row_to_instance(conn, row)
+
+    def list_active_workflows(self, limit: int = 50) -> list[WorkflowInstance]:
+        """Fetch active (non-terminal) workflows from PostgreSQL."""
+        with self._lock, get_db_connection() as conn:
+            rows = (
+                conn.execute(
+                    text(
+                        "SELECT * FROM workflows WHERE is_terminal = false ORDER BY updated_at DESC LIMIT :limit"
+                    ),
+                    {"limit": limit},
+                )
+                .mappings()
+                .fetchall()
+            )
+            return [self._row_to_instance(conn, row) for row in rows]
 
     def list_workflows(
         self,
+        *,
+        stage: WorkflowStage | str | None = None,
+        template: WorkflowTemplate | str | None = None,
+        is_terminal: bool | None = None,
         limit: int = 50,
-        stage: str | None = None,
-        template: str | None = None,
+        offset: int = 0,
     ) -> list[WorkflowInstance]:
-        """List workflow instances with optional stage or template filter."""
-        with self._lock:
-            cur = self._conn.cursor()
-            query = "SELECT * FROM workflows WHERE 1=1"
-            params: list[Any] = []
-            if stage:
-                query += " AND current_stage = ?"
-                params.append(stage)
-            if template:
-                query += " AND template = ?"
-                params.append(template)
-            query += " ORDER BY created_at DESC LIMIT ?;"
-            params.append(limit)
+        """List workflows with optional filters and pagination from PostgreSQL."""
+        clauses = ["1=1"]
+        params: dict[str, Any] = {"limit": limit, "offset": offset}
 
-            cur.execute(query, tuple(params))
-            return [self._row_to_instance(r) for r in cur.fetchall()]
+        if stage:
+            clauses.append("current_stage = :stage")
+            params["stage"] = (
+                stage.value if isinstance(stage, WorkflowStage) else str(stage)
+            )
+        if template:
+            clauses.append("template = :template")
+            params["template"] = (
+                template.value
+                if isinstance(template, WorkflowTemplate)
+                else str(template)
+            )
+        if is_terminal is not None:
+            clauses.append("is_terminal = :is_term")
+            params["is_term"] = is_terminal
+
+        query = f"""
+            SELECT * FROM workflows
+            WHERE {" AND ".join(clauses)}
+            ORDER BY updated_at DESC
+            LIMIT :limit OFFSET :offset;
+        """  # noqa: S608
+
+        with self._lock, get_db_connection() as conn:
+            rows = conn.execute(text(query), params).mappings().fetchall()
+            return [self._row_to_instance(conn, row) for row in rows]
 
     def get_workflow_analytics(self) -> dict[str, Any]:
-        """Return aggregate counts and status breakdowns for workflow observability."""
-        with self._lock:
-            cur = self._conn.cursor()
-            cur.execute("""
-                SELECT current_stage, COUNT(*) as count
-                FROM workflows
-                GROUP BY current_stage;
-            """)
-            stage_counts = {r["current_stage"]: r["count"] for r in cur.fetchall()}
+        """Return aggregate counts and status breakdowns for workflow observability from PostgreSQL."""
+        with self._lock, get_db_connection() as conn:
+            stage_rows = conn.execute(
+                text(
+                    "SELECT current_stage, COUNT(*) as count FROM workflows GROUP BY current_stage"
+                )
+            ).fetchall()
+            stage_breakdown = {r[0]: int(r[1]) for r in stage_rows}
 
-            cur.execute("""
-                SELECT template, COUNT(*) as count
-                FROM workflows
-                GROUP BY template;
-            """)
-            template_counts = {r["template"]: r["count"] for r in cur.fetchall()}
+            tpl_rows = conn.execute(
+                text(
+                    "SELECT template, COUNT(*) as count FROM workflows GROUP BY template"
+                )
+            ).fetchall()
+            template_breakdown = {r[0]: int(r[1]) for r in tpl_rows}
 
-            cur.execute("SELECT COUNT(*) as total FROM workflows;")
-            total = cur.fetchone()["total"]
+            tot = conn.execute(text("SELECT COUNT(*) FROM workflows")).scalar() or 0
+            active = (
+                conn.execute(
+                    text("SELECT COUNT(*) FROM workflows WHERE is_terminal = false")
+                ).scalar()
+                or 0
+            )
+            recovered = (
+                conn.execute(
+                    text(
+                        "SELECT COUNT(*) FROM workflows WHERE terminal_outcome = 'RECOVERED'"
+                    )
+                ).scalar()
+                or 0
+            )
 
             return {
-                "total_workflows": total,
-                "stage_counts": stage_counts,
-                "template_counts": template_counts,
+                "total_workflows": int(tot),
+                "active_workflows": int(active),
+                "recovered_workflows": int(recovered),
+                "recovery_rate": round(int(recovered) / int(tot), 4)
+                if int(tot) > 0
+                else 0.0,
+                "stage_breakdown": stage_breakdown,
+                "stage_counts": stage_breakdown,
+                "template_breakdown": template_breakdown,
+                "template_counts": template_breakdown,
             }
 
     def list_template_definitions(self) -> list[WorkflowTemplateDefinition]:
-        with self._lock:
-            rows = self._conn.execute(
-                "SELECT * FROM workflow_template_definitions ORDER BY created_at DESC;"
-            ).fetchall()
+        """List all registered workflow templates definitions from PostgreSQL."""
+        with self._lock, get_db_connection() as conn:
+            rows = (
+                conn.execute(
+                    text(
+                        "SELECT * FROM workflow_template_definitions ORDER BY created_at DESC"
+                    )
+                )
+                .mappings()
+                .fetchall()
+            )
             return [self._row_to_template_definition(row) for row in rows]
 
     def get_template_definition(
         self, template_id: str
     ) -> WorkflowTemplateDefinition | None:
-        with self._lock:
-            row = self._conn.execute(
-                "SELECT * FROM workflow_template_definitions WHERE template_id = ?;",
-                (template_id,),
-            ).fetchone()
-            return self._row_to_template_definition(row) if row else None
+        """Retrieve single workflow template definition by unique template_id."""
+        with self._lock, get_db_connection() as conn:
+            row = (
+                conn.execute(
+                    text(
+                        "SELECT * FROM workflow_template_definitions WHERE template_id = :tid"
+                    ),
+                    {"tid": template_id},
+                )
+                .mappings()
+                .fetchone()
+            )
+            if not row:
+                return None
+            return self._row_to_template_definition(row)
 
     def save_template_definition(
-        self, definition: WorkflowTemplateDefinition
+        self, template_def: WorkflowTemplateDefinition
     ) -> WorkflowTemplateDefinition:
-        with self._lock:
-            now = datetime.now(UTC)
-            definition.updated_at = now
-            self._conn.execute(
-                """INSERT INTO workflow_template_definitions
-                (template_id, name, description, status, base_template, trigger_type, allowed_actions_json,
-                 stopping_rules_json, graph_nodes_json, graph_edges_json, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(template_id) DO UPDATE SET name=excluded.name,
-                description=excluded.description,
-                status=excluded.status,
-                base_template=excluded.base_template, trigger_type=excluded.trigger_type,
-                allowed_actions_json=excluded.allowed_actions_json,
-                stopping_rules_json=excluded.stopping_rules_json,
-                graph_nodes_json=excluded.graph_nodes_json,
-                graph_edges_json=excluded.graph_edges_json, updated_at=excluded.updated_at;""",
-                (
-                    definition.template_id,
-                    definition.name,
-                    definition.description,
-                    definition.status.value,
-                    definition.base_template.value,
-                    definition.trigger_type,
-                    json.dumps(definition.allowed_actions),
-                    definition.stopping_rules.model_dump_json(),
-                    json.dumps(definition.graph_nodes),
-                    json.dumps(definition.graph_edges),
-                    definition.created_at.isoformat(),
-                    now.isoformat(),
+        """Create or update merchant-authored workflow template definition in PostgreSQL."""
+        with self._lock, get_db_connection() as conn:
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO workflow_template_definitions (
+                        template_id, name, description, status, base_template,
+                        trigger_type, allowed_actions_json, stopping_rules_json,
+                        graph_nodes_json, graph_edges_json, is_builtin, created_at, updated_at
+                    ) VALUES (
+                        :tid, :name, :desc, :status, :btpl,
+                        :trig, CAST(:acts AS jsonb), CAST(:stop AS jsonb),
+                        CAST(:nodes AS jsonb), CAST(:edges AS jsonb), false, :cat, :uat
+                    ) ON CONFLICT (template_id) DO UPDATE SET
+                        name = EXCLUDED.name,
+                        description = EXCLUDED.description,
+                        status = EXCLUDED.status,
+                        base_template = EXCLUDED.base_template,
+                        trigger_type = EXCLUDED.trigger_type,
+                        allowed_actions_json = EXCLUDED.allowed_actions_json,
+                        stopping_rules_json = EXCLUDED.stopping_rules_json,
+                        graph_nodes_json = EXCLUDED.graph_nodes_json,
+                        graph_edges_json = EXCLUDED.graph_edges_json,
+                        updated_at = EXCLUDED.updated_at;
+                    """
                 ),
+                {
+                    "tid": template_def.template_id,
+                    "name": template_def.name,
+                    "desc": template_def.description,
+                    "status": template_def.status.value
+                    if hasattr(template_def.status, "value")
+                    else str(template_def.status),
+                    "btpl": template_def.base_template.value
+                    if hasattr(template_def.base_template, "value")
+                    else str(template_def.base_template),
+                    "trig": template_def.trigger_type.value
+                    if hasattr(template_def.trigger_type, "value")
+                    else str(template_def.trigger_type),
+                    "acts": json.dumps(
+                        [
+                            a.value if hasattr(a, "value") else str(a)
+                            for a in template_def.allowed_actions
+                        ]
+                    ),
+                    "stop": json.dumps(
+                        template_def.stopping_rules.model_dump(mode="json")
+                    ),
+                    "nodes": json.dumps(template_def.graph_nodes),
+                    "edges": json.dumps(template_def.graph_edges),
+                    "cat": template_def.created_at,
+                    "uat": datetime.now(UTC),
+                },
             )
-            return definition
+            return template_def
 
     def delete_template_definition(self, template_id: str) -> bool:
-        with self._lock:
-            cur = self._conn.execute(
-                "DELETE FROM workflow_template_definitions WHERE template_id = ?;",
-                (template_id,),
+        """Delete custom template definition if not built-in."""
+        with self._lock, get_db_connection() as conn:
+            res = conn.execute(
+                text(
+                    "DELETE FROM workflow_template_definitions WHERE template_id = :tid AND is_builtin = false"
+                ),
+                {"tid": template_id},
             )
-            return cur.rowcount > 0
+            return res.rowcount > 0
 
     @staticmethod
-    def _row_to_template_definition(row: sqlite3.Row) -> WorkflowTemplateDefinition:
-        graph_nodes = json.loads(row["graph_nodes_json"])
-        graph_edges = json.loads(row["graph_edges_json"])
-        # Older built-ins predate terminal nodes; normalize them on read.
+    def _row_to_template_definition(row: Any) -> WorkflowTemplateDefinition:
+        raw_nodes = row["graph_nodes_json"]
+        graph_nodes = (
+            raw_nodes if isinstance(raw_nodes, list) else json.loads(raw_nodes)
+        )
+        raw_edges = row["graph_edges_json"]
+        graph_edges = (
+            raw_edges if isinstance(raw_edges, list) else json.loads(raw_edges)
+        )
         if graph_nodes and not any(
             node.get("type") == "terminal" for node in graph_nodes
         ):
@@ -444,6 +694,25 @@ class WorkflowRepository:
             graph_edges.append(
                 {"id": "terminal-edge", "source": last_id, "target": "terminal"}
             )
+
+        raw_actions = row["allowed_actions_json"]
+        allowed_actions = (
+            raw_actions if isinstance(raw_actions, list) else json.loads(raw_actions)
+        )
+        raw_stopping = row["stopping_rules_json"]
+        stopping_rules = (
+            raw_stopping if isinstance(raw_stopping, dict) else json.loads(raw_stopping)
+        )
+
+        c_at = row["created_at"]
+        created_at = (
+            c_at if isinstance(c_at, datetime) else datetime.fromisoformat(str(c_at))
+        )
+        u_at = row["updated_at"]
+        updated_at = (
+            u_at if isinstance(u_at, datetime) else datetime.fromisoformat(str(u_at))
+        )
+
         return WorkflowTemplateDefinition(
             template_id=row["template_id"],
             name=row["name"],
@@ -452,71 +721,136 @@ class WorkflowRepository:
             status=row["status"],
             base_template=WorkflowTemplate(row["base_template"]),
             trigger_type=row["trigger_type"],
-            allowed_actions=json.loads(row["allowed_actions_json"]),
-            stopping_rules=json.loads(row["stopping_rules_json"]),
+            allowed_actions=[WorkflowAction(a) for a in allowed_actions],
+            stopping_rules=WorkflowStoppingRules.model_validate(stopping_rules)
+            if isinstance(stopping_rules, dict)
+            else stopping_rules,
             graph_nodes=graph_nodes,
             graph_edges=graph_edges,
-            created_at=datetime.fromisoformat(row["created_at"]),
-            updated_at=datetime.fromisoformat(row["updated_at"]),
+            created_at=created_at,
+            updated_at=updated_at,
         )
 
-    def _row_to_instance(self, row: sqlite3.Row) -> WorkflowInstance:
+    def _row_to_instance(self, conn: Any, row: Any) -> WorkflowInstance:
         """Convert a database row into a fully hydrated WorkflowInstance."""
-        cur = self._conn.cursor()
         wid = row["workflow_id"]
 
-        cur.execute(
-            "SELECT * FROM workflow_events WHERE workflow_id = ? ORDER BY timestamp ASC;",
-            (wid,),
-        )
-        events = [
-            WorkflowHistoryEvent(
-                event_id=e["event_id"],
-                timestamp=datetime.fromisoformat(e["timestamp"]),
-                from_stage=WorkflowStage(e["from_stage"]) if e["from_stage"] else None,
-                to_stage=WorkflowStage(e["to_stage"]),
-                event_name=e["event_name"],
-                details=json.loads(e["details_json"]),
+        event_rows = (
+            conn.execute(
+                text(
+                    "SELECT * FROM workflow_events WHERE workflow_id = :wid ORDER BY timestamp ASC"
+                ),
+                {"wid": wid},
             )
-            for e in cur.fetchall()
-        ]
+            .mappings()
+            .fetchall()
+        )
 
-        cur.execute(
-            "SELECT * FROM workflow_signals WHERE workflow_id = ? ORDER BY timestamp ASC;",
-            (wid,),
-        )
-        signals = [
-            WorkflowSignal(
-                signal_id=s["signal_id"],
-                signal_type=s["signal_type"],
-                payload=json.loads(s["payload_json"]),
-                source=s["source"],
-                timestamp=datetime.fromisoformat(s["timestamp"]),
+        history: list[WorkflowHistoryEvent] = []
+        for er in event_rows:
+            raw_details = er["details_json"]
+            details = (
+                raw_details
+                if isinstance(raw_details, dict)
+                else json.loads(raw_details)
             )
-            for s in cur.fetchall()
-        ]
+            ts = er["timestamp"]
+            ts_dt = ts if isinstance(ts, datetime) else datetime.fromisoformat(str(ts))
+
+            history.append(
+                WorkflowHistoryEvent(
+                    event_id=er["event_id"],
+                    timestamp=ts_dt,
+                    from_stage=WorkflowStage(er["from_stage"])
+                    if er["from_stage"]
+                    else None,
+                    to_stage=WorkflowStage(er["to_stage"]),
+                    event_name=er["event_name"],
+                    details=details,
+                )
+            )
+
+        signal_rows = (
+            conn.execute(
+                text(
+                    "SELECT * FROM workflow_signals WHERE workflow_id = :wid ORDER BY timestamp ASC"
+                ),
+                {"wid": wid},
+            )
+            .mappings()
+            .fetchall()
+        )
+
+        signals: list[WorkflowSignal] = []
+        for sr in signal_rows:
+            raw_payload = sr["payload_json"]
+            payload = (
+                raw_payload
+                if isinstance(raw_payload, dict)
+                else json.loads(raw_payload)
+            )
+            sts = sr["timestamp"]
+            sts_dt = (
+                sts if isinstance(sts, datetime) else datetime.fromisoformat(str(sts))
+            )
+
+            signals.append(
+                WorkflowSignal(
+                    signal_id=sr["signal_id"],
+                    signal_type=sr["signal_type"],
+                    payload=payload,
+                    source=sr["source"],
+                    timestamp=sts_dt,
+                )
+            )
+
+        raw_context = row["context_json"]
+        context = (
+            raw_context if isinstance(raw_context, dict) else json.loads(raw_context)
+        )
+        raw_rules = row["stopping_rules_json"]
+        stopping_rules = (
+            raw_rules if isinstance(raw_rules, dict) else json.loads(raw_rules)
+        )
+        raw_timers = row["timers_json"]
+        timers_data = (
+            raw_timers if isinstance(raw_timers, list) else json.loads(raw_timers)
+        )
+
+        timers = [WorkflowTimer.model_validate(t) for t in timers_data]
+
+        c_at = row["created_at"]
+        created_at = (
+            c_at if isinstance(c_at, datetime) else datetime.fromisoformat(str(c_at))
+        )
+        u_at = row["updated_at"]
+        updated_at = (
+            u_at if isinstance(u_at, datetime) else datetime.fromisoformat(str(u_at))
+        )
 
         return WorkflowInstance(
             workflow_id=row["workflow_id"],
             case_id=row["case_id"],
             template=WorkflowTemplate(row["template"]),
             current_stage=WorkflowStage(row["current_stage"]),
-            recovery_state=row["recovery_state"],
-            context=json.loads(row["context_json"]),
-            stopping_rules=json.loads(row["stopping_rules_json"]),
-            timers=json.loads(row["timers_json"]),
+            recovery_state=RecoveryState(row["recovery_state"]),
+            context=context,
+            stopping_rules=WorkflowStoppingRules.model_validate(stopping_rules)
+            if isinstance(stopping_rules, dict)
+            else stopping_rules,
+            history=history,
             signals_received=signals,
-            history=events,
+            timers=timers,
             attempts_count=row["attempts_count"],
             touches_count=row["touches_count"],
             is_terminal=bool(row["is_terminal"]),
             terminal_outcome=row["terminal_outcome"],
-            created_at=datetime.fromisoformat(row["created_at"]),
-            updated_at=datetime.fromisoformat(row["updated_at"]),
+            created_at=created_at,
+            updated_at=updated_at,
         )
 
 
 @functools.lru_cache(maxsize=1)
 def get_workflow_repository() -> WorkflowRepository:
-    """Return process-wide singleton workflow repository."""
+    """Return process-wide singleton WorkflowRepository instance."""
     return WorkflowRepository()

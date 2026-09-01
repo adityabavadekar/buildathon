@@ -1,13 +1,16 @@
 'use client'
 
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import {
+  ArrowUpDown,
   CheckCircle2,
   HelpCircle,
   Lightbulb,
   RefreshCw,
+  Search,
   ShieldAlert,
   UserCheck,
+  X,
 } from 'lucide-react'
 import {
   approveCase,
@@ -23,6 +26,14 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 import { RailBadge } from '@/components/ui/BrandIcons'
 import { SkeletonRow } from '@/components/ui/skeleton'
 import { formatCustomerName } from '@/lib/format'
@@ -41,6 +52,8 @@ function formatINR(paise: number): string {
   }).format(rupees)
 }
 
+type SortField = 'expected_recoverable_value_paise' | 'amount_paise' | 'created_at'
+
 export function EscalationsQueuePanel({
   onSelectCase,
   onActionComplete,
@@ -49,6 +62,13 @@ export function EscalationsQueuePanel({
   const [loading, setLoading] = useState<boolean>(true)
   const [approvingId, setApprovingId] = useState<string | null>(null)
   const [approvalSuccess, setApprovalSuccess] = useState<string | null>(null)
+
+  const [searchQuery, setSearchQuery] = useState<string>('')
+  const [railFilter, setRailFilter] = useState<string>('all')
+  const [sortBy, setSortBy] = useState<SortField>(
+    'expected_recoverable_value_paise',
+  )
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
 
   const fetchQueue = async () => {
     try {
@@ -94,10 +114,50 @@ export function EscalationsQueuePanel({
     }
   }
 
+  const rails = useMemo(
+    () => Array.from(new Set(queue.map((q) => q.payment_rail))).sort(),
+    [queue],
+  )
+
+  const filtered = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase()
+    let rows = queue.filter((item) => {
+      if (railFilter !== 'all' && item.payment_rail !== railFilter) return false
+      if (!q) return true
+      return (
+        item.case_id.toLowerCase().includes(q) ||
+        item.payment_id.toLowerCase().includes(q) ||
+        formatCustomerName(item.customer_id).toLowerCase().includes(q) ||
+        item.payment_rail.toLowerCase().includes(q) ||
+        item.escalation_reason.toLowerCase().includes(q) ||
+        item.recommended_action.toLowerCase().includes(q)
+      )
+    })
+
+    rows = [...rows].sort((a, b) => {
+      let diff: number
+      if (sortBy === 'created_at') {
+        diff = new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+      } else {
+        diff = a[sortBy] - b[sortBy]
+      }
+      return sortDir === 'asc' ? diff : -diff
+    })
+    return rows
+  }, [queue, searchQuery, railFilter, sortBy, sortDir])
+
   const totalEv = queue.reduce(
     (acc, q) => acc + q.expected_recoverable_value_paise,
     0,
   )
+
+  const hasActiveFilters =
+    searchQuery.trim() !== '' || railFilter !== 'all'
+
+  const clearFilters = () => {
+    setSearchQuery('')
+    setRailFilter('all')
+  }
 
   return (
     <Card className="border-escalated/40 bg-surface">
@@ -111,8 +171,9 @@ export function EscalationsQueuePanel({
               </CardTitle>
             </div>
             <CardDescription className="mt-1 text-xs">
-              Surfaces the exact root-cause constraint, deterministic policy
-              boundary, and recommended operator action.
+              Search and filter the operator queue. Surfaces the exact root-cause
+              constraint, deterministic policy boundary, and recommended operator
+              action.
             </CardDescription>
           </div>
 
@@ -169,124 +230,253 @@ export function EscalationsQueuePanel({
             </p>
           </div>
         ) : (
-          <div className="divide-y divide-border/60">
-            {queue.map((item, idx) => {
-              const isApproving = approvingId === item.case_id
-              const isSuccess = approvalSuccess === item.case_id
+          <div>
+            {/* Filter Bar */}
+            <div className="flex flex-col gap-3 border-b border-border/60 p-4 md:flex-row md:items-center md:justify-between">
+              <div className="relative flex-1 md:max-w-sm">
+                <Search className="absolute top-2.5 left-3 h-4 w-4 text-ink-subtle" />
+                <input
+                  type="text"
+                  placeholder="Search case, payment, customer, rail, or reason..."
+                  value={searchQuery}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value)
+                  }}
+                  className="w-full rounded-control border border-border bg-surface-sunken py-2 pr-8 pl-9 text-sm text-ink placeholder:text-ink-subtle focus:border-accent focus:outline-hidden"
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearchQuery('')
+                    }}
+                    className="absolute top-2.5 right-2 cursor-pointer text-ink-muted hover:text-ink"
+                    aria-label="Clear search"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
 
-              return (
-                <div
-                  key={item.case_id}
-                  className="flex flex-col justify-between gap-4 p-4 transition-colors hover:bg-surface-sunken/40 sm:p-5 lg:flex-row lg:items-center"
+              <div className="flex flex-wrap items-center gap-2">
+                <select
+                  value={railFilter}
+                  onChange={(e) => {
+                    setRailFilter(e.target.value)
+                  }}
+                  aria-label="Filter by payment rail"
+                  className="cursor-pointer rounded-control border border-border bg-surface-sunken px-2.5 py-2 text-xs font-medium text-ink focus:border-accent focus:outline-hidden"
                 >
-                  {/* Left Column: Case Meta & Reason */}
-                  <div className="min-w-0 flex-1 space-y-2">
-                    <div className="flex flex-wrap items-center gap-2 font-mono text-xs">
-                      <span className="rounded-control border border-border bg-surface-sunken px-2 py-0.5 font-bold text-ink">
-                        #{(idx + 1).toString()} EV Ranked
-                      </span>
-                      <span
-                        className="cursor-pointer font-bold text-accent hover:underline"
+                  <option value="all">All rails</option>
+                  {rails.map((rail) => (
+                    <option key={rail} value={rail}>
+                      {rail}
+                    </option>
+                  ))}
+                </select>
+
+                <div className="flex items-center gap-1 rounded-control border border-border bg-surface-sunken px-2 py-1 text-xs">
+                  <ArrowUpDown className="h-3 w-3 text-ink-subtle" />
+                  <select
+                    value={sortBy}
+                    onChange={(e) => {
+                      setSortBy(e.target.value as SortField)
+                    }}
+                    aria-label="Sort by field"
+                    className="cursor-pointer border-none bg-transparent text-xs text-ink focus:outline-hidden"
+                  >
+                    <option value="expected_recoverable_value_paise">
+                      Expected EV
+                    </option>
+                    <option value="amount_paise">Face Amount</option>
+                    <option value="created_at">Created Time</option>
+                  </select>
+                  <select
+                    value={sortDir}
+                    onChange={(e) => {
+                      setSortDir(e.target.value as 'asc' | 'desc')
+                    }}
+                    aria-label="Sort direction"
+                    className="cursor-pointer border-none bg-transparent text-xs font-bold text-ink focus:outline-hidden"
+                  >
+                    <option value="desc">DESC</option>
+                    <option value="asc">ASC</option>
+                  </select>
+                </div>
+
+                {hasActiveFilters && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={clearFilters}
+                    className="text-xs text-ink-muted"
+                  >
+                    Clear
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-[170px]">Case / Payment ID</TableHead>
+                  <TableHead>Customer</TableHead>
+                  <TableHead>Rail</TableHead>
+                  <TableHead className="min-w-[260px]">
+                    Why This Needs Human Action
+                  </TableHead>
+                  <TableHead className="min-w-[200px]">
+                    Recommended Action
+                  </TableHead>
+                  <TableHead className="text-right">Expected Yield (EV)</TableHead>
+                  <TableHead className="text-center">Touches</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filtered.length === 0 ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={8}
+                      className="h-32 text-center text-sm text-ink-muted"
+                    >
+                      No escalations matched the current search filters.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  filtered.map((item) => {
+                    const isApproving = approvingId === item.case_id
+                    const isSuccess = approvalSuccess === item.case_id
+                    const winRate = Math.round(
+                      item.estimated_recovery_probability * 100,
+                    )
+
+                    return (
+                      <TableRow
+                        key={item.case_id}
                         onClick={() => {
                           if (onSelectCase) onSelectCase(item.case_id)
                         }}
+                        className="cursor-pointer align-top transition-colors hover:bg-surface-sunken/60"
                       >
-                        {item.case_id.slice(0, 10)}...
-                      </span>
-                      <RailBadge rail={item.payment_rail} />
-                      <span className="text-ink-subtle">{item.payment_id}</span>
-                      <span className="text-ink-muted">
-                        ({formatCustomerName(item.customer_id)})
-                      </span>
-                    </div>
+                        {/* Case / Payment */}
+                        <TableCell className="text-xs">
+                          <div className="flex items-center gap-1.5 font-semibold text-ink">
+                            <span className="cursor-pointer text-accent hover:underline">
+                              {item.case_id.slice(0, 10)}...
+                            </span>
+                          </div>
+                          <div className="mt-0.5 text-[11px] text-ink-subtle">
+                            {item.payment_id}
+                          </div>
+                          <div className="mt-0.5 text-[11px] text-ink-muted">
+                            {new Date(item.created_at).toLocaleDateString()}
+                          </div>
+                        </TableCell>
 
-                    {/* Surfaced Human Reason */}
-                    <div className="flex items-start gap-2 rounded-control border border-escalated/30 bg-escalated-subtle/30 p-2.5 text-xs">
-                      <HelpCircle className="mt-0.5 h-4 w-4 shrink-0 text-escalated" />
-                      <div className="space-y-0.5">
-                        <span className="block font-mono text-[10px] font-bold tracking-wider text-escalated uppercase">
-                          Why This Needs Human Action:
-                        </span>
-                        <p className="text-xs leading-relaxed text-ink">
-                          {item.escalation_reason}
-                        </p>
-                      </div>
-                    </div>
+                        {/* Customer */}
+                        <TableCell className="text-xs text-ink-muted">
+                          {formatCustomerName(item.customer_id)}
+                        </TableCell>
 
-                    {/* Recommended Action */}
-                    <div className="flex items-center gap-2 rounded-control border border-accent/20 bg-accent/5 p-2.5 text-xs">
-                      <Lightbulb className="h-4 w-4 shrink-0 text-accent" />
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-mono text-[10px] font-bold tracking-wider text-accent uppercase">
-                          Recommended Action:
-                        </span>
-                        <span className="font-semibold text-ink">
-                          {item.recommended_action}
-                        </span>
-                        {item.recommended_discount_bps > 0 && (
-                          <Badge
-                            variant="outline"
-                            className="border-accent text-[10px] text-accent"
+                        {/* Rail */}
+                        <TableCell>
+                          <RailBadge rail={item.payment_rail} />
+                        </TableCell>
+
+                        {/* Escalation reason - vertical detail */}
+                        <TableCell>
+                          <div className="flex items-start gap-2 text-xs">
+                            <HelpCircle className="mt-0.5 h-4 w-4 shrink-0 text-escalated" />
+                            <p className="leading-relaxed text-ink">
+                              {item.escalation_reason}
+                            </p>
+                          </div>
+                        </TableCell>
+
+                        {/* Recommended action - vertical detail */}
+                        <TableCell>
+                          <div className="flex items-start gap-2 text-xs">
+                            <Lightbulb className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
+                            <div className="space-y-1">
+                              <p className="font-semibold text-ink">
+                                {item.recommended_action}
+                              </p>
+                              {item.recommended_discount_bps > 0 && (
+                                <Badge
+                                  variant="outline"
+                                  className="border-accent text-[10px] text-accent"
+                                >
+                                  +{(item.recommended_discount_bps / 100).toFixed(0)}
+                                  % Discount
+                                </Badge>
+                              )}
+                              <p className="text-[11px] text-ink-subtle">
+                                Face {formatINR(item.amount_paise)} @ {winRate}%
+                                win rate
+                              </p>
+                            </div>
+                          </div>
+                        </TableCell>
+
+                        {/* EV */}
+                        <TableCell className="text-right">
+                          <span className="money text-sm font-bold text-recovered">
+                            {formatINR(item.expected_recoverable_value_paise)}
+                          </span>
+                        </TableCell>
+
+                        {/* Touches */}
+                        <TableCell className="text-center text-xs text-ink-muted">
+                          {item.touches_count}
+                        </TableCell>
+
+                        {/* Actions */}
+                        <TableCell className="text-right">
+                          <Button
+                            size="sm"
+                            variant="primary"
+                            disabled={isApproving}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              void handleQuickApprove(item)
+                            }}
+                            className="gap-1.5 bg-accent font-mono text-xs text-white hover:bg-accent/90"
                           >
-                            +{(item.recommended_discount_bps / 100).toFixed(0)}%
-                            Discount
-                          </Badge>
-                        )}
-                      </div>
-                    </div>
-                  </div>
+                            {isApproving ? (
+                              <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                            ) : isSuccess ? (
+                              <CheckCircle2 className="h-3.5 w-3.5 text-recovered" />
+                            ) : (
+                              <UserCheck className="h-3.5 w-3.5" />
+                            )}
+                            <span>
+                              {isApproving
+                                ? 'Executing...'
+                                : isSuccess
+                                  ? 'Approved!'
+                                  : 'Approve Action'}
+                            </span>
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })
+                )}
+              </TableBody>
+            </Table>
 
-                  {/* Right Column: Financial EV & Execution CTA */}
-                  <div className="flex shrink-0 items-end justify-between gap-3 border-t pt-3 font-mono sm:flex-row sm:justify-end lg:flex-col lg:border-t-0 lg:pt-0">
-                    <div className="text-right">
-                      <div className="flex items-center justify-end gap-1.5">
-                        <span className="text-xs text-ink-muted">
-                          Expected Yield (EV):
-                        </span>
-                        <span className="text-base font-bold text-recovered">
-                          {formatINR(item.expected_recoverable_value_paise)}
-                        </span>
-                      </div>
-                      <div className="text-[11px] text-ink-subtle">
-                        Face: {formatINR(item.amount_paise)} @{' '}
-                        {(item.estimated_recovery_probability * 100).toFixed(0)}
-                        % win rate
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <Button
-                        size="sm"
-                        variant="primary"
-                        disabled={isApproving}
-                        onClick={() => {
-                          void handleQuickApprove(item)
-                        }}
-                        className="gap-1.5 bg-accent font-mono text-xs text-white hover:bg-accent/90"
-                      >
-                        {isApproving ? (
-                          <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                        ) : isSuccess ? (
-                          <CheckCircle2 className="h-3.5 w-3.5 text-recovered" />
-                        ) : (
-                          <UserCheck className="h-3.5 w-3.5" />
-                        )}
-                        <span>
-                          {isApproving
-                            ? 'Executing...'
-                            : isSuccess
-                              ? 'Approved!'
-                              : 'Approve Action'}
-                        </span>
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              )
-            })}
+            {filtered.length > 0 && (
+              <div className="border-t border-border/60 px-4 py-2 text-right font-mono text-[11px] text-ink-muted">
+                Showing {filtered.length.toString()} of{' '}
+                {queue.length.toString()} escalation(s)
+              </div>
+            )}
           </div>
         )}
       </CardContent>
     </Card>
   )
 }
+

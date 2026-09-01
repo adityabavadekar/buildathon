@@ -69,13 +69,15 @@ def create_app() -> FastAPI:
     # Request IDs are bound before anything else so every downstream log line and
     # any later audit record can be traced to the originating request.
     app.add_middleware(RequestIDMiddleware)
+    origins = settings.cors_origins or ["*"]
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=settings.cors_origins,
+        allow_origins=origins,
+        allow_origin_regex=r"https?://.*",
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
-        expose_headers=["x-request-id"],
+        expose_headers=["*"],
     )
 
     # Health check is available at both /health and /api/health

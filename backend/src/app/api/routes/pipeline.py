@@ -47,8 +47,8 @@ class FleetStartRequest(BaseModel):
     events_per_minute: int = Field(default=20, ge=1, le=300)
     rails: list[str] | None = None
     min_amount_paise: int = Field(default=10000, ge=100)
-    max_amount_paise: int = Field(default=10000000, ge=100)
-    use_llm: bool = False
+    max_amount_paise: int = Field(default=50000000, ge=100)
+    use_llm: bool = True
     experiment_id: str | None = None
 
 

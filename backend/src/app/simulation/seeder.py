@@ -28,6 +28,14 @@ CHECKOUT_DROP_OFF_RECOVERY_RATE = 0.44
 LIQUIDITY_RECOVERY_RATE = 0.38
 DEFAULT_RECOVERY_RATE = 0.25
 
+CAMPAIGN_TAGS: list[str] = [
+    "dunning_wave_1",
+    "subscription_renewal_q3",
+    "mandate_retry_aug",
+    "invoice_chaser_b2b",
+    "checkout_recovery_main",
+]
+
 FAILURE_TEMPLATES: list[dict[str, Any]] = [
     {
         "rail": PaymentRail.UPI,
@@ -85,6 +93,13 @@ FAILURE_TEMPLATES: list[dict[str, Any]] = [
         "error_reason": "Customer committed to pay by promised salary credit date",
         "amounts": [49900, 149900, 299900],
     },
+    {
+        "rail": PaymentRail.CARD,
+        "category": FailureCategory.UNCLASSIFIED,
+        "error_code": "SUSPECTED_FRAUD_HOLD",
+        "error_reason": "Risk engine flagged high-dispute anomaly on card authorization; manual operator clearance required",
+        "amounts": [1500000, 3500000, 8000000],
+    },
 ]
 
 CUSTOMER_NAMES: list[tuple[str, str, str]] = [
@@ -116,7 +131,7 @@ async def seed_simulation_batch(
     recovered_count = 0
     now = datetime.now(UTC)
 
-    for _ in range(count):
+    for i in range(count):
         template = secrets.choice(FAILURE_TEMPLATES)
         cust = secrets.choice(CUSTOMER_NAMES)
         amount = secrets.choice(template["amounts"])
@@ -124,6 +139,15 @@ async def seed_simulation_batch(
         # Stagger occurrence times over past 48 hours (10 to 2880 mins)
         minutes_ago = 10 + secrets.randbelow(2870)
         occurred_at = now - timedelta(minutes=minutes_ago)
+
+        # Distribute 50% agentic cases and 50% deterministic cases
+        is_agentic = (i % 2 == 0) if model_override is None else True
+        case_tag = experiment_tag or (
+            "agentic_recovery" if is_agentic else "deterministic_rules"
+        )
+        case_model = model_override or (
+            "groq/openai/gpt-oss-120b" if is_agentic else None
+        )
 
         event = RawFailureEvent(
             event_id=f"evt_sim_{uuid4().hex[:12]}",
@@ -139,9 +163,12 @@ async def seed_simulation_batch(
             if "AP" in template["error_code"] or template["error_code"] == "XT"
             else None,
             occurred_at=occurred_at,
-            experiment_tag=experiment_tag,
-            model_override=model_override,
-            metadata={"source": "simulation"},
+            campaign_id=secrets.choice(CAMPAIGN_TAGS),
+            contact_email=cust[2],
+            contact_phone=cust[1],
+            experiment_tag=case_tag,
+            model_override=case_model,
+            metadata={"source": "simulation", "is_agentic": is_agentic},
         )
 
         case = await orchestrator.process_failure(event)

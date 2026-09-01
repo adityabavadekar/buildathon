@@ -60,4 +60,6 @@ class DiagnosisResult(BaseModel):
     discount_bps_suggested: int = Field(default=0, ge=0, le=10000)
     reasoning: str
     requires_human_approval: bool = False
+    dunning_message_en: str | None = None
+    dunning_message_hi: str | None = None
     signals_evaluated: dict[str, Any] = Field(default_factory=dict)

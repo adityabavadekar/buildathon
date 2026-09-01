@@ -51,23 +51,26 @@ class PolicyGate:
         if blocking_eval is not None:
             return blocking_eval
 
+        # Validate and sanitize drafted customer messaging guardrails
+        sanitized_plan = self._validate_and_sanitize_messages(case, plan, active_policy)
+
         # Margin & Discount Cap Clamping
-        if plan.discount_bps > active_policy.max_discount_bps:
+        if sanitized_plan.discount_bps > active_policy.max_discount_bps:
             clamped_discount_bps = active_policy.max_discount_bps
             clamped_discount_paise = int(
                 (case.amount_paise * clamped_discount_bps) / 10000
             )
-            modified = plan.model_copy(
+            modified = sanitized_plan.model_copy(
                 update={
                     "discount_bps": clamped_discount_bps,
                     "discount_paise": clamped_discount_paise,
-                    "rationale": f"{plan.rationale} [Clamped to policy max {clamped_discount_bps} bps]",
+                    "rationale": f"{sanitized_plan.rationale} [Clamped to policy max {clamped_discount_bps} bps]",
                 }
             )
             return PolicyEvaluation(
                 result=PolicyCheckResult.APPROVED,
                 is_allowed=True,
-                reason=f"Approved with discount clamped from {plan.discount_bps} to {clamped_discount_bps} bps.",
+                reason=f"Approved with discount clamped from {sanitized_plan.discount_bps} to {clamped_discount_bps} bps.",
                 evaluated_at=now,
                 modified_plan=modified,
             )
@@ -78,8 +81,56 @@ class PolicyGate:
             is_allowed=True,
             reason="All policy guardrails, touch limits, and margin constraints satisfied.",
             evaluated_at=now,
-            modified_plan=plan,
+            modified_plan=sanitized_plan,
         )
+
+    def _validate_and_sanitize_messages(
+        self,
+        case: RecoveryCase,
+        plan: InterventionPlan,
+        policy: MerchantPolicy,
+    ) -> InterventionPlan:
+        """Enforce length and discount guardrails on drafted customer messages."""
+        import re  # noqa: PLC0415
+
+        msg_en = plan.dunning_message_en
+        msg_hi = plan.dunning_message_hi
+        changed = False
+
+        max_allowed_discount_bps = min(plan.discount_bps, policy.max_discount_bps)
+        max_allowed_pct = max_allowed_discount_bps / 100.0
+
+        # Validate message length
+        if msg_en and len(msg_en) > 500:  # noqa: PLR2004
+            msg_en = msg_en[:497] + "..."
+            changed = True
+        if msg_hi and len(msg_hi) > 500:  # noqa: PLR2004
+            msg_hi = msg_hi[:497] + "..."
+            changed = True
+
+        # Check for hallucinated discounts exceeding policy (e.g. "50% discount", "20% off")
+        for text, lang in [(msg_en, "en"), (msg_hi, "hi")]:
+            if not text:
+                continue
+            matches = re.findall(r"(\d+(?:\.\d+)?)\s*%", text)
+            for m in matches:
+                try:
+                    pct = float(m)
+                    if pct > max_allowed_pct:
+                        amt_inr = case.amount_paise // 100
+                        if lang == "en":
+                            msg_en = f"Hi, your payment of INR {amt_inr} was interrupted. Complete your payment securely using this link."
+                        else:
+                            msg_hi = f"Namaste, aapka INR {amt_inr} ka payment complete nahi ho paya. Diye gaye link se payment karein."
+                        changed = True
+                except ValueError:
+                    pass
+
+        if changed:
+            return plan.model_copy(
+                update={"dunning_message_en": msg_en, "dunning_message_hi": msg_hi}
+            )
+        return plan
 
     def _check_blocking_invariants(  # noqa: PLR0911
         self,
@@ -102,6 +153,19 @@ class PolicyGate:
                 result=PolicyCheckResult.HOLDOUT_CONTROL,
                 is_allowed=False,
                 reason="Case is assigned to holdout control group for unbiased counterfactual measurement.",
+                evaluated_at=now,
+            )
+
+        if (
+            plan.intervention_type == InterventionType.MANUAL_ESCALATION
+            or plan.requires_human_approval
+        ):
+            return PolicyEvaluation(
+                result=PolicyCheckResult.ESCALATE_REQUIRED,
+                is_allowed=False,
+                reason=(
+                    f"Intervention plan routed to human operations queue: {plan.rationale}"
+                ),
                 evaluated_at=now,
             )
 

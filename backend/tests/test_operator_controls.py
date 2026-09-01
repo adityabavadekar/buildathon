@@ -4,9 +4,11 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
+from sqlalchemy import text
 
 from app.audit.models import RecoveryCase
 from app.audit.repository import get_case_repository
+from app.core.db import get_db_connection
 from app.core.enums import (
     ExperimentArm,
     PaymentRail,
@@ -36,14 +38,18 @@ async def test_operator_mode_persistence_and_audit() -> None:
     assert get_operator_mode() == OperatorMode.HUMAN_IN_THE_LOOP
 
     # Verify audit record
-    repo = get_case_repository()
-    cur = repo._store._conn.cursor()
-    cur.execute(
-        "SELECT * FROM audit WHERE event_name = 'operator.mode_changed' ORDER BY timestamp DESC LIMIT 1;"
-    )
-    row = cur.fetchone()
-    assert row is not None
-    assert row["actor"] == "HUMAN_OPERATOR"
+    with get_db_connection() as conn:
+        row = (
+            conn.execute(
+                text(
+                    "SELECT * FROM audit WHERE event_name = 'operator.mode_changed' ORDER BY timestamp DESC LIMIT 1"
+                )
+            )
+            .mappings()
+            .fetchone()
+        )
+        assert row is not None
+        assert row["actor"] == "HUMAN_OPERATOR"
 
 
 @pytest.mark.anyio

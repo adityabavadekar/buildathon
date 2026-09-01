@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 import functools
-import sqlite3
 import threading
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
-from pathlib import Path
 
 from pydantic import BaseModel, Field
+from sqlalchemy import text
 
+from app.core.db import get_db_connection
 from app.core.enums import PaymentRail
 from app.core.logging import get_logger
 
@@ -44,14 +44,12 @@ class RailHealthRegistry:
 
     def __init__(
         self,
-        db_path: Path | str = "data/recovery_engine.db",
         *,
         min_attempts: int = 10,
         degradation_ratio_threshold: float = 2.5,
         absolute_min_rate: float = 0.05,
         hold_duration_minutes: int = 60,
     ) -> None:
-        self._db_path = Path(db_path)
         self._lock = threading.RLock()
         self.min_attempts = min_attempts
         self.degradation_ratio_threshold = degradation_ratio_threshold
@@ -68,16 +66,16 @@ class RailHealthRegistry:
             return self._states.get(rail_str, RailHealthMetrics(rail=rail_str))
 
     def is_rail_degraded(self, rail: str | PaymentRail) -> bool:
-        """Return True if the specified rail is currently degraded and within hold window."""
+        """Return True if the specified payment rail is currently held under degradation."""
         metrics = self.get_rail_metrics(rail)
         if metrics.state != RailHealthState.DEGRADED:
             return False
-        if metrics.hold_until and metrics.hold_until < datetime.now(UTC):
-            # Auto-release expired hold window
-            with self._lock:
-                metrics.state = RailHealthState.NORMAL
-                metrics.hold_until = None
+
+        if metrics.hold_until and datetime.now(UTC) > metrics.hold_until:
+            metrics.state = RailHealthState.NORMAL
+            metrics.hold_until = None
             return False
+
         return True
 
     def set_degraded_override(
@@ -89,9 +87,11 @@ class RailHealthRegistry:
         baseline_rate: float = 0.10,
         hold_minutes: int = 60,
     ) -> RailHealthMetrics:
-        """Manually trigger degraded circuit breaker (for simulation and incident response)."""
+        """Manually or explicitly trip the degradation circuit breaker for a rail."""
         rail_str = rail.value if isinstance(rail, PaymentRail) else str(rail)
         now = datetime.now(UTC)
+        hold_until = now + timedelta(minutes=hold_minutes)
+
         with self._lock:
             metrics = RailHealthMetrics(
                 rail=rail_str,
@@ -99,138 +99,157 @@ class RailHealthRegistry:
                 current_failure_rate=current_rate,
                 baseline_failure_rate=baseline_rate,
                 ratio=ratio,
-                attempts=50,
-                failures=int(50 * current_rate),
+                attempts=self.min_attempts,
+                failures=int(self.min_attempts * current_rate),
+                hold_until=hold_until,
                 detected_at=now,
-                hold_until=now + timedelta(minutes=hold_minutes),
                 last_observed_at=now,
             )
             self._states[rail_str] = metrics
+
             logger.warning(
-                "rail_health.degraded_override_set", rail=rail_str, ratio=ratio
+                "rail_health.circuit_tripped",
+                rail=rail_str,
+                hold_until=hold_until.isoformat(),
+                ratio=ratio,
             )
             return metrics
 
+    def mark_degraded(
+        self,
+        rail: str | PaymentRail,
+        *,
+        reason: str | None = None,
+        duration_minutes: int | None = None,
+    ) -> RailHealthMetrics:
+        """Alias for set_degraded_override."""
+        return self.set_degraded_override(
+            rail=rail,
+            hold_minutes=duration_minutes or self.hold_duration_minutes,
+        )
+
     def release_rail(self, rail: str | PaymentRail) -> RailHealthMetrics:
-        """Release circuit breaker on a rail back to NORMAL state."""
+        """Clear degradation status for a rail."""
         rail_str = rail.value if isinstance(rail, PaymentRail) else str(rail)
         now = datetime.now(UTC)
         with self._lock:
-            metrics = RailHealthMetrics(
-                rail=rail_str,
-                state=RailHealthState.NORMAL,
-                current_failure_rate=0.05,
-                baseline_failure_rate=0.05,
-                ratio=1.0,
-                last_observed_at=now,
-            )
+            metrics = self._states.get(rail_str, RailHealthMetrics(rail=rail_str))
+            metrics.state = RailHealthState.NORMAL
+            metrics.hold_until = None
+            metrics.last_observed_at = now
             self._states[rail_str] = metrics
-            logger.info("rail_health.rail_released", rail=rail_str)
+            logger.info("rail_health.circuit_reset", rail=rail_str)
             return metrics
+
+    def reset_rail(self, rail: str | PaymentRail) -> RailHealthMetrics:
+        """Alias for release_rail."""
+        return self.release_rail(rail)
 
     def evaluate_rail(self, rail: str) -> RailHealthMetrics:
         """Compute statistical failure rate over sliding window vs historical baseline."""
-        if not self._db_path.exists():
-            return RailHealthMetrics(rail=rail)
-
         now = datetime.now(UTC)
-        recent_cutoff = (now - timedelta(hours=1)).isoformat()
-        baseline_cutoff = (now - timedelta(days=7)).isoformat()
+        recent_cutoff = now - timedelta(hours=1)
+        baseline_cutoff = now - timedelta(days=7)
 
         with self._lock:
-            conn = sqlite3.connect(str(self._db_path), timeout=10.0)
-            conn.row_factory = sqlite3.Row
             try:
-                cur = conn.cursor()
-                # 1. Recent window stats
-                cur.execute(
-                    """
-                    SELECT COUNT(*) as attempts,
-                           SUM(CASE WHEN state NOT IN ('RECOVERED') THEN 1 ELSE 0 END) as failures
-                    FROM cases
-                    WHERE payment_rail = ? AND created_at >= ?;
-                    """,
-                    (rail, recent_cutoff),
-                )
-                recent_row = cur.fetchone()
-                recent_attempts = recent_row["attempts"] if recent_row else 0
-                recent_failures = (
-                    recent_row["failures"]
-                    if (recent_row and recent_row["failures"])
-                    else 0
-                )
+                with get_db_connection() as conn:
+                    recent_row = conn.execute(
+                        text(
+                            """
+                            SELECT COUNT(*) as attempts,
+                                   SUM(CASE WHEN state NOT IN ('RECOVERED') THEN 1 ELSE 0 END) as failures
+                            FROM cases
+                            WHERE payment_rail = :rail AND created_at >= :recent_cutoff;
+                            """
+                        ),
+                        {"rail": rail, "recent_cutoff": recent_cutoff},
+                    ).fetchone()
+                    recent_attempts = (
+                        recent_row[0] if recent_row and recent_row[0] else 0
+                    )
+                    recent_failures = (
+                        recent_row[1] if recent_row and recent_row[1] else 0
+                    )
 
-                # 2. Historical baseline stats
-                cur.execute(
-                    """
-                    SELECT COUNT(*) as attempts,
-                           SUM(CASE WHEN state NOT IN ('RECOVERED') THEN 1 ELSE 0 END) as failures
-                    FROM cases
-                    WHERE payment_rail = ? AND created_at >= ? AND created_at < ?;
-                    """,
-                    (rail, baseline_cutoff, recent_cutoff),
-                )
-                base_row = cur.fetchone()
-                base_attempts = base_row["attempts"] if base_row else 0
-                base_failures = (
-                    base_row["failures"] if (base_row and base_row["failures"]) else 0
-                )
+                    base_row = conn.execute(
+                        text(
+                            """
+                            SELECT COUNT(*) as attempts,
+                                   SUM(CASE WHEN state NOT IN ('RECOVERED') THEN 1 ELSE 0 END) as failures
+                            FROM cases
+                            WHERE payment_rail = :rail AND created_at >= :baseline_cutoff AND created_at < :recent_cutoff;
+                            """
+                        ),
+                        {
+                            "rail": rail,
+                            "baseline_cutoff": baseline_cutoff,
+                            "recent_cutoff": recent_cutoff,
+                        },
+                    ).fetchone()
+                    base_attempts = base_row[0] if base_row and base_row[0] else 0
+                    base_failures = base_row[1] if base_row and base_row[1] else 0
 
-                current_rate = (
-                    (recent_failures / recent_attempts) if recent_attempts > 0 else 0.0
-                )
-                baseline_rate = (
-                    (base_failures / base_attempts) if base_attempts > 0 else 0.0
-                )
-                ratio = (
-                    round(current_rate / baseline_rate, 2) if baseline_rate > 0 else 1.0
-                )
+                    current_rate = (
+                        (recent_failures / recent_attempts)
+                        if recent_attempts > 0
+                        else 0.0
+                    )
+                    baseline_rate = (
+                        (base_failures / base_attempts) if base_attempts > 0 else 0.0
+                    )
+                    ratio = (
+                        round(current_rate / baseline_rate, 2)
+                        if baseline_rate > 0
+                        else (1.0 if current_rate == 0 else 3.0)
+                    )
 
-                is_degraded = (
-                    base_attempts >= self.min_attempts
-                    and recent_attempts >= self.min_attempts
-                    and ratio >= self.degradation_ratio_threshold
-                    and current_rate >= self.absolute_min_rate
-                )
+                    is_degraded = (
+                        base_attempts >= self.min_attempts
+                        and recent_attempts >= self.min_attempts
+                        and ratio >= self.degradation_ratio_threshold
+                        and current_rate >= self.absolute_min_rate
+                    )
 
-                existing = self._states.get(rail)
-                hold_until = (
-                    existing.hold_until
-                    if (existing and existing.state == RailHealthState.DEGRADED)
-                    else None
-                )
-                detected_at = (
-                    existing.detected_at
-                    if (existing and existing.state == RailHealthState.DEGRADED)
-                    else None
-                )
+                    existing = self._states.get(rail)
+                    hold_until = (
+                        existing.hold_until
+                        if (existing and existing.state == RailHealthState.DEGRADED)
+                        else None
+                    )
+                    detected_at = (
+                        existing.detected_at
+                        if (existing and existing.state == RailHealthState.DEGRADED)
+                        else None
+                    )
 
-                if is_degraded:
-                    state = RailHealthState.DEGRADED
-                    detected_at = detected_at or now
-                    hold_until = now + timedelta(minutes=self.hold_duration_minutes)
-                elif hold_until and hold_until < now:
-                    state = RailHealthState.NORMAL
-                    hold_until = None
-                else:
-                    state = existing.state if existing else RailHealthState.NORMAL
+                    if is_degraded:
+                        state = RailHealthState.DEGRADED
+                        detected_at = detected_at or now
+                        hold_until = now + timedelta(minutes=self.hold_duration_minutes)
+                    elif hold_until and hold_until < now:
+                        state = RailHealthState.NORMAL
+                        hold_until = None
+                    else:
+                        state = existing.state if existing else RailHealthState.NORMAL
 
-                metrics = RailHealthMetrics(
-                    rail=rail,
-                    state=state,
-                    current_failure_rate=round(current_rate, 4),
-                    baseline_failure_rate=round(baseline_rate, 4),
-                    ratio=ratio,
-                    attempts=recent_attempts,
-                    failures=recent_failures,
-                    hold_until=hold_until,
-                    detected_at=detected_at,
-                    last_observed_at=now,
-                )
-                self._states[rail] = metrics
-                return metrics
-            finally:
-                conn.close()
+                    metrics = RailHealthMetrics(
+                        rail=rail,
+                        state=state,
+                        current_failure_rate=round(current_rate, 4),
+                        baseline_failure_rate=round(baseline_rate, 4),
+                        ratio=ratio,
+                        attempts=recent_attempts,
+                        failures=recent_failures,
+                        hold_until=hold_until,
+                        detected_at=detected_at,
+                        last_observed_at=now,
+                    )
+                    self._states[rail] = metrics
+                    return metrics
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("rail_health.evaluate_failed", rail=rail, error=str(exc))
+                return RailHealthMetrics(rail=rail)
 
     def get_all_rails_health(self) -> list[RailHealthMetrics]:
         """Return health telemetry for all recognized payment rails."""

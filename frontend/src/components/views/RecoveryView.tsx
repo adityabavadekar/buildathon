@@ -597,7 +597,8 @@ export function RecoveryView({
             <TableHeader>
               <TableRow>
                 <TableHead className="w-[180px]">Case / Payment ID</TableHead>
-                <TableHead>Rail & Error</TableHead>
+                <TableHead>Rail</TableHead>
+                <TableHead>Error</TableHead>
                 <TableHead>Customer</TableHead>
                 <TableHead className="text-right">At-Risk Amount</TableHead>
                 <TableHead className="text-right">Net Recovered</TableHead>
@@ -610,7 +611,7 @@ export function RecoveryView({
               {loading ? (
                 Array.from({ length: 6 }).map((_, i) => (
                   <TableRow key={i}>
-                    <TableCell colSpan={8} className="p-0">
+                    <TableCell colSpan={9} className="p-0">
                       <SkeletonRow />
                     </TableCell>
                   </TableRow>
@@ -618,7 +619,7 @@ export function RecoveryView({
               ) : cases.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={8}
+                    colSpan={9}
                     className="h-32 text-center text-sm text-ink-muted"
                   >
                     No recovery cases matched the current search filters.
@@ -656,13 +657,15 @@ export function RecoveryView({
                         </div>
                       </TableCell>
 
-                      {/* Rail & Reason */}
+                      {/* Rail */}
                       <TableCell>
-                        <div className="flex items-center gap-2">
-                          <RailBadge rail={c.failure_event.payment_rail} />
-                          <span className="font-mono text-xs font-semibold text-ink">
-                            {c.failure_event.error_code}
-                          </span>
+                        <RailBadge rail={c.failure_event.payment_rail} />
+                      </TableCell>
+
+                      {/* Error */}
+                      <TableCell>
+                        <div className="font-mono text-xs font-semibold text-ink">
+                          {c.failure_event.error_code}
                         </div>
                         <div className="line-clamp-1 max-w-[200px] text-[11px] text-ink-muted">
                           {c.failure_event.error_description ||

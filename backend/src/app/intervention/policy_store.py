@@ -1,61 +1,79 @@
-"""Durable, file-backed persistence for the active MerchantPolicy.
-
-Mirrors the LLM settings store pattern: write temp file then ``os.replace`` for
-atomicity, guarded by a lock so concurrent edits cannot interleave. The default
-fallback is ``MerchantPolicy()`` (module defaults) whenever no file exists.
-"""
+"""Durable PostgreSQL-backed persistence for the active MerchantPolicy."""
 
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from functools import lru_cache
-from pathlib import Path
-from threading import Lock
-from typing import Any
 
-from structlog import get_logger
+from sqlalchemy import text
 
-from app.core.config import get_settings
+from app.core.db import get_db_connection
+from app.core.logging import get_logger
 from app.intervention.models import MerchantPolicy
 
-logger = get_logger()
+logger = get_logger(__name__)
 
 
 class PolicyStore:
-    """Thread-safe file store for the persisted active merchant policy."""
+    """PostgreSQL-backed store for the active merchant policy."""
 
-    def __init__(self, file_path: str) -> None:
-        self.file_path = Path(file_path)
-        self._path_lock = Lock()
-
-    def load(self) -> MerchantPolicy | None:
-        """Return the persisted policy if present, else None (caller defaults)."""
-        if not self.file_path.exists():
-            return None
+    def load(self, merchant_id: str | None = None) -> MerchantPolicy | None:
+        """Return the persisted policy from PostgreSQL if present, else None."""
         try:
-            raw_text = self.file_path.read_text(encoding="utf-8")
-            data: Any = json.loads(raw_text)
-            return MerchantPolicy.model_validate(data)
+            with get_db_connection() as conn:
+                if merchant_id:
+                    row = conn.execute(
+                        text(
+                            "SELECT policy_json FROM merchant_policy WHERE merchant_id = :merchant_id"
+                        ),
+                        {"merchant_id": merchant_id},
+                    ).fetchone()
+                else:
+                    row = conn.execute(
+                        text(
+                            "SELECT policy_json FROM merchant_policy ORDER BY updated_at DESC LIMIT 1"
+                        )
+                    ).fetchone()
+
+                if row and row[0]:
+                    data = row[0] if isinstance(row[0], dict) else json.loads(row[0])
+                    return MerchantPolicy.model_validate(data)
         except Exception as exc:  # noqa: BLE001
-            logger.warning(
-                "policy.store.load_error",
-                error=str(exc),
-                file_path=str(self.file_path),
-            )
+            logger.warning("policy.store.load_error", error=str(exc))
             return None
+        return None
 
     def save(self, policy: MerchantPolicy) -> MerchantPolicy:
-        """Persist the policy atomically and return it."""
-        with self._path_lock:
-            self.file_path.parent.mkdir(parents=True, exist_ok=True)
-            tmp_path = self.file_path.with_suffix(".tmp")
-            tmp_path.write_text(policy.model_dump_json(indent=2), encoding="utf-8")
-            tmp_path.replace(self.file_path)
-        logger.info("policy.store.persisted", merchant_id=policy.merchant_id)
-        return policy
+        """Persist the policy in PostgreSQL and return it."""
+        now = datetime.now(UTC)
+        policy_json = policy.model_dump(mode="json")
+        try:
+            with get_db_connection() as conn:
+                conn.execute(
+                    text(
+                        """
+                        INSERT INTO merchant_policy (merchant_id, policy_json, updated_at)
+                        VALUES (:merchant_id, CAST(:policy_json AS jsonb), :updated_at)
+                        ON CONFLICT (merchant_id) DO UPDATE SET
+                            policy_json = EXCLUDED.policy_json,
+                            updated_at = EXCLUDED.updated_at;
+                        """
+                    ),
+                    {
+                        "merchant_id": policy.merchant_id,
+                        "policy_json": json.dumps(policy_json),
+                        "updated_at": now,
+                    },
+                )
+            logger.info("policy.store.persisted", merchant_id=policy.merchant_id)
+            return policy
+        except Exception as exc:
+            logger.error("policy.store.save_error", error=str(exc))
+            raise
 
 
 @lru_cache(maxsize=1)
 def get_policy_store() -> PolicyStore:
     """Return the process-wide singleton policy store."""
-    return PolicyStore(get_settings().policy_config_path)
+    return PolicyStore()

@@ -95,7 +95,6 @@ def _get_clean_secret(secret_obj: Any) -> str | None:
 
 
 def _resolve_provider_name(model_str: str, default_provider: str = "custom") -> str:
-    """Resolve exact provider name from model string without guessing."""
     lowered = model_str.lower()
     if (
         lowered.startswith("groq/")

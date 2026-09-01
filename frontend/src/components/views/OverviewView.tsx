@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   RotateCcw,
   ShieldAlert,
+  Tag,
   TrendingUp,
 } from 'lucide-react'
 import {
@@ -42,6 +43,7 @@ import { PaymentRailChart } from '@/components/charts/PaymentRailChart'
 import { RecoveryVelocityChart } from '@/components/charts/RecoveryVelocityChart'
 import { HealthScoreCard } from '@/components/charts/HealthScoreCard'
 import { formatINR, humanizeToken } from '@/lib/format'
+import type { NavSection } from '@/components/layout/Sidebar'
 
 interface OverviewViewProps {
   cases: RecoveryCase[]
@@ -49,6 +51,7 @@ interface OverviewViewProps {
   loading: boolean
   onSelectCase: (c: RecoveryCase) => void
   onNavigateToRecovery: (subTab?: string) => void
+  onNavigateToSection?: (section: NavSection) => void
   onRefresh: () => void
 }
 
@@ -58,6 +61,7 @@ export function OverviewView({
   loading,
   onSelectCase,
   onNavigateToRecovery,
+  onNavigateToSection,
   onRefresh,
 }: OverviewViewProps) {
   const [seeding, setSeeding] = useState(false)
@@ -250,53 +254,6 @@ export function OverviewView({
         )}
       </section>
 
-      {/* Counterfactual Lift Callout Banner */}
-      {analytics && (
-        <div className="flex flex-col justify-between gap-4 rounded-panel border border-accent/40 bg-accent/5 p-4 sm:p-5 md:flex-row md:items-center">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <TrendingUp className="h-4 w-4 text-accent" />
-              <span className="text-xs font-semibold tracking-wide text-ink uppercase">
-                <GlossaryTerm termKey="HOLDOUT_ARM" showIcon={false}>
-                  Counterfactual Recovery Lift (vs. 10% Control Arm)
-                </GlossaryTerm>
-              </span>
-            </div>
-            <p className="text-xs text-ink-muted">
-              The AI engine achieved{' '}
-              <strong className="money text-recovered">
-                +{analytics.attributable_lift_pct.toFixed(1)}% lift
-              </strong>{' '}
-              in net recovery over natural recovery in uncontacted holdout
-              cases.
-            </p>
-          </div>
-          <div className="flex items-center gap-4 border-t border-border pt-3 text-xs md:border-t-0 md:border-l md:pt-0 md:pl-6">
-            <div>
-              <span className="block text-[11px] text-ink-muted">
-                <GlossaryTerm termKey="TREATMENT_ARM" showIcon={false}>
-                  Treatment Cohort
-                </GlossaryTerm>
-              </span>
-              <span className="text-sm font-bold text-ink">
-                {analytics.treatment_recovery_rate_pct.toFixed(1)}%
-              </span>
-            </div>
-            <div className="hidden h-6 w-px bg-border sm:block" />
-            <div>
-              <span className="block text-[11px] text-ink-muted">
-                <GlossaryTerm termKey="HOLDOUT_ARM" showIcon={false}>
-                  Holdout Control
-                </GlossaryTerm>
-              </span>
-              <span className="text-sm font-bold text-ink-muted">
-                {analytics.holdout_recovery_rate_pct.toFixed(1)}%
-              </span>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Operations Quick Action Cards Grid */}
       <section className="grid grid-cols-1 gap-6 md:grid-cols-3">
         <Card
@@ -417,6 +374,81 @@ export function OverviewView({
         </section>
       )}
 
+      {/* Campaign Attribution Snapshot (Razorpay notes) */}
+      {analytics?.campaign_metrics && analytics.campaign_metrics.length > 0 && (
+        <Card>
+          <CardHeader className="flex flex-col gap-2 border-b border-border p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+            <div>
+              <div className="flex items-center gap-2">
+                <Tag className="h-4 w-4 text-accent" />
+                <CardTitle className="text-base">Campaign Recovery Attribution</CardTitle>
+                <Badge variant="outline" className="font-mono text-[10px]">
+                  Razorpay notes
+                </Badge>
+              </div>
+              <CardDescription className="mt-0.5 text-xs">
+                Performance across active metadata cohorts tagged during payment and order creation
+              </CardDescription>
+            </div>
+            {onNavigateToSection && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  onNavigateToSection('analytics')
+                }}
+                className="gap-1 text-xs text-accent hover:text-accent"
+              >
+                <span>View Full Analytics</span>
+                <ArrowRight className="h-3 w-3" />
+              </Button>
+            )}
+          </CardHeader>
+          <CardContent className="p-4 sm:p-5">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {analytics.campaign_metrics.slice(0, 4).map((c) => {
+                const recoveredWidth = (c.recovered_paise / Math.max(1, c.at_risk_paise)) * 100
+                return (
+                  <div
+                    key={c.campaign_id}
+                    className="space-y-2 rounded-control border border-border bg-surface-sunken/50 p-3 text-xs"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-mono font-semibold text-ink truncate max-w-[140px]" title={c.campaign_id}>
+                        {c.campaign_id}
+                      </span>
+                      <Badge
+                        variant={c.recovery_rate_pct >= 50 ? 'recovered' : 'default'}
+                        className="font-mono text-[10px]"
+                      >
+                        {c.recovery_rate_pct.toFixed(1)}%
+                      </Badge>
+                    </div>
+
+                    <div className="space-y-1">
+                      <div className="h-1.5 w-full overflow-hidden rounded bg-surface border border-border/50">
+                        <div
+                          className="h-full bg-recovered transition-all duration-300"
+                          style={{ width: `${Math.min(100, recoveredWidth).toFixed(1)}%` }}
+                        />
+                      </div>
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="text-ink-muted">Yield:</span>
+                        <span className="font-bold money text-accent">{formatINR(c.net_recovered_value_paise)}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-[10px] text-ink-muted">
+                        <span>{c.recovered_cases}/{c.total_cases} resolved</span>
+                        <span>{formatINR(c.at_risk_paise)}</span>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Recent Cases Preview Table */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between border-b border-border p-4 sm:p-5">
@@ -453,10 +485,10 @@ export function OverviewView({
             <TableBody>
               {loading ? (
                 <>
-                  <SkeletonRow />
-                  <SkeletonRow />
-                  <SkeletonRow />
-                  <SkeletonRow />
+                  <SkeletonRow variant="table" />
+                  <SkeletonRow variant="table" />
+                  <SkeletonRow variant="table" />
+                  <SkeletonRow variant="table" />
                 </>
               ) : cases.length === 0 ? (
                 <TableRow>
@@ -524,6 +556,53 @@ export function OverviewView({
           </Table>
         </CardContent>
       </Card>
+
+      {/* Counterfactual Lift Callout Banner */}
+      {analytics && (
+        <div className="flex flex-col justify-between gap-4 rounded-panel border border-accent/40 bg-accent/5 p-4 sm:p-5 md:flex-row md:items-center">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <TrendingUp className="h-4 w-4 text-accent" />
+              <span className="text-xs font-semibold tracking-wide text-ink uppercase">
+                <GlossaryTerm termKey="HOLDOUT_ARM" showIcon={false}>
+                  Counterfactual Recovery Lift (vs. 10% Control Arm)
+                </GlossaryTerm>
+              </span>
+            </div>
+            <p className="text-xs text-ink-muted">
+              The AI engine achieved{' '}
+              <strong className="money text-recovered">
+                +{analytics.attributable_lift_pct.toFixed(1)}% lift
+              </strong>{' '}
+              in net recovery over natural recovery in uncontacted holdout
+              cases.
+            </p>
+          </div>
+          <div className="flex items-center gap-4 border-t border-border pt-3 text-xs md:border-t-0 md:border-l md:pt-0 md:pl-6">
+            <div>
+              <span className="block text-[11px] text-ink-muted">
+                <GlossaryTerm termKey="TREATMENT_ARM" showIcon={false}>
+                  Treatment Cohort
+                </GlossaryTerm>
+              </span>
+              <span className="text-sm font-bold text-ink">
+                {analytics.treatment_recovery_rate_pct.toFixed(1)}%
+              </span>
+            </div>
+            <div className="hidden h-6 w-px bg-border sm:block" />
+            <div>
+              <span className="block text-[11px] text-ink-muted">
+                <GlossaryTerm termKey="HOLDOUT_ARM" showIcon={false}>
+                  Holdout Control
+                </GlossaryTerm>
+              </span>
+              <span className="text-sm font-bold text-ink-muted">
+                {analytics.holdout_recovery_rate_pct.toFixed(1)}%
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

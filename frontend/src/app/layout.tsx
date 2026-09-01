@@ -16,7 +16,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      {/* Body attributes are extended by browser extensions (for example the
+      VS Code extension adds vsc-initialized); suppress hydration mismatch
+      warnings for that known third-party injection. */}
+      <body suppressHydrationWarning>{children}</body>
     </html>
   )
 }

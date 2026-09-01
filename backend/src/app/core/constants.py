@@ -28,6 +28,11 @@ MIN_CONFIDENCE_THRESHOLD: Decimal = Decimal(
     "0.60"
 )  # Minimum AI confidence before escalation
 
+# Default model served on Groq and used for agentic recovery simulation. This is
+# the single canonical value; every consumer reads it from Settings, never from
+# its own literal.
+DEFAULT_AGENTIC_MODEL: str = "meta-llama/llama-4-scout-17b-16e-instruct"
+
 # Time Windows (Hours / Minutes)
 TRANSIENT_BANK_WINDOW_DELAY_HOURS: int = 4
 SALARY_CYCLE_RETRY_SPACING_HOURS: int = 48

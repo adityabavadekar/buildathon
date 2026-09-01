@@ -392,7 +392,7 @@ export function PipelineView() {
               </CardTitle>
               <Badge variant="outline" className="font-mono text-[10px]">
                 {overview
-                  ? `${overview.current_processing_rate_per_min.toString()} evt/min`
+                  ? `${overview.events_processed_last_minute.toString()} evt/min`
                   : '0/min'}
               </Badge>
             </div>
@@ -620,9 +620,9 @@ export function PipelineView() {
             <TableBody>
               {loading ? (
                 <>
-                  <SkeletonRow />
-                  <SkeletonRow />
-                  <SkeletonRow />
+                  <SkeletonRow variant="table" />
+                  <SkeletonRow variant="table" />
+                  <SkeletonRow variant="table" />
                 </>
               ) : jobs.length === 0 ? (
                 <TableRow>

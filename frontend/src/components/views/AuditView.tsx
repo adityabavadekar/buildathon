@@ -18,6 +18,7 @@ interface AuditViewProps {
   cases: RecoveryCase[]
   onRefresh?: () => void
   refreshing?: boolean
+  onSelectCase?: (c: RecoveryCase) => void
 }
 
 interface EnrichedAuditEntry {
@@ -100,6 +101,7 @@ export function AuditView({
   cases,
   onRefresh,
   refreshing = false,
+  onSelectCase,
 }: AuditViewProps) {
   const [actionFilter, setActionFilter] = useState<string>('')
   const [entityFilter, setEntityFilter] = useState<string>('')
@@ -140,6 +142,17 @@ export function AuditView({
     () => Array.from(new Set(allEntries.map((e) => e.event_name))).sort(),
     [allEntries],
   )
+
+  const casesById = useMemo(() => {
+    const map = new Map<string, RecoveryCase>()
+    for (const c of cases) map.set(c.case_id, c)
+    return map
+  }, [cases])
+
+  const openCase = (caseId: string) => {
+    const c = casesById.get(caseId)
+    if (c && onSelectCase) onSelectCase(c)
+  }
 
   const availableActors = useMemo(
     () => Array.from(new Set(allEntries.map((e) => e.actor))).sort(),
@@ -345,7 +358,14 @@ export function AuditView({
 
                   return (
                     <React.Fragment key={entry.entry_id}>
-                      <tr className="audit-row audit-row-compact transition-colors">
+                      <tr
+                        className="audit-row audit-row-compact cursor-pointer transition-colors"
+                        onClick={() => {
+                          setExpandedEntryId(
+                            isExpanded ? null : entry.entry_id,
+                          )
+                        }}
+                      >
                         <td className="whitespace-nowrap text-ink-muted">
                           <div className="font-medium text-ink">
                             {formatTime(entry.timestamp)}
@@ -362,9 +382,41 @@ export function AuditView({
                         </td>
 
                         <td className="min-w-[10rem]">
-                          <div className="font-medium text-ink">{entry.case_id}</div>
-                          <div className="text-[11px] text-ink-muted">
-                            {entry.payment_id}
+                          <div className="font-medium text-ink">
+                            {onSelectCase && casesById.has(entry.case_id) ? (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  openCase(entry.case_id)
+                                }}
+                                className="font-mono text-xs text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent"
+                                title="Open case detail"
+                              >
+                                {entry.case_id}
+                              </button>
+                            ) : (
+                              <span className="font-mono text-xs text-ink">
+                                {entry.case_id}
+                              </span>
+                            )}
+                          </div>
+                          <div className="font-mono text-[11px] text-ink-muted group/case relative">
+                            {onSelectCase && casesById.has(entry.case_id) ? (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  openCase(entry.case_id)
+                                }}
+                                className="max-w-[12rem] truncate text-left text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent"
+                                title="Open case detail"
+                              >
+                                {entry.payment_id}
+                              </button>
+                            ) : (
+                              entry.payment_id
+                            )}
                           </div>
                         </td>
 
@@ -424,7 +476,8 @@ export function AuditView({
                         <td className="text-right">
                           <button
                             type="button"
-                            onClick={() => {
+                            onClick={(e) => {
+                              e.stopPropagation()
                               setExpandedEntryId(
                                 isExpanded ? null : entry.entry_id,
                               )
@@ -453,11 +506,15 @@ export function AuditView({
                               <div className="mb-2 grid gap-2 sm:grid-cols-3">
                                 <div>
                                   <span className="text-ink-muted">Customer</span>
-                                  <p className="font-medium">{formatCustomerName(entry.customer_id)}</p>
+                                  <p className="font-medium">
+                                    {formatCustomerName(entry.customer_id)}
+                                  </p>
                                 </div>
                                 <div>
                                   <span className="text-ink-muted">Audit ID</span>
-                                  <p className="font-medium">{entry.entry_id}</p>
+                                  <p className="break-all font-mono text-[11px]">
+                                    {entry.entry_id}
+                                  </p>
                                 </div>
                                 <div>
                                   <span className="text-ink-muted">Transition</span>
@@ -466,6 +523,19 @@ export function AuditView({
                                   </p>
                                 </div>
                               </div>
+                              {onSelectCase && casesById.has(entry.case_id) ? (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    openCase(entry.case_id)
+                                  }}
+                                  className="mb-2 inline-flex items-center gap-1 text-xs font-medium text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent"
+                                >
+                                  Open full transaction
+                                  <ChevronRight className="h-3 w-3" />
+                                </button>
+                              ) : null}
                               <pre className="overflow-x-auto rounded-control bg-surface-sunken p-2 text-[11px] text-ink-muted">
                                 {JSON.stringify(entry.decision_inputs, null, 2)}
                               </pre>

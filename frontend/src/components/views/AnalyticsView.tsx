@@ -24,6 +24,7 @@ import { GlossaryTerm } from '@/components/ui/GlossaryTerm'
 import { MetricBar } from '@/components/ui/MetricBar'
 import { SkeletonCard } from '@/components/ui/skeleton'
 import { CategoryDistributionChart } from '@/components/charts/CategoryDistributionChart'
+import { CampaignAttributionChart } from '@/components/charts/CampaignAttributionChart'
 import { DailyVolumeTrendsChart } from '@/components/charts/DailyVolumeTrendsChart'
 import { HealthScoreCard } from '@/components/charts/HealthScoreCard'
 import { LatencyDistributionChart } from '@/components/charts/LatencyDistributionChart'
@@ -323,6 +324,8 @@ export function AnalyticsView({ analytics, loading }: AnalyticsViewProps) {
         dailyMetrics={analytics.daily_metrics}
         monthlyMetrics={analytics.monthly_metrics}
       />
+
+      <CampaignAttributionChart campaigns={analytics.campaign_metrics} />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <RecoveryVelocityChart timeSeries={analytics.time_series} />
