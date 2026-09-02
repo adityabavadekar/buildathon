@@ -381,13 +381,16 @@ export function OverviewView({
             <div>
               <div className="flex items-center gap-2">
                 <Tag className="h-4 w-4 text-accent" />
-                <CardTitle className="text-base">Campaign Recovery Attribution</CardTitle>
+                <CardTitle className="text-base">
+                  Campaign Recovery Attribution
+                </CardTitle>
                 <Badge variant="outline" className="font-mono text-[10px]">
                   Razorpay notes
                 </Badge>
               </div>
               <CardDescription className="mt-0.5 text-xs">
-                Performance across active metadata cohorts tagged during payment and order creation
+                Performance across active metadata cohorts tagged during payment
+                and order creation
               </CardDescription>
             </div>
             {onNavigateToSection && (
@@ -407,18 +410,24 @@ export function OverviewView({
           <CardContent className="p-4 sm:p-5">
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
               {analytics.campaign_metrics.slice(0, 4).map((c) => {
-                const recoveredWidth = (c.recovered_paise / Math.max(1, c.at_risk_paise)) * 100
+                const recoveredWidth =
+                  (c.recovered_paise / Math.max(1, c.at_risk_paise)) * 100
                 return (
                   <div
                     key={c.campaign_id}
                     className="space-y-2 rounded-control border border-border bg-surface-sunken/50 p-3 text-xs"
                   >
                     <div className="flex items-center justify-between">
-                      <span className="font-mono font-semibold text-ink truncate max-w-[140px]" title={c.campaign_id}>
+                      <span
+                        className="max-w-[140px] truncate font-mono font-semibold text-ink"
+                        title={c.campaign_id}
+                      >
                         {c.campaign_id}
                       </span>
                       <Badge
-                        variant={c.recovery_rate_pct >= 50 ? 'recovered' : 'default'}
+                        variant={
+                          c.recovery_rate_pct >= 50 ? 'recovered' : 'default'
+                        }
                         className="font-mono text-[10px]"
                       >
                         {c.recovery_rate_pct.toFixed(1)}%
@@ -426,18 +435,24 @@ export function OverviewView({
                     </div>
 
                     <div className="space-y-1">
-                      <div className="h-1.5 w-full overflow-hidden rounded bg-surface border border-border/50">
+                      <div className="h-1.5 w-full overflow-hidden rounded border border-border/50 bg-surface">
                         <div
                           className="h-full bg-recovered transition-all duration-300"
-                          style={{ width: `${Math.min(100, recoveredWidth).toFixed(1)}%` }}
+                          style={{
+                            width: `${Math.min(100, recoveredWidth).toFixed(1)}%`,
+                          }}
                         />
                       </div>
                       <div className="flex items-center justify-between text-[11px]">
                         <span className="text-ink-muted">Yield:</span>
-                        <span className="font-bold money text-accent">{formatINR(c.net_recovered_value_paise)}</span>
+                        <span className="money font-bold text-accent">
+                          {formatINR(c.net_recovered_value_paise)}
+                        </span>
                       </div>
                       <div className="flex items-center justify-between text-[10px] text-ink-muted">
-                        <span>{c.recovered_cases}/{c.total_cases} resolved</span>
+                        <span>
+                          {c.recovered_cases}/{c.total_cases} resolved
+                        </span>
                         <span>{formatINR(c.at_risk_paise)}</span>
                       </div>
                     </div>

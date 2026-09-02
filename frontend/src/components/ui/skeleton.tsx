@@ -27,9 +27,7 @@ type SkeletonRowProps = {
   variant?: 'div' | 'table'
 }
 
-export function SkeletonRow({
-  variant = 'div',
-}: SkeletonRowProps) {
+export function SkeletonRow({ variant = 'div' }: SkeletonRowProps) {
   const content = (
     <>
       <div className="flex items-center gap-3">
@@ -46,7 +44,10 @@ export function SkeletonRow({
   if (variant === 'table') {
     return (
       <tr className="border-b border-border/50">
-        <td colSpan={99} className="flex items-center justify-between px-4 py-3.5">
+        <td
+          colSpan={99}
+          className="flex items-center justify-between px-4 py-3.5"
+        >
           {content}
         </td>
       </tr>

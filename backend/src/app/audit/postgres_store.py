@@ -17,7 +17,32 @@ from app.core.logging import get_logger
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
+    from sqlalchemy.sql.elements import TextClause
+
 logger = get_logger(__name__)
+
+
+SUGGESTABLE_CASE_FIELDS: tuple[tuple[str, str], ...] = (
+    ("payment_id", "Payment"),
+    ("customer_id", "Customer"),
+    ("invoice_id", "Invoice"),
+    ("subscription_id", "Subscription"),
+    ("campaign_id", "Campaign"),
+    ("error_code", "Error code"),
+    ("contact_email", "Email"),
+)
+
+# Built once from the allowlist above. Column names are never interpolated from
+# caller input, and the searched value is always a bound parameter.
+_SUGGEST_STATEMENTS: dict[str, TextClause] = {
+    column: text(
+        f"SELECT {column} AS value, COUNT(*) AS hits FROM cases "  # noqa: S608
+        f"WHERE {column} IS NOT NULL AND {column} <> '' "
+        f"AND {column} ILIKE :pattern ESCAPE '\\' "
+        f"GROUP BY {column} ORDER BY hits DESC, {column} ASC LIMIT :limit"
+    )
+    for column, _label in SUGGESTABLE_CASE_FIELDS
+}
 
 
 class RelationalCaseStore:
@@ -409,38 +434,40 @@ class RelationalCaseStore:
             clauses.append("touches_count <= :touches_max")
             params["touches_max"] = touches_max
         if recovered is True:
-            clauses.append("state = 'RECOVERED'")
+            clauses.append("recovered_amount_paise > 0")
         elif recovered is False:
-            clauses.append("state != 'RECOVERED'")
+            clauses.append("recovered_amount_paise = 0")
         if opted_out is not None:
             clauses.append("is_opted_out = :opted_out")
             params["opted_out"] = opted_out
         if has_escalation is not None:
-            if has_escalation:
-                clauses.append("state = 'ESCALATED_HUMAN'")
-            else:
-                clauses.append("state != 'ESCALATED_HUMAN'")
+            # Escalation is both a state and a historical fact: a case escalated
+            # earlier may have moved on, so the audit trail is checked too.
+            escalated = "(state = :escalated_state OR CAST(data_json AS text) ILIKE :escalation_like)"
+            clauses.append(escalated if has_escalation else f"NOT {escalated}")
+            params["escalated_state"] = RecoveryState.ESCALATED.value
+            params["escalation_like"] = "%case.escalated%"
         if customer_id:
-            clauses.append("customer_id = :customer_id")
-            params["customer_id"] = customer_id
+            clauses.append("customer_id ILIKE :customer_id")
+            params["customer_id"] = f"{customer_id}%"
         if payment_id:
-            clauses.append("payment_id = :payment_id")
-            params["payment_id"] = payment_id
+            clauses.append("payment_id ILIKE :payment_id")
+            params["payment_id"] = f"{payment_id}%"
         if invoice_id:
-            clauses.append("invoice_id = :invoice_id")
-            params["invoice_id"] = invoice_id
+            clauses.append("invoice_id ILIKE :invoice_id")
+            params["invoice_id"] = f"{invoice_id}%"
         if subscription_id:
-            clauses.append("subscription_id = :subscription_id")
-            params["subscription_id"] = subscription_id
+            clauses.append("subscription_id ILIKE :subscription_id")
+            params["subscription_id"] = f"{subscription_id}%"
         if campaign_id:
-            clauses.append("campaign_id = :campaign_id")
-            params["campaign_id"] = campaign_id
+            clauses.append("campaign_id ILIKE :campaign_id")
+            params["campaign_id"] = f"{campaign_id}%"
         if user_ref:
-            clauses.append("user_ref = :user_ref")
-            params["user_ref"] = user_ref
+            clauses.append("user_ref ILIKE :user_ref")
+            params["user_ref"] = f"{user_ref}%"
         if reference_id:
-            clauses.append("reference_id = :reference_id")
-            params["reference_id"] = reference_id
+            clauses.append("reference_id ILIKE :reference_id")
+            params["reference_id"] = f"{reference_id}%"
         if q:
             clauses.append(
                 """(
@@ -550,6 +577,8 @@ class RelationalCaseStore:
             "recovered_amount_paise",
             "net_recovered_value_paise",
             "state",
+            "updated_at",
+            "due_at",
         }
         col = sort_by if sort_by in valid_sort_columns else "created_at"
         direction = sort_dir or sort_order
@@ -1503,6 +1532,47 @@ class RelationalCaseStore:
             for d in range(7)
             for h in range(24)
         ]
+
+    def suggest_search_terms(
+        self, prefix: str, *, limit: int = 8
+    ) -> list[dict[str, Any]]:
+        """Return distinct identifier and attribute values matching a prefix.
+
+        Suggestions come from the stored cases themselves rather than a fixed
+        list, so they always reflect data the operator can actually find. The
+        prefix is bound as a parameter; the LIKE wildcards it contains are
+        escaped so a pasted id with an underscore does not match too broadly.
+        """
+        cleaned = prefix.strip()
+        if not cleaned:
+            return []
+
+        # In LIKE patterns _ and % are wildcards; operators paste raw ids
+        # containing underscores, so escape them to keep the match literal.
+        escaped = cleaned.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        pattern = f"%{escaped}%"
+
+        results: list[dict[str, Any]] = []
+        with get_db_connection() as conn:
+            for column, kind in SUGGESTABLE_CASE_FIELDS:
+                # The statement is pre-built per column at import time from a
+                # fixed allowlist, so no caller-supplied text reaches the SQL.
+                rows = conn.execute(
+                    _SUGGEST_STATEMENTS[column],
+                    {"pattern": pattern, "limit": limit},
+                ).fetchall()
+                results.extend(
+                    {
+                        "value": str(row[0]),
+                        "field": column,
+                        "kind": kind,
+                        "case_count": int(row[1]),
+                    }
+                    for row in rows
+                )
+
+        results.sort(key=lambda r: (-int(r["case_count"]), str(r["value"])))
+        return results[:limit]
 
     def clear(self) -> None:
         """Purge all database tables in PostgreSQL (used for test teardown)."""

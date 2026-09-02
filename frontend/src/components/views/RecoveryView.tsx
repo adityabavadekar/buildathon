@@ -46,6 +46,8 @@ import { formatCustomerName, formatINR, humanizeToken } from '@/lib/format'
 interface RecoveryViewProps {
   onSelectCase: (c: RecoveryCase) => void
   initialSubTab?: string
+  /** Seeds the server-side search, e.g. a term chosen in the command palette. */
+  initialSearch?: string
 }
 
 function stateToVariant(
@@ -72,9 +74,17 @@ const RAILS = ['UPI', 'CARDS', 'MANDATES', 'NETBANKING', 'INVOICES']
 export function RecoveryView({
   onSelectCase,
   initialSubTab = 'ALL',
+  initialSearch = '',
 }: RecoveryViewProps) {
   const [activeTab, setActiveTab] = useState<string>(initialSubTab)
-  const [searchQuery, setSearchQuery] = useState<string>('')
+  const [searchQuery, setSearchQuery] = useState<string>(initialSearch)
+  // A palette pick arrives as a prop change while this view is mounted; adopt it
+  // during render rather than in an effect, which would cascade a second render.
+  const [seenSearch, setSeenSearch] = useState<string>(initialSearch)
+  if (initialSearch !== seenSearch) {
+    setSeenSearch(initialSearch)
+    setSearchQuery(initialSearch)
+  }
   const [selectedRails, setSelectedRails] = useState<string[]>([])
   const [selectedArm, setSelectedArm] = useState<string>('')
   const [minAmount, setMinAmount] = useState<string>('')
@@ -700,7 +710,10 @@ export function RecoveryView({
 
                       {/* Lifecycle Stage Badge */}
                       <TableCell>
-                        <Badge variant={stateToVariant(c.state)} className="text-xs">
+                        <Badge
+                          variant={stateToVariant(c.state)}
+                          className="text-xs"
+                        >
                           {humanizeToken(c.state)}
                         </Badge>
                       </TableCell>

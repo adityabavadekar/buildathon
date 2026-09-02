@@ -11,6 +11,7 @@ from uuid import uuid4
 from app.audit.models import AuditEntry, RecoveryCase, ScheduledJob
 from app.audit.repository import CaseRepository, get_case_repository
 from app.audit.state_machine import transition_case
+from app.core.config import get_settings
 from app.core.constants import MIN_CONFIDENCE_THRESHOLD
 from app.core.enums import (
     AuditActor,
@@ -20,10 +21,11 @@ from app.core.enums import (
     PolicyCheckResult,
     RecoveryState,
 )
+from app.core.identifiers import stable_payment_key
 from app.core.logging import get_logger
 from app.core.operator import OperatorMode, get_operator_mode
 from app.intervention.models import InterventionPlan, MerchantPolicy
-from app.intervention.policy_gate import PolicyGate
+from app.intervention.policy_gate import PolicyGate, get_active_policy
 from app.intervention.tools.mandate_retry import MandateRetryTool
 from app.intervention.tools.notification import CustomerNotificationTool
 from app.intervention.tools.payment_link import RazorpayPaymentLinkTool
@@ -51,15 +53,32 @@ class RecoveryOrchestrator:
     ) -> None:
         self.repository = repository or get_case_repository()
         self.planner = planner or RecoveryPlanner()
-        self.policy = policy or MerchantPolicy()
+        self._policy_override = policy
         self.policy_gate = policy_gate or PolicyGate()
         self.payment_link_tool = payment_link_tool or RazorpayPaymentLinkTool()
         self.mandate_retry_tool = mandate_retry_tool or MandateRetryTool()
         self.notification_tool = notification_tool or CustomerNotificationTool()
 
+    @property
+    def policy(self) -> MerchantPolicy:
+        """Return the live merchant policy, or the injected test override.
+
+        Read per access rather than snapshotted at construction: a persisted
+        policy change must take effect without a process restart, and arm
+        assignment depends on holdout_percentage.
+        """
+        return self._policy_override or get_active_policy()
+
     def _assign_experiment_arm(self, payment_id: str) -> ExperimentArm:
-        """Assign treatment arm vs uncontacted holdout control arm using deterministic hash."""
-        digest = hashlib.sha256(payment_id.encode("utf-8")).hexdigest()
+        """Assign treatment arm vs uncontacted holdout control arm using deterministic hash.
+
+        Hashes the id with any benchmark run suffix removed, so replaying the
+        same dataset puts each case in the same arm every run. Without this a
+        rerun reshuffles the arms and the measured lift is not comparable.
+        """
+        digest = hashlib.sha256(
+            stable_payment_key(payment_id).encode("utf-8")
+        ).hexdigest()
         slot = int(digest[:8], 16) % 100
         if slot < self.policy.holdout_percentage:
             return ExperimentArm.HOLDOUT_CONTROL
@@ -139,14 +158,16 @@ class RecoveryOrchestrator:
             return case
 
         # 1. Formulate recovery plan with LLM & fallback
-        diagnosis, metadata = await self.planner.plan_recovery(failure_event)
+        diagnosis, metadata = await self.planner.plan_recovery(
+            failure_event, case_id=case.case_id, use_llm=use_llm
+        )
         case.diagnosed_category = diagnosis.category
 
         discount_paise = 0
         if diagnosis.discount_bps_suggested > 0:
-            discount_paise = int(
-                case.amount_paise * (diagnosis.discount_bps_suggested / 10000)
-            )
+            discount_paise = (
+                case.amount_paise * diagnosis.discount_bps_suggested
+            ) // 10000
 
         channel_str = diagnosis.signals_evaluated.get("suggested_channel")
         channel: OutreachChannel | None = None
@@ -169,9 +190,12 @@ class RecoveryOrchestrator:
             ):
                 channel = OutreachChannel.EMAIL
 
-        scheduled_at = datetime.now(UTC) + timedelta(
-            hours=diagnosis.recommended_delay_hours
-        )
+        # Simulated traffic compresses the wait so the queue visibly drains;
+        # real events keep the true bank-cutoff and salary-cycle spacing.
+        delay_hours = float(diagnosis.recommended_delay_hours)
+        if failure_event.metadata.get("source") in {"fleet", "simulation"}:
+            delay_hours = delay_hours / get_settings().fleet_time_compression
+        scheduled_at = datetime.now(UTC) + timedelta(hours=delay_hours)
         idempotency_key = f"idem_{case.case_id}_{case.touches_count + 1}"
         is_human_required = bool(
             diagnosis.requires_human_approval
@@ -407,7 +431,7 @@ class RecoveryOrchestrator:
         elif plan.intervention_type == InterventionType.P2P_FOLLOWUP:
             case.outreach_count += 1
             exec_res = await self.notification_tool.execute(case, plan)
-            target_state = RecoveryState.P2P_PROMISED
+            target_state = RecoveryState.OUTREACH_PENDING
         else:
             return
 
@@ -485,7 +509,7 @@ class RecoveryOrchestrator:
 
         discount_paise = 0
         if override_discount_bps:
-            discount_paise = int(case.amount_paise * (override_discount_bps / 10000))
+            discount_paise = (case.amount_paise * override_discount_bps) // 10000
 
         approved_plan = InterventionPlan(
             plan_id=f"plan_apprv_{uuid4().hex[:8]}",
@@ -515,6 +539,17 @@ class RecoveryOrchestrator:
         case = self.repository.get_by_payment_id(payment_id)
         if not case:
             return None
+
+        # Razorpay redelivers webhooks, so a second payment.captured for the same
+        # payment must be a no-op rather than an illegal terminal transition.
+        if case.state == RecoveryState.RECOVERED:
+            logger.info(
+                "payment.capture_ignored_duplicate",
+                case_id=case.case_id,
+                payment_id=payment_id,
+                gateway_capture_id=gateway_capture_id,
+            )
+            return case
 
         case.recovered_amount_paise = amount_paise
         case.recompute_nrv()

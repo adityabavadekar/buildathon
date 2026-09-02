@@ -20,6 +20,7 @@ from app.detection.clustering import recompute_patterns
 from app.detection.customer_profile import get_customer_profile_registry
 from app.detection.ml import get_recovery_model, train_recovery_model
 from app.detection.rail_health import get_rail_health_registry
+from app.intervention.policy_gate import get_active_policy
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -77,11 +78,6 @@ async def train_recovery_model_endpoint() -> dict[str, object]:
         ],
         "holdout_metrics": model.holdout_metrics,
     }
-
-
-DEFAULT_MAX_TOUCHES = 3
-HIGH_VALUE_THRESHOLD_PAISE = 500_000
-DEFAULT_DISCOUNT_BPS = 300
 
 
 class ChannelPerformance(BaseModel):
@@ -677,7 +673,9 @@ def _compute_campaign_metrics(
             b["escalated"] += 1
 
     result: list[CampaignMetrics] = []
-    for campaign_id, b in sorted(buckets.items(), key=lambda x: x[1]["at_risk"], reverse=True):
+    for campaign_id, b in sorted(
+        buckets.items(), key=lambda x: x[1]["at_risk"], reverse=True
+    ):
         rate = round((b["recovered"] / b["total"] * 100.0) if b["total"] else 0.0, 1)
         avg = b["at_risk"] // max(1, b["total"])
         result.append(
@@ -797,6 +795,7 @@ async def get_escalation_queue() -> list[EscalationQueueItem]:
     """Return all cases currently requiring human operator action, prioritized by EV."""
     repo = get_case_repository()
     escalated_cases = repo.list_cases(state=RecoveryState.ESCALATED, limit=200)
+    policy = get_active_policy()
 
     queue: list[EscalationQueueItem] = []
 
@@ -845,14 +844,17 @@ async def get_escalation_queue() -> list[EscalationQueueItem]:
         if "HITL" in reason_found or "human approval" in reason_found.lower():
             prob = 0.85
             recommended_action = "Approve formulated AI recovery plan"
-        elif touches >= DEFAULT_MAX_TOUCHES:
+        elif touches >= policy.max_touches:
             prob = 0.60
-            recommended_action = "Grant 3% discount incentive link via WhatsApp"
-            recommended_discount = DEFAULT_DISCOUNT_BPS
+            recommended_discount = policy.max_discount_bps
+            recommended_action = (
+                f"Grant {recommended_discount / 100:.2f}% discount "
+                "incentive link via WhatsApp"
+            )
         elif rail in (PaymentRail.UPI, PaymentRail.UPI_AUTOPAY):
             prob = 0.75
             recommended_action = "Issue dynamic UPI intent payment link"
-        elif amount > HIGH_VALUE_THRESHOLD_PAISE:
+        elif amount > policy.require_human_above_paise:
             prob = 0.70
             recommended_action = "Operator manual phone outreach & payment concierge"
         else:

@@ -15,6 +15,7 @@ from pydantic import SecretStr
 
 from app.core.config import get_settings
 from app.core.constants import CHECKOUT_DROP_OFF_LINK_VALIDITY_MINUTES
+from app.core.credential_resolver import resolve_gateway_credentials
 from app.core.logging import get_logger
 from app.intervention.tools.base import BaseInterventionTool, ToolExecutionResult
 
@@ -54,8 +55,7 @@ class RazorpayPaymentLinkTool(BaseInterventionTool):
         final_amount_paise = max(100, case.amount_paise - plan.discount_paise)
 
         settings = get_settings()
-        key_id = settings.razorpay_key_id
-        key_secret = _extract_secret_str(settings.razorpay_key_secret)
+        key_id, key_secret = resolve_gateway_credentials()
 
         # 1. Live Gateway Execution path when credentials are provided
         if key_id and key_secret:

@@ -13,6 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app import __version__
 from app.api.routes import (
     analytics,
+    benchmark,
     cases,
     customers,
     experiments,
@@ -27,6 +28,7 @@ from app.api.routes import (
 )
 from app.api.routes import settings as settings_router
 from app.core.config import Settings, get_settings
+from app.core.db import run_migrations
 from app.core.logging import configure_logging, get_logger
 from app.core.middleware import RequestIDMiddleware
 
@@ -44,6 +46,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         env=settings.env,
         log_level=settings.log_level,
     )
+    run_migrations()
     yield
     logger.info("service.shutdown")
 
@@ -97,6 +100,7 @@ def create_app() -> FastAPI:
     app.include_router(experiments.router, prefix="/api")
     app.include_router(settings_router.router, prefix="/api")
     app.include_router(workflows.router, prefix="/api")
+    app.include_router(benchmark.router, prefix="/api")
     return app
 
 

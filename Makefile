@@ -27,6 +27,9 @@ worker: ## Run the recovery background worker daemon
 test: ## Run backend tests
 	cd $(BACKEND) && uv run pytest
 
+benchmark: ## Replay the fixed benchmark dataset and write docs/benchmarks report
+	cd $(BACKEND) && uv run python -m app.benchmark.cli $(ARGS)
+
 lint: lint-backend lint-frontend ## Lint and typecheck both services
 
 lint-backend:

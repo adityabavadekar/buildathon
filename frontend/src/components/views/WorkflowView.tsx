@@ -109,7 +109,10 @@ function GraphEditor({
       nodes.map((node, index) => ({
         id: node.id ?? `node-${index + 1}`,
         position: { x: Number(node.x ?? index * 190), y: Number(node.y ?? 80) },
-        data: { label: node.label ?? 'Workflow step', type: node.type ?? 'action' },
+        data: {
+          label: node.label ?? 'Workflow step',
+          type: node.type ?? 'action',
+        },
         type: 'workflow',
       })),
     [nodes],
@@ -272,7 +275,9 @@ export function WorkflowView() {
       setTemplates(templateResponse)
       setOptions(optionsResponse)
       if (templateResponse.length > 0) {
-        setTemplateBase((prev) => (!prev ? (templateResponse[0]?.base_template ?? '') : prev))
+        setTemplateBase((prev) =>
+          !prev ? (templateResponse[0]?.base_template ?? '') : prev,
+        )
       }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Unable to load workflows.')

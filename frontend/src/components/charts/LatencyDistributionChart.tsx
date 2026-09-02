@@ -10,6 +10,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
+import { HistogramChart } from '@/components/charts/HistogramChart'
 
 interface LatencyDistributionChartProps {
   ttrBuckets: TTRBucket[]
@@ -30,32 +31,18 @@ export function LatencyDistributionChart({
           banking cooldown windows
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-3 font-mono text-xs">
-        {ttrBuckets.length === 0 ? (
-          <div className="py-8 text-center text-ink-muted">
-            No resolution latency telemetry available.
-          </div>
-        ) : (
-          ttrBuckets.map((bucket) => (
-            <div key={bucket.bucket} className="space-y-1">
-              <div className="flex justify-between">
-                <span className="text-ink">{bucket.bucket}</span>
-                <span className="font-semibold text-ink-muted">
-                  {bucket.percentage.toFixed(0)}% ({bucket.count.toString()}{' '}
-                  cases)
-                </span>
-              </div>
-              <div className="h-2 w-full overflow-hidden rounded-full bg-surface-sunken">
-                <div
-                  className="h-full bg-accent transition-all duration-500"
-                  style={{
-                    width: `${Math.min(100, bucket.percentage).toString()}%`,
-                  }}
-                />
-              </div>
-            </div>
-          ))
-        )}
+      <CardContent>
+        <HistogramChart
+          bars={ttrBuckets.map((bucket) => ({
+            key: bucket.bucket,
+            label: bucket.bucket,
+            value: bucket.count,
+            detail: `${bucket.percentage.toFixed(1)}% of resolved cases`,
+          }))}
+          valueSuffix=" cases"
+          valueLabel="Cases by time to recovery"
+          emptyMessage="No resolution latency telemetry available."
+        />
       </CardContent>
     </Card>
   )

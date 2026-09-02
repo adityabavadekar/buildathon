@@ -45,6 +45,12 @@ class CaseRepository:
         """Retrieve a case by idempotency key to prevent duplicate processing."""
         return self._store.get_case_by_idempotency_key(idempotency_key)
 
+    def suggest_search_terms(
+        self, prefix: str, *, limit: int = 8
+    ) -> list[dict[str, Any]]:
+        """Return distinct case identifiers and attributes matching a prefix."""
+        return self._store.suggest_search_terms(prefix, limit=limit)
+
     def list_cases(
         self,
         *,

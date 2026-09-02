@@ -36,7 +36,7 @@ export function CategoryDistributionChart({
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <AlertCircle className="h-4 w-4 text-accent" />
-          <CardTitle className="text-base">Failure root causes</CardTitle>
+            <CardTitle className="text-base">Failure root causes</CardTitle>
           </div>
           <span className="text-xs text-ink-muted">
             {totalDiagnosed.toString()} classified events

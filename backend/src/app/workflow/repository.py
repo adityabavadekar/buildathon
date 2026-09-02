@@ -295,6 +295,12 @@ class WorkflowRepository:
                         ),
                     ]
 
+                    if len(builtin_specs) != BUILTIN_TEMPLATE_COUNT:
+                        raise RuntimeError(
+                            f"Expected {BUILTIN_TEMPLATE_COUNT} built-in templates, "
+                            f"found {len(builtin_specs)}"
+                        )
+
                     for spec in builtin_specs:
                         conn.execute(
                             text(
@@ -630,7 +636,8 @@ class WorkflowRepository:
                         stopping_rules_json = EXCLUDED.stopping_rules_json,
                         graph_nodes_json = EXCLUDED.graph_nodes_json,
                         graph_edges_json = EXCLUDED.graph_edges_json,
-                        updated_at = EXCLUDED.updated_at;
+                        updated_at = EXCLUDED.updated_at
+                    WHERE workflow_template_definitions.is_builtin = false;
                     """
                 ),
                 {
@@ -727,6 +734,7 @@ class WorkflowRepository:
             else stopping_rules,
             graph_nodes=graph_nodes,
             graph_edges=graph_edges,
+            is_builtin=bool(row["is_builtin"]),
             created_at=created_at,
             updated_at=updated_at,
         )

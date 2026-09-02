@@ -10,6 +10,7 @@ from pydantic import SecretStr
 
 from app.core.config import get_settings
 from app.core.constants import GATEWAY_RETRY_COST_PAISE
+from app.core.credential_resolver import resolve_gateway_credentials
 from app.core.logging import get_logger
 from app.intervention.tools.base import BaseInterventionTool, ToolExecutionResult
 
@@ -46,8 +47,7 @@ class MandateRetryTool(BaseInterventionTool):
         attempt_id = f"rtr_{uuid4().hex[:14]}"
 
         settings = get_settings()
-        key_id = settings.razorpay_key_id
-        key_secret = _extract_secret_str(settings.razorpay_key_secret)
+        key_id, key_secret = resolve_gateway_credentials()
 
         # 1. Live Gateway Execution path when credentials are provided
         if key_id and key_secret:

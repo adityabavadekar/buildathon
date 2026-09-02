@@ -66,7 +66,8 @@ export function TopNav({
           <div className="topbar-chip topbar-chip--success hidden xl:flex">
             <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
             <span>
-              <strong>{formatINR(analytics.net_recovered_value_paise)}</strong> NRV
+              <strong>{formatINR(analytics.net_recovered_value_paise)}</strong>{' '}
+              NRV
             </span>
             <span className="text-sidebar-ink-subtle">
               · {analytics.treatment_recovered.toString()} recovered
@@ -76,11 +77,7 @@ export function TopNav({
       </div>
 
       <div className="flex shrink-0 items-center gap-2">
-        <button
-          type="button"
-          onClick={onOpenCommand}
-          className="topbar-action"
-        >
+        <button type="button" onClick={onOpenCommand} className="topbar-action">
           <Search className="h-3.5 w-3.5 shrink-0" />
           <span className="hidden sm:inline">Search</span>
           <kbd>⌘K</kbd>

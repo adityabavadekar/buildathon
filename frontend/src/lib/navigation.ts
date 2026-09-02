@@ -110,3 +110,35 @@ export const SETTINGS_NAV_ITEMS: {
 ]
 
 export const SETTINGS_GROUP_ICON = Settings
+
+const ALL_NAV_SECTIONS: NavSection[] = [
+  'overview',
+  'analytics',
+  'transactions',
+  'audit',
+  'settings-policies',
+  'settings-general',
+  'settings-integrations',
+  'pipeline',
+  'workflows',
+  'recovery',
+  'approvals',
+  'agent',
+  'policies',
+  'status',
+  'settings',
+]
+
+export function isNavSection(value: string): value is NavSection {
+  return (ALL_NAV_SECTIONS as string[]).includes(value)
+}
+
+/** Parse a location hash such as "#analytics" into a section, if it names one. */
+export function sectionFromHash(hash: string): NavSection | null {
+  const raw = hash.replace(/^#/, '').trim()
+  return raw && isNavSection(raw) ? raw : null
+}
+
+export function hashForSection(section: NavSection): string {
+  return `#${section}`
+}

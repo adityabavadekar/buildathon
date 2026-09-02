@@ -52,7 +52,8 @@ function formatINR(paise: number): string {
   }).format(rupees)
 }
 
-type SortField = 'expected_recoverable_value_paise' | 'amount_paise' | 'created_at'
+type SortField =
+  'expected_recoverable_value_paise' | 'amount_paise' | 'created_at'
 
 export function EscalationsQueuePanel({
   onSelectCase,
@@ -137,7 +138,8 @@ export function EscalationsQueuePanel({
     rows = [...rows].sort((a, b) => {
       let diff: number
       if (sortBy === 'created_at') {
-        diff = new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+        diff =
+          new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
       } else {
         diff = a[sortBy] - b[sortBy]
       }
@@ -151,8 +153,7 @@ export function EscalationsQueuePanel({
     0,
   )
 
-  const hasActiveFilters =
-    searchQuery.trim() !== '' || railFilter !== 'all'
+  const hasActiveFilters = searchQuery.trim() !== '' || railFilter !== 'all'
 
   const clearFilters = () => {
     setSearchQuery('')
@@ -171,9 +172,9 @@ export function EscalationsQueuePanel({
               </CardTitle>
             </div>
             <CardDescription className="mt-1 text-xs">
-              Search and filter the operator queue. Surfaces the exact root-cause
-              constraint, deterministic policy boundary, and recommended operator
-              action.
+              Search and filter the operator queue. Surfaces the exact
+              root-cause constraint, deterministic policy boundary, and
+              recommended operator action.
             </CardDescription>
           </div>
 
@@ -329,7 +330,9 @@ export function EscalationsQueuePanel({
                   <TableHead className="min-w-[200px]">
                     Recommended Action
                   </TableHead>
-                  <TableHead className="text-right">Expected Yield (EV)</TableHead>
+                  <TableHead className="text-right">
+                    Expected Yield (EV)
+                  </TableHead>
                   <TableHead className="text-center">Touches</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
@@ -408,7 +411,10 @@ export function EscalationsQueuePanel({
                                   variant="outline"
                                   className="border-accent text-[10px] text-accent"
                                 >
-                                  +{(item.recommended_discount_bps / 100).toFixed(0)}
+                                  +
+                                  {(
+                                    item.recommended_discount_bps / 100
+                                  ).toFixed(0)}
                                   % Discount
                                 </Badge>
                               )}
@@ -479,4 +485,3 @@ export function EscalationsQueuePanel({
     </Card>
   )
 }
-

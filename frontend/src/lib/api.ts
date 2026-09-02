@@ -1005,3 +1005,75 @@ export function sendWorkflowSignal(
     },
   )
 }
+
+export interface GatewayCredentialStatus {
+  configured: boolean
+  key_id_masked: string | null
+  webhook_secret_configured: boolean
+  source: string
+  updated_at: string | null
+  updated_by: string | null
+}
+
+export function getGatewayCredentials(): Promise<GatewayCredentialStatus> {
+  return request<GatewayCredentialStatus>('/settings/gateway-credentials')
+}
+
+/**
+ * Upload a Razorpay key CSV. Reads the backend's `detail` so a rejected file
+ * explains itself, rather than surfacing a bare status code.
+ */
+export async function importGatewayCredentials(
+  file: File,
+): Promise<GatewayCredentialStatus> {
+  const form = new FormData()
+  form.append('file', file)
+
+  const response = await fetch(
+    `${API_BASE_URL}/settings/gateway-credentials/import`,
+    { method: 'POST', body: form },
+  )
+
+  if (!response.ok) {
+    let detail = response.statusText
+    try {
+      const body: unknown = await response.json()
+      if (
+        typeof body === 'object' &&
+        body !== null &&
+        'detail' in body &&
+        typeof body.detail === 'string'
+      ) {
+        detail = body.detail
+      }
+    } catch {
+      // Non-JSON error body: keep the status text.
+    }
+    throw new Error(detail)
+  }
+
+  return response.json() as Promise<GatewayCredentialStatus>
+}
+
+export function clearGatewayCredentials(): Promise<GatewayCredentialStatus> {
+  return request<GatewayCredentialStatus>('/settings/gateway-credentials', {
+    method: 'DELETE',
+  })
+}
+
+export interface SearchSuggestion {
+  value: string
+  field: string
+  kind: string
+  case_count: number
+}
+
+export function suggestSearchTerms(
+  q: string,
+  limit = 8,
+): Promise<SearchSuggestion[]> {
+  const params = new URLSearchParams({ q, limit: limit.toString() })
+  return request<SearchSuggestion[]>(
+    `/cases/search/suggestions?${params.toString()}`,
+  )
+}

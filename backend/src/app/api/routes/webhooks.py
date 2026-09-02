@@ -15,6 +15,7 @@ from app.audit.models import AuditEntry, RecoveryCase, ScheduledJob
 from app.audit.repository import get_case_repository
 from app.core.config import get_settings
 from app.core.constants import DEFAULT_CURRENCY
+from app.core.credential_resolver import resolve_webhook_secret
 from app.core.enums import AuditActor, ExperimentArm, PaymentRail, RecoveryState
 from app.core.logging import get_logger
 from app.detection.models import RawFailureEvent
@@ -52,9 +53,16 @@ def _extract_payment_identity(payment_entity: dict[str, Any]) -> dict[str, str |
         "campaign_id": _identity_value(
             notes_data, "recovery_campaign", "campaign_id", "utm_campaign", "campaign"
         )
-        or _identity_value(metadata_data, "recovery_campaign", "campaign_id", "campaign"),
+        or _identity_value(
+            metadata_data, "recovery_campaign", "campaign_id", "campaign"
+        ),
         "user_ref": _identity_value(
-            notes_data, "user_id", "customer_ref", "reference_id", "order_id", "user_ref"
+            notes_data,
+            "user_id",
+            "customer_ref",
+            "reference_id",
+            "order_id",
+            "user_ref",
         ),
         "reference_id": _identity_value(notes_data, "reference_id", "order_id"),
         "subscription_id": _identity_value(notes_data, "subscription_id")
@@ -103,7 +111,7 @@ async def handle_razorpay_webhook(  # noqa: PLR0911, PLR0912, PLR0915
     settings = get_settings()
 
     # 1. Verify cryptographic signature if secret configured
-    secret_val = _extract_secret(settings.razorpay_webhook_secret)
+    secret_val = resolve_webhook_secret()
     if secret_val:
         if x_razorpay_signature is not None:
             if not _verify_webhook_signature(
@@ -223,8 +231,7 @@ async def handle_razorpay_webhook(  # noqa: PLR0911, PLR0912, PLR0915
             error_reason=error_reason,
             npci_response_code=str(npci_code) if npci_code else None,
             occurred_at=datetime.now(UTC),
-            invoice_id=identity["invoice_id"]
-            or payment_entity.get("invoice_id"),
+            invoice_id=identity["invoice_id"] or payment_entity.get("invoice_id"),
             subscription_id=identity["subscription_id"]
             or payment_entity.get("subscription_id"),
             campaign_id=identity["campaign_id"],

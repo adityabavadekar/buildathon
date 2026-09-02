@@ -183,7 +183,9 @@ export function OpportunityMatrix({
                 </span>
               </div>
               <div className="mt-1 flex items-center justify-between gap-2 text-[11px] text-ink-muted">
-                <span>{formatCustomerName(hoveredCase.failure_event.customer_id)}</span>
+                <span>
+                  {formatCustomerName(hoveredCase.failure_event.customer_id)}
+                </span>
                 <RailBadge rail={hoveredCase.failure_event.payment_rail} />
               </div>
               <div className="mt-1 font-semibold text-ink">

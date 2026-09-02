@@ -86,6 +86,7 @@ class RailHealthRegistry:
         current_rate: float = 0.45,
         baseline_rate: float = 0.10,
         hold_minutes: int = 60,
+        reason: str | None = None,
     ) -> RailHealthMetrics:
         """Manually or explicitly trip the degradation circuit breaker for a rail."""
         rail_str = rail.value if isinstance(rail, PaymentRail) else str(rail)
@@ -112,6 +113,7 @@ class RailHealthRegistry:
                 rail=rail_str,
                 hold_until=hold_until.isoformat(),
                 ratio=ratio,
+                reason=reason or "manual_override",
             )
             return metrics
 
@@ -126,6 +128,7 @@ class RailHealthRegistry:
         return self.set_degraded_override(
             rail=rail,
             hold_minutes=duration_minutes or self.hold_duration_minutes,
+            reason=reason,
         )
 
     def release_rail(self, rail: str | PaymentRail) -> RailHealthMetrics:

@@ -12,7 +12,12 @@ import {
 } from 'lucide-react'
 import { seedSimulation, type RecoveryCase } from '@/lib/api'
 import { Button } from '@/components/ui/button'
-import { formatCustomerName, formatDateTime, formatTime, humanizeToken } from '@/lib/format'
+import {
+  formatCustomerName,
+  formatDateTime,
+  formatTime,
+  humanizeToken,
+} from '@/lib/format'
 
 interface AuditViewProps {
   cases: RecoveryCase[]
@@ -52,7 +57,11 @@ function actionPillClass(eventName: string): string {
   if (lower.includes('recovered') || lower.includes('captured')) {
     return 'audit-pill audit-pill--success'
   }
-  if (lower.includes('escalat') || lower.includes('breach') || lower.includes('failed')) {
+  if (
+    lower.includes('escalat') ||
+    lower.includes('breach') ||
+    lower.includes('failed')
+  ) {
     return 'audit-pill audit-pill--danger'
   }
   return 'audit-pill'
@@ -61,8 +70,10 @@ function actionPillClass(eventName: string): string {
 function actionLabel(eventName: string): string {
   const lower = eventName.toLowerCase()
   if (lower.includes('plan') || lower.includes('llm')) return 'AI plan'
-  if (lower.includes('executed') || lower.includes('dispatch')) return 'Dispatch'
-  if (lower.includes('recovered') || lower.includes('captured')) return 'Recovered'
+  if (lower.includes('executed') || lower.includes('dispatch'))
+    return 'Dispatch'
+  if (lower.includes('recovered') || lower.includes('captured'))
+    return 'Recovered'
   if (lower.includes('escalat')) return 'Escalated'
   if (lower.includes('holdout')) return 'Holdout'
   if (lower.includes('ingest') || lower.includes('created')) return 'Ingested'
@@ -320,7 +331,10 @@ export function AuditView({
             <tbody className="divide-y divide-border/50 bg-surface">
               {paginatedEntries.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-10 text-center text-sm text-ink-muted">
+                  <td
+                    colSpan={6}
+                    className="px-4 py-10 text-center text-sm text-ink-muted"
+                  >
                     <div className="flex flex-col items-center gap-3">
                       <p>No audit records match the current filters.</p>
                       <Button
@@ -361,9 +375,7 @@ export function AuditView({
                       <tr
                         className="audit-row audit-row-compact cursor-pointer transition-colors"
                         onClick={() => {
-                          setExpandedEntryId(
-                            isExpanded ? null : entry.entry_id,
-                          )
+                          setExpandedEntryId(isExpanded ? null : entry.entry_id)
                         }}
                       >
                         <td className="whitespace-nowrap text-ink-muted">
@@ -401,7 +413,7 @@ export function AuditView({
                               </span>
                             )}
                           </div>
-                          <div className="font-mono text-[11px] text-ink-muted group/case relative">
+                          <div className="group/case relative font-mono text-[11px] text-ink-muted">
                             {onSelectCase && casesById.has(entry.case_id) ? (
                               <button
                                 type="button"
@@ -440,21 +452,32 @@ export function AuditView({
                               </div>
                               <div className="space-y-0.5 pt-0.5 text-[11px] text-ink-muted">
                                 <p>
-                                  <strong className="text-ink">Component:</strong>{' '}
+                                  <strong className="text-ink">
+                                    Component:
+                                  </strong>{' '}
                                   {actorInfo.sub}
                                 </p>
                                 <p>
-                                  <strong className="text-ink">Audit ID:</strong>{' '}
+                                  <strong className="text-ink">
+                                    Audit ID:
+                                  </strong>{' '}
                                   {entry.entry_id.slice(0, 12)}
                                 </p>
                                 <p>
-                                  <strong className="text-ink">Case scope:</strong>{' '}
+                                  <strong className="text-ink">
+                                    Case scope:
+                                  </strong>{' '}
                                   {entry.case_id.slice(0, 8)}
                                 </p>
                                 {entry.cost_incurred_paise > 0 ? (
                                   <p className="text-failed">
-                                    <strong className="text-ink">Cost incurred:</strong>{' '}
-                                    INR {(entry.cost_incurred_paise / 100).toFixed(2)}
+                                    <strong className="text-ink">
+                                      Cost incurred:
+                                    </strong>{' '}
+                                    INR{' '}
+                                    {(entry.cost_incurred_paise / 100).toFixed(
+                                      2,
+                                    )}
                                   </p>
                                 ) : null}
                               </div>
@@ -464,11 +487,14 @@ export function AuditView({
 
                         <td className="max-w-md">
                           <p className="line-clamp-2 text-[13px] text-ink-muted">
-                            {entry.reason || stateTransition || entry.event_name}
+                            {entry.reason ||
+                              stateTransition ||
+                              entry.event_name}
                           </p>
                           {entry.cost_incurred_paise > 0 ? (
                             <p className="mt-0.5 text-[11px] font-medium text-failed">
-                              Cost INR {(entry.cost_incurred_paise / 100).toFixed(2)}
+                              Cost INR{' '}
+                              {(entry.cost_incurred_paise / 100).toFixed(2)}
                             </p>
                           ) : null}
                         </td>
@@ -505,19 +531,25 @@ export function AuditView({
                             <div className="rounded-control border border-border bg-surface p-3 text-xs text-ink">
                               <div className="mb-2 grid gap-2 sm:grid-cols-3">
                                 <div>
-                                  <span className="text-ink-muted">Customer</span>
+                                  <span className="text-ink-muted">
+                                    Customer
+                                  </span>
                                   <p className="font-medium">
                                     {formatCustomerName(entry.customer_id)}
                                   </p>
                                 </div>
                                 <div>
-                                  <span className="text-ink-muted">Audit ID</span>
-                                  <p className="break-all font-mono text-[11px]">
+                                  <span className="text-ink-muted">
+                                    Audit ID
+                                  </span>
+                                  <p className="font-mono text-[11px] break-all">
                                     {entry.entry_id}
                                   </p>
                                 </div>
                                 <div>
-                                  <span className="text-ink-muted">Transition</span>
+                                  <span className="text-ink-muted">
+                                    Transition
+                                  </span>
                                   <p className="font-medium">
                                     {stateTransition ?? 'N/A'}
                                   </p>
@@ -553,7 +585,8 @@ export function AuditView({
 
         <div className="flex items-center justify-between border-t border-border bg-surface-sunken/30 px-3 py-2">
           <p className="text-xs text-ink-muted">
-            Showing {paginatedEntries.length.toString()} of {total.toString()} records
+            Showing {paginatedEntries.length.toString()} of {total.toString()}{' '}
+            records
           </p>
           <div className="flex items-center gap-2">
             <Button

@@ -9,7 +9,7 @@ from uuid import uuid4
 import httpx2
 from pydantic import BaseModel, Field
 
-from app.core.config import get_settings
+from app.core.credential_resolver import resolve_gateway_credentials
 from app.core.logging import get_logger
 
 if TYPE_CHECKING:
@@ -45,13 +45,7 @@ class SmartCollectTool:
         close_by_hours: int = 48,
     ) -> SmartCollectAccountResult:
         """Create a per-case virtual account with receiver details and join notes."""
-        settings = get_settings()
-        key_id = settings.razorpay_key_id
-        key_secret = (
-            settings.razorpay_key_secret.get_secret_value()
-            if settings.razorpay_key_secret
-            else None
-        )
+        key_id, key_secret = resolve_gateway_credentials()
 
         close_by = datetime.now(UTC) + timedelta(hours=close_by_hours)
         close_by_epoch = int(close_by.timestamp())

@@ -4,6 +4,10 @@ from __future__ import annotations
 
 import asyncio
 import json
+
+# Must stay a runtime import: FastAPI resolves query-parameter annotations at
+# runtime, and a deferred name here breaks OpenAPI generation for the whole app.
+from datetime import datetime  # noqa: TC003
 from typing import TYPE_CHECKING, Annotated
 
 from fastapi import APIRouter, HTTPException, Query, status
@@ -17,7 +21,6 @@ from app.core.enums import AuditActor, ExperimentArm, RecoveryState
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
-    from datetime import datetime
 
 router = APIRouter(prefix="/cases", tags=["cases"])
 
@@ -276,3 +279,33 @@ async def approve_case(case_id: str, action: CaseActionRequest) -> RecoveryCase:
     )
     repo.save(case)
     return case
+
+
+class SearchSuggestion(BaseModel):
+    """A single search suggestion drawn from stored case data."""
+
+    value: str
+    field: str
+    kind: str
+    case_count: int
+
+
+MAX_SUGGESTIONS = 12
+
+
+@router.get(
+    "/search/suggestions",
+    response_model=list[SearchSuggestion],
+    summary="Suggest Case Search Terms",
+)
+async def suggest_case_search_terms(
+    q: Annotated[str, Query(min_length=1, max_length=120)],
+    limit: Annotated[int, Query(ge=1, le=MAX_SUGGESTIONS)] = 8,
+) -> list[SearchSuggestion]:
+    """Suggest identifiers and attributes matching a partial search term.
+
+    Values come from stored cases, so every suggestion is a term that will
+    actually return results.
+    """
+    rows = get_case_repository().suggest_search_terms(q, limit=limit)
+    return [SearchSuggestion.model_validate(row) for row in rows]

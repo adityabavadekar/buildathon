@@ -16,9 +16,7 @@ export function ApprovalsView({
   onSelectCase,
   onActionComplete,
 }: ApprovalsViewProps) {
-  const escalatedCount = cases.filter(
-    (c) => c.state === 'ESCALATED',
-  ).length
+  const escalatedCount = cases.filter((c) => c.state === 'ESCALATED').length
 
   return (
     <div className="space-y-4">

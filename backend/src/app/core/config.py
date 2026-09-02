@@ -12,7 +12,7 @@ from fastapi import Depends
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from app.core.constants import DEFAULT_AGENTIC_MODEL
+from app.core.constants import DEFAULT_AGENTIC_MODEL, DEFAULT_ANTHROPIC_MODEL
 
 
 class Settings(BaseSettings):
@@ -51,17 +51,31 @@ class Settings(BaseSettings):
         default=None, validation_alias="OPENROUTER_API_KEY"
     )
     openrouter_model: str = Field(
-        default="openrouter/nvidia/nemotron-3.5-lightning:free",
+        default="openrouter/meta-llama/llama-3.3-70b-instruct",
         validation_alias="OPENROUTER_MODEL",
     )
     anthropic_api_key: SecretStr | None = Field(
         default=None, validation_alias="ANTHROPIC_API_KEY"
+    )
+    anthropic_model: str = Field(
+        default=DEFAULT_ANTHROPIC_MODEL,
+        validation_alias="ANTHROPIC_MODEL",
     )
     openai_api_key: SecretStr | None = Field(
         default=None, validation_alias="OPENAI_API_KEY"
     )
     groq_api_key: SecretStr | None = Field(
         default=None, validation_alias="GROQ_API_KEY"
+    )
+    fleet_time_compression: int = Field(
+        default=1,
+        ge=1,
+        le=3600,
+        validation_alias="APP_FLEET_TIME_COMPRESSION",
+        description="Divides intervention delays for fleet-generated cases so a "
+        "demo run shows the queue draining. Production delays (a 4h bank "
+        "cutoff, a 48h salary cycle) are correct but leave nothing due for "
+        "hours, making the worker look stalled. 1 disables compression.",
     )
     agentic_model: str = Field(
         default=DEFAULT_AGENTIC_MODEL,

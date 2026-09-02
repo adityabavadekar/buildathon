@@ -390,7 +390,11 @@
 }
 
 .sidebar-nav-item--active .sidebar-nav-badge--alert {
-  border-color: color-mix(in oklch, var(--color-escalated) 35%, var(--color-border));
+  border-color: color-mix(
+    in oklch,
+    var(--color-escalated) 35%,
+    var(--color-border)
+  );
   background-color: var(--color-escalated-subtle);
   color: var(--color-escalated);
 }
@@ -411,8 +415,16 @@
 }
 
 .sidebar-nav-badge--alert {
-  border-color: color-mix(in oklch, var(--color-escalated) 40%, var(--color-sidebar-border));
-  background-color: color-mix(in oklch, var(--color-escalated) 18%, var(--color-sidebar-elevated));
+  border-color: color-mix(
+    in oklch,
+    var(--color-escalated) 40%,
+    var(--color-sidebar-border)
+  );
+  background-color: color-mix(
+    in oklch,
+    var(--color-escalated) 18%,
+    var(--color-sidebar-elevated)
+  );
   color: oklch(0.82 0.1 300);
 }
 
@@ -440,7 +452,9 @@
   color: var(--color-sidebar-ink-subtle);
 }
 
-.app-sidebar .sidebar-nav-item:hover:not(.sidebar-nav-item--active) .sidebar-nav-icon {
+.app-sidebar
+  .sidebar-nav-item:hover:not(.sidebar-nav-item--active)
+  .sidebar-nav-icon {
   color: var(--color-sidebar-ink);
 }
 
@@ -529,25 +543,41 @@
 }
 
 .audit-pill--ai {
-  border-color: color-mix(in oklch, var(--color-escalated) 25%, var(--color-border));
+  border-color: color-mix(
+    in oklch,
+    var(--color-escalated) 25%,
+    var(--color-border)
+  );
   background-color: var(--color-escalated-subtle);
   color: var(--color-escalated);
 }
 
 .audit-pill--action {
-  border-color: color-mix(in oklch, var(--color-accent) 25%, var(--color-border));
+  border-color: color-mix(
+    in oklch,
+    var(--color-accent) 25%,
+    var(--color-border)
+  );
   background-color: var(--color-accent-subtle);
   color: var(--color-accent);
 }
 
 .audit-pill--success {
-  border-color: color-mix(in oklch, var(--color-recovered) 25%, var(--color-border));
+  border-color: color-mix(
+    in oklch,
+    var(--color-recovered) 25%,
+    var(--color-border)
+  );
   background-color: var(--color-recovered-subtle);
   color: var(--color-recovered);
 }
 
 .audit-pill--danger {
-  border-color: color-mix(in oklch, var(--color-failed) 25%, var(--color-border));
+  border-color: color-mix(
+    in oklch,
+    var(--color-failed) 25%,
+    var(--color-border)
+  );
   background-color: var(--color-failed-subtle);
   color: var(--color-failed);
 }
@@ -588,7 +618,9 @@
   font-size: 0.875rem;
   font-weight: 500;
   color: var(--color-ink-muted);
-  transition: color 0.15s ease, border-color 0.15s ease;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease;
 }
 
 .drawer-tab--active {
@@ -656,8 +688,16 @@
 }
 
 .topbar-chip--success {
-  border-color: color-mix(in oklch, var(--color-recovered) 35%, var(--color-sidebar-border));
-  background-color: color-mix(in oklch, var(--color-recovered) 12%, var(--color-sidebar-elevated));
+  border-color: color-mix(
+    in oklch,
+    var(--color-recovered) 35%,
+    var(--color-sidebar-border)
+  );
+  background-color: color-mix(
+    in oklch,
+    var(--color-recovered) 12%,
+    var(--color-sidebar-elevated)
+  );
   color: oklch(0.84 0.08 158);
 }
 
@@ -684,7 +724,11 @@
 }
 
 .topbar-action:hover {
-  background-color: color-mix(in oklch, var(--color-sidebar-active-bg) 15%, var(--color-sidebar-elevated));
+  background-color: color-mix(
+    in oklch,
+    var(--color-sidebar-active-bg) 15%,
+    var(--color-sidebar-elevated)
+  );
   border-color: var(--color-sidebar-active-border);
   color: var(--color-sidebar-ink);
 }

@@ -126,6 +126,8 @@ class RecoveryPlanner:
         event: RawFailureEvent,
         *,
         model: str | None = None,
+        case_id: str | None = None,
+        use_llm: bool | None = None,
     ) -> tuple[DiagnosisResult, dict[str, Any]]:
         """Generate a recovery diagnosis and strategy plan using LLM or deterministic fallback."""
         providers = configured_providers()
@@ -144,9 +146,13 @@ class RecoveryPlanner:
 
         # If offline simulation mode or no keys, route according to agentic vs deterministic intent
         is_agentic_sim = (
-            bool(target_model)
-            or event.metadata.get("is_agentic", False)
-            or experiment_tag in ("agentic_recovery", "fleet_agentic")
+            use_llm
+            if use_llm is not None
+            else (
+                bool(target_model)
+                or event.metadata.get("is_agentic", False)
+                or experiment_tag in ("agentic_recovery", "fleet_agentic")
+            )
         )
 
         if (not providers and not target_model and not is_agentic_sim) or any(
@@ -180,6 +186,7 @@ class RecoveryPlanner:
                     used_fallback=True,
                     fallback_reason="Deterministic rule engine",
                     experiment_tag=experiment_tag,
+                    case_id=case_id,
                     config_snapshot=config_snapshot,
                 )
             )
@@ -229,6 +236,7 @@ class RecoveryPlanner:
                     used_fallback=False,
                     fallback_reason=None,
                     experiment_tag=experiment_tag,
+                    case_id=case_id,
                     config_snapshot=config_snapshot,
                 )
             )
@@ -326,7 +334,8 @@ class RecoveryPlanner:
 
         except Exception as exc:  # noqa: BLE001
             fallback_reason = sanitize_llm_error_message(exc)
-            error_trace = traceback.format_exc()
+            error_trace = f"{type(exc).__name__}: {fallback_reason}"
+            logger.debug("llm.planner.fallback_trace", trace=traceback.format_exc())
             logger.info(
                 "llm.planner.fallback_to_rules",
                 reason=type(exc).__name__,
@@ -378,6 +387,7 @@ class RecoveryPlanner:
                 fallback_reason=fallback_reason,
                 experiment_tag=experiment_tag,
                 config_snapshot=config_snapshot,
+                case_id=case_id,
             )
         )
         return fallback_res, meta

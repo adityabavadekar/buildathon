@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import Connection, Engine, create_engine, text
@@ -82,3 +83,21 @@ def check_db_health() -> bool:
     except Exception as exc:  # noqa: BLE001
         logger.error("db.health_check_failed", error=str(exc))
         return False
+
+
+def run_migrations() -> None:
+    """Bring the database schema up to head via Alembic.
+
+    Invoked from application start-up and the test fixtures so a fresh database
+    is usable without a separate manual migration step.
+    """
+    from alembic.config import Config  # noqa: PLC0415
+
+    from alembic import command  # noqa: PLC0415
+
+    # alembic.ini lives at the backend root, four parents up from this module.
+    ini_path = Path(__file__).resolve().parents[3] / "alembic.ini"
+    config = Config(str(ini_path))
+    config.set_main_option("script_location", str(ini_path.parent / "alembic"))
+    command.upgrade(config, "head")
+    logger.info("db.migrations_applied")

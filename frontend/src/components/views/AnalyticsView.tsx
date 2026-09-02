@@ -21,7 +21,9 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { GlossaryTerm } from '@/components/ui/GlossaryTerm'
-import { MetricBar } from '@/components/ui/MetricBar'
+import { ArmComparisonChart } from '@/components/charts/ArmComparisonChart'
+import { GaugeMeter } from '@/components/charts/GaugeMeter'
+import { MoneyFlowBar } from '@/components/charts/MoneyFlowBar'
 import { SkeletonCard } from '@/components/ui/skeleton'
 import { CategoryDistributionChart } from '@/components/charts/CategoryDistributionChart'
 import { CampaignAttributionChart } from '@/components/charts/CampaignAttributionChart'
@@ -117,11 +119,6 @@ export function AnalyticsView({ analytics, loading }: AnalyticsViewProps) {
   const unrecovered = Math.max(0, atRisk - recovered)
   const recoveredWidthPct =
     atRisk > 0 ? Math.min(100, (recovered / atRisk) * 100) : 0
-  const treatmentShare = Math.max(
-    analytics.treatment_recovery_rate_pct,
-    analytics.holdout_recovery_rate_pct,
-    1,
-  )
 
   return (
     <div className="space-y-6">
@@ -132,11 +129,15 @@ export function AnalyticsView({ analytics, loading }: AnalyticsViewProps) {
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <div className="metric-tile border-recovered/30 bg-recovered-subtle/20">
-          <p className="metric-tile-label text-recovered">Net recovered value</p>
+          <p className="metric-tile-label text-recovered">
+            Net recovered value
+          </p>
           <p className="metric-tile-value money text-recovered">
             {formatINR(nrv)}
           </p>
-          <p className="metric-tile-hint">After fees, outreach, and discounts.</p>
+          <p className="metric-tile-hint">
+            After fees, outreach, and discounts.
+          </p>
         </div>
         <div className="metric-tile border-accent/30 bg-accent-subtle/30">
           <p className="metric-tile-label text-accent">Attributable lift</p>
@@ -182,56 +183,27 @@ export function AnalyticsView({ analytics, loading }: AnalyticsViewProps) {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="metric-tile">
-              <p className="metric-tile-label">
-                <GlossaryTerm termKey="TREATMENT_ARM" showIcon={false}>
-                  Treatment cohort
-                </GlossaryTerm>
-              </p>
-              <p className="metric-tile-value">
-                {analytics.treatment_recovery_rate_pct.toFixed(1)}%
-              </p>
-              <p className="metric-tile-hint">
-                {analytics.treatment_total.toString()} contacted cases
-              </p>
-              <div className="mt-3 lift-compare-bar">
-                <div
-                  className="lift-compare-bar__treatment"
-                  style={{
-                    width: `${(
-                      (analytics.treatment_recovery_rate_pct / treatmentShare) *
-                      100
-                    ).toFixed(1)}%`,
-                  }}
-                />
-              </div>
-            </div>
-            <div className="metric-tile">
-              <p className="metric-tile-label">
-                <GlossaryTerm termKey="HOLDOUT_ARM" showIcon={false}>
-                  Holdout control
-                </GlossaryTerm>
-              </p>
-              <p className="metric-tile-value text-ink-muted">
-                {analytics.holdout_recovery_rate_pct.toFixed(1)}%
-              </p>
-              <p className="metric-tile-hint">
-                {analytics.holdout_total.toString()} uncontacted cases
-              </p>
-              <div className="mt-3 lift-compare-bar">
-                <div
-                  className="lift-compare-bar__holdout"
-                  style={{
-                    width: `${(
-                      (analytics.holdout_recovery_rate_pct / treatmentShare) *
-                      100
-                    ).toFixed(1)}%`,
-                  }}
-                />
-              </div>
-            </div>
-          </div>
+          <ArmComparisonChart
+            liftPct={analytics.attributable_lift_pct}
+            arms={[
+              {
+                key: 'treatment',
+                label: 'Treatment cohort',
+                ratePct: analytics.treatment_recovery_rate_pct,
+                caseCount: analytics.treatment_total,
+                color: 'var(--color-recovered)',
+                sublabel: 'Contacted by the recovery engine',
+              },
+              {
+                key: 'holdout',
+                label: 'Holdout control',
+                ratePct: analytics.holdout_recovery_rate_pct,
+                caseCount: analytics.holdout_total,
+                color: 'var(--color-ink-subtle)',
+                sublabel: 'Deliberately uncontacted counterfactual',
+              },
+            ]}
+          />
         </CardContent>
       </Card>
 
@@ -245,7 +217,8 @@ export function AnalyticsView({ analytics, loading }: AnalyticsViewProps) {
                 </GlossaryTerm>
               </CardTitle>
               <CardDescription className="mt-1">
-                Gross captured minus gateway fees, outreach costs, and discounts.
+                Gross captured minus gateway fees, outreach costs, and
+                discounts.
               </CardDescription>
             </div>
             <div className="rounded-panel border border-recovered/30 bg-recovered-subtle/30 px-4 py-2 text-right">
@@ -283,36 +256,57 @@ export function AnalyticsView({ analytics, loading }: AnalyticsViewProps) {
           </div>
 
           <div className="space-y-2">
-            <div className="flex justify-between text-sm">
-              <span className="text-ink-muted">Recovered share of at-risk revenue</span>
-              <span className="font-medium text-recovered">
-                {formatINR(recovered)} ({recoveredWidthPct.toFixed(1)}%)
-              </span>
-            </div>
-            <div className="lift-compare-bar h-3">
-              <div
-                className="lift-compare-bar__treatment"
-                style={{ width: `${recoveredWidthPct.toFixed(1)}%` }}
-              />
-            </div>
+            <p className="text-xs text-ink-muted">
+              Where the at-risk revenue went. Net yield is what remains after
+              the cost of recovering it.
+            </p>
+            <MoneyFlowBar
+              totalPaise={atRisk}
+              segments={[
+                {
+                  key: 'net',
+                  label: 'Net recovered',
+                  amountPaise: Math.max(0, nrv),
+                  color: 'var(--color-recovered)',
+                },
+                {
+                  key: 'fees',
+                  label: 'Gateway fees',
+                  amountPaise: analytics.total_gateway_fees_paise,
+                  color: 'var(--color-escalated)',
+                },
+                {
+                  key: 'outreach',
+                  label: 'Outreach cost',
+                  amountPaise: analytics.total_communication_cost_paise,
+                  color: 'var(--color-pending)',
+                },
+                {
+                  key: 'discounts',
+                  label: 'Discounts granted',
+                  amountPaise: analytics.total_discounts_granted_paise,
+                  color: 'var(--color-failed)',
+                },
+              ]}
+            />
           </div>
 
           <div className="grid grid-cols-1 gap-3 border-t border-border pt-3 sm:grid-cols-3">
             <div className="metric-tile">
               <p className="metric-tile-label">Gateway fees</p>
-              <p className="text-lg font-semibold money text-ink">
+              <p className="money text-lg font-semibold text-ink">
                 -{formatINR(analytics.total_gateway_fees_paise)}
               </p>
             </div>
             <div className="metric-tile">
               <p className="metric-tile-label">Outreach costs</p>
-              <p className="text-lg font-semibold money text-ink">
+              <p className="money text-lg font-semibold text-ink">
                 -{formatINR(analytics.total_communication_cost_paise)}
               </p>
             </div>
             <div className="metric-tile">
               <p className="metric-tile-label">Discounts granted</p>
-              <p className="text-lg font-semibold money text-ink">
+              <p className="money text-lg font-semibold text-ink">
                 -{formatINR(analytics.total_discounts_granted_paise)}
               </p>
             </div>
@@ -367,24 +361,28 @@ export function AnalyticsView({ analytics, loading }: AnalyticsViewProps) {
                 >
                   {recoveryModel.status}
                 </Badge>
-                <span className="text-sm text-ink">{recoveryModel.version}</span>
+                <span className="text-sm text-ink">
+                  {recoveryModel.version}
+                </span>
                 <span className="text-xs text-ink-muted">
                   {recoveryModel.trained_count.toString()} training cases
                 </span>
               </div>
 
-              <div className="space-y-3 rounded-panel border border-border p-4">
-                <MetricBar
+              <div className="grid gap-4 rounded-panel border border-border p-4 sm:grid-cols-3">
+                <GaugeMeter
                   label="Cross-validated accuracy"
                   value={metricValue(recoveryModel.cv_metrics, 'mean_accuracy')}
                   hint="How often recovery predictions matched outcomes in training."
                 />
-                <MetricBar
+                <GaugeMeter
                   label="Cross-validated AUC"
                   value={metricValue(recoveryModel.cv_metrics, 'mean_auc')}
                   hint="Separation between cases that recover and those that do not."
+                  warnBelow={0.7}
+                  criticalBelow={0.6}
                 />
-                <MetricBar
+                <GaugeMeter
                   label="Holdout accuracy"
                   value={metricValue(recoveryModel.holdout_metrics, 'accuracy')}
                   hint="Accuracy on cases the model never trained on."
@@ -397,7 +395,11 @@ export function AnalyticsView({ analytics, loading }: AnalyticsViewProps) {
             </p>
           )}
           <div className="flex flex-wrap items-center gap-3">
-            <Button variant="secondary" onClick={handleTrain} disabled={training}>
+            <Button
+              variant="secondary"
+              onClick={handleTrain}
+              disabled={training}
+            >
               <BrainCircuit className="h-4 w-4" />
               {training ? 'Training...' : 'Train model'}
             </Button>
@@ -434,7 +436,9 @@ export function AnalyticsView({ analytics, loading }: AnalyticsViewProps) {
               </div>
               <p className="mt-1 text-xs text-ink-muted">
                 {pattern.member_count.toString()} cases · mean{' '}
-                {formatINR(pattern.mean_amount_paise, { maximumFractionDigits: 2 })}
+                {formatINR(pattern.mean_amount_paise, {
+                  maximumFractionDigits: 2,
+                })}
               </p>
               <div className="mt-2 flex flex-wrap gap-2">
                 {pattern.example_case_ids.map((caseId) => (

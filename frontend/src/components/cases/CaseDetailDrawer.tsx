@@ -62,9 +62,8 @@ export function CaseDetailDrawer({
   onActionComplete,
 }: CaseDetailDrawerProps) {
   const [actionLoading, setActionLoading] = useState<boolean>(false)
-  const [activeTab, setActiveTab] = useState<
-    keyof typeof TAB_LABELS
-  >('overview')
+  const [activeTab, setActiveTab] =
+    useState<keyof typeof TAB_LABELS>('overview')
   const [policy, setPolicy] = useState<PolicyResponse | null>(null)
 
   useEffect(() => {
@@ -213,7 +212,10 @@ export function CaseDetailDrawer({
                   planEntry &&
                   typeof planEntry.decision_outputs.plan === 'object' &&
                   planEntry.decision_outputs.plan !== null
-                    ? (planEntry.decision_outputs.plan as Record<string, unknown>)
+                    ? (planEntry.decision_outputs.plan as Record<
+                        string,
+                        unknown
+                      >)
                     : null
                 const rationale =
                   (typeof planObj?.rationale === 'string'
@@ -232,13 +234,15 @@ export function CaseDetailDrawer({
                 const msgEn =
                   caseItem.dunning_message_en ||
                   (planEntry &&
-                  typeof planEntry.decision_outputs.dunning_message_en === 'string'
+                  typeof planEntry.decision_outputs.dunning_message_en ===
+                    'string'
                     ? planEntry.decision_outputs.dunning_message_en
                     : null)
                 const msgHi =
                   caseItem.dunning_message_hi ||
                   (planEntry &&
-                  typeof planEntry.decision_outputs.dunning_message_hi === 'string'
+                  typeof planEntry.decision_outputs.dunning_message_hi ===
+                    'string'
                     ? planEntry.decision_outputs.dunning_message_hi
                     : null)
 
@@ -255,7 +259,7 @@ export function CaseDetailDrawer({
                       </div>
                       <Badge
                         variant="default"
-                        className="border-accent/30 bg-accent/10 text-accent font-mono text-[10px]"
+                        className="border-accent/30 bg-accent/10 font-mono text-[10px] text-accent"
                       >
                         {strategy.replaceAll('_', ' ')}
                       </Badge>
@@ -263,45 +267,52 @@ export function CaseDetailDrawer({
 
                     {rationale ? (
                       <div className="rounded-control border border-border/80 bg-surface p-3 text-xs leading-relaxed text-ink shadow-2xs">
-                        <p className="font-semibold text-ink-muted text-[10px] uppercase tracking-wider mb-1 font-mono">
+                        <p className="mb-1 font-mono text-[10px] font-semibold tracking-wider text-ink-muted uppercase">
                           Diagnostic Rationale & Strategy
                         </p>
-                        <p className="text-ink font-medium">{rationale}</p>
+                        <p className="font-medium text-ink">{rationale}</p>
                       </div>
                     ) : null}
 
                     {/* Model Metadata Bar */}
                     <div className="flex flex-wrap items-center gap-2 font-mono text-[11px] text-ink-muted">
-                      <span className="inline-flex items-center gap-1 rounded-control bg-surface px-2 py-1 border border-border">
+                      <span className="inline-flex items-center gap-1 rounded-control border border-border bg-surface px-2 py-1">
                         <Sparkles className="h-3 w-3 text-accent" />
-                        <span>Model: {meta?.model || 'deterministic-rules-v1'}</span>
+                        <span>
+                          Model: {meta?.model || 'deterministic-rules-v1'}
+                        </span>
                       </span>
                       {typeof meta?.latency_ms === 'number' && (
-                        <span className="inline-flex items-center gap-1 rounded-control bg-surface px-2 py-1 border border-border">
+                        <span className="inline-flex items-center gap-1 rounded-control border border-border bg-surface px-2 py-1">
                           <span>Latency: {meta.latency_ms.toFixed(1)}ms</span>
                         </span>
                       )}
-                      {typeof meta?.cost_usd === 'number' && meta.cost_usd > 0 && (
-                        <span className="inline-flex items-center gap-1 rounded-control bg-surface px-2 py-1 border border-border">
-                          <span>Cost: ${meta.cost_usd.toFixed(5)}</span>
-                        </span>
-                      )}
-                      {typeof meta?.input_tokens === 'number' && meta.input_tokens > 0 && (
-                        <span className="inline-flex items-center gap-1 rounded-control bg-surface px-2 py-1 border border-border">
-                          <span>Tokens: {meta.input_tokens + (meta.output_tokens ?? 0)}</span>
-                        </span>
-                      )}
+                      {typeof meta?.cost_usd === 'number' &&
+                        meta.cost_usd > 0 && (
+                          <span className="inline-flex items-center gap-1 rounded-control border border-border bg-surface px-2 py-1">
+                            <span>Cost: ${meta.cost_usd.toFixed(5)}</span>
+                          </span>
+                        )}
+                      {typeof meta?.input_tokens === 'number' &&
+                        meta.input_tokens > 0 && (
+                          <span className="inline-flex items-center gap-1 rounded-control border border-border bg-surface px-2 py-1">
+                            <span>
+                              Tokens:{' '}
+                              {meta.input_tokens + (meta.output_tokens ?? 0)}
+                            </span>
+                          </span>
+                        )}
                     </div>
 
                     {/* Drafted Messages Preview if present */}
                     {(msgEn || msgHi) && (
                       <div className="mt-2 space-y-2 border-t border-border/40 pt-2">
-                        <p className="text-[10px] font-mono font-bold uppercase tracking-wider text-ink-subtle">
+                        <p className="font-mono text-[10px] font-bold tracking-wider text-ink-subtle uppercase">
                           Drafted Recovery Outreach
                         </p>
                         {msgEn && (
                           <div className="rounded-control border border-border bg-surface p-2.5 text-xs text-ink">
-                            <span className="block font-mono text-[9px] font-bold uppercase text-accent mb-0.5">
+                            <span className="mb-0.5 block font-mono text-[9px] font-bold text-accent uppercase">
                               English Draft
                             </span>
                             <span>{msgEn}</span>
@@ -309,7 +320,7 @@ export function CaseDetailDrawer({
                         )}
                         {msgHi && (
                           <div className="rounded-control border border-border bg-surface p-2.5 text-xs text-ink">
-                            <span className="block font-mono text-[9px] font-bold uppercase text-accent mb-0.5">
+                            <span className="mb-0.5 block font-mono text-[9px] font-bold text-accent uppercase">
                               Hinglish Draft
                             </span>
                             <span>{msgHi}</span>
@@ -372,7 +383,8 @@ export function CaseDetailDrawer({
                       </GlossaryTerm>
                     </p>
                     <p className="metric-tile-value">
-                      {caseItem.touches_count.toString()} of {maxTouches.toString()}
+                      {caseItem.touches_count.toString()} of{' '}
+                      {maxTouches.toString()}
                     </p>
                     <p className="metric-tile-hint">
                       Remaining attempts before escalation or stop.
@@ -410,21 +422,22 @@ export function CaseDetailDrawer({
                 {caseItem.dunning_message_en && (
                   <Badge
                     variant="default"
-                    className="border-accent/30 bg-accent/10 text-accent font-mono text-[10px]"
+                    className="border-accent/30 bg-accent/10 font-mono text-[10px] text-accent"
                   >
                     AI Personalized
                   </Badge>
                 )}
               </div>
               <p className="text-sm text-ink-muted">
-                Personalized message drafted for this customer grounded in failure details,
-                including single-use payment link and applied concessions.
+                Personalized message drafted for this customer grounded in
+                failure details, including single-use payment link and applied
+                concessions.
               </p>
               <WhatsAppPreview caseItem={caseItem} />
 
               {(caseItem.dunning_message_en || caseItem.dunning_message_hi) && (
                 <div className="space-y-3 rounded-panel border border-border bg-surface-sunken/40 p-4">
-                  <h4 className="font-mono text-xs font-bold uppercase tracking-wider text-ink">
+                  <h4 className="font-mono text-xs font-bold tracking-wider text-ink uppercase">
                     Drafted Outreach Copy
                   </h4>
                   {caseItem.dunning_message_en && (
@@ -530,22 +543,22 @@ export function CaseDetailDrawer({
                     {/* Agent Diagnostic Reasoning Callout */}
                     {rationale && (
                       <div className="mt-2 rounded-control border border-accent/30 bg-accent/5 p-2.5 text-xs text-ink">
-                        <div className="flex items-center gap-1.5 font-mono text-[10px] font-bold text-accent mb-1">
+                        <div className="mb-1 flex items-center gap-1.5 font-mono text-[10px] font-bold text-accent">
                           <Brain className="h-3 w-3" />
                           <span>Agent Strategy Rationale</span>
                         </div>
-                        <p className="text-ink font-medium">{rationale}</p>
+                        <p className="font-medium text-ink">{rationale}</p>
                       </div>
                     )}
 
                     {/* Decision Confidence Callout */}
                     {(decisionConfidence || decisionThreshold) && (
                       <div className="mt-2 flex flex-wrap items-center gap-2 rounded-control border border-border/80 bg-surface-sunken/60 p-2 font-mono text-[11px] text-ink-muted">
-                        <span className="font-bold text-ink-muted uppercase tracking-wider text-[10px]">
+                        <span className="text-[10px] font-bold tracking-wider text-ink-muted uppercase">
                           Model confidence
                         </span>
                         {decisionConfidence && (
-                          <span className="rounded bg-surface-sunken px-1.5 py-0.5 border border-border/80 text-ink">
+                          <span className="rounded border border-border/80 bg-surface-sunken px-1.5 py-0.5 text-ink">
                             {decisionConfidence}
                           </span>
                         )}
@@ -569,13 +582,13 @@ export function CaseDetailDrawer({
                           <span>Customer Outreach Message Drafted</span>
                         </div>
                         {msgEn && (
-                          <div className="rounded border border-border/70 bg-surface p-2 text-ink text-[11px]">
+                          <div className="rounded border border-border/70 bg-surface p-2 text-[11px] text-ink">
                             <span className="font-bold text-accent">EN: </span>
                             {msgEn}
                           </div>
                         )}
                         {msgHi && (
-                          <div className="rounded border border-border/70 bg-surface p-2 text-ink text-[11px]">
+                          <div className="rounded border border-border/70 bg-surface p-2 text-[11px] text-ink">
                             <span className="font-bold text-accent">HI: </span>
                             {msgHi}
                           </div>
@@ -585,23 +598,25 @@ export function CaseDetailDrawer({
 
                     {/* General Notes or Reason */}
                     {entry.notes && !rationale ? (
-                      <p className="mt-1.5 text-xs text-ink-muted">{entry.notes}</p>
+                      <p className="mt-1.5 text-xs text-ink-muted">
+                        {entry.notes}
+                      </p>
                     ) : null}
 
                     {/* Model Telemetry Chips */}
                     {entry.model_metadata && (
                       <div className="mt-2 flex flex-wrap gap-1.5 font-mono text-[10px] text-ink-muted">
-                        <span className="rounded bg-surface-sunken px-1.5 py-0.5 border border-border/80">
+                        <span className="rounded border border-border/80 bg-surface-sunken px-1.5 py-0.5">
                           {entry.model_metadata.model}
                         </span>
                         {entry.model_metadata.latency_ms !== undefined && (
-                          <span className="rounded bg-surface-sunken px-1.5 py-0.5 border border-border/80">
+                          <span className="rounded border border-border/80 bg-surface-sunken px-1.5 py-0.5">
                             {entry.model_metadata.latency_ms.toFixed(1)}ms
                           </span>
                         )}
                         {entry.model_metadata.cost_usd !== undefined &&
                           entry.model_metadata.cost_usd > 0 && (
-                            <span className="rounded bg-surface-sunken px-1.5 py-0.5 border border-border/80">
+                            <span className="rounded border border-border/80 bg-surface-sunken px-1.5 py-0.5">
                               ${entry.model_metadata.cost_usd.toFixed(5)}
                             </span>
                           )}
@@ -613,14 +628,14 @@ export function CaseDetailDrawer({
                         <p className="mb-1 text-[10px] font-bold text-failed uppercase">
                           LLM error trace
                         </p>
-                        <pre className="max-h-40 overflow-auto whitespace-pre-wrap rounded bg-surface-sunken p-2 font-mono text-[10px] leading-relaxed text-failed">
+                        <pre className="max-h-40 overflow-auto rounded bg-surface-sunken p-2 font-mono text-[10px] leading-relaxed whitespace-pre-wrap text-failed">
                           {entry.model_metadata.error_detail}
                         </pre>
                       </div>
                     ) : null}
 
                     {entry.cost_incurred_paise > 0 ? (
-                      <span className="mt-0.5 block text-xs font-medium text-failed font-mono">
+                      <span className="mt-0.5 block font-mono text-xs font-medium text-failed">
                         Cost incurred: -
                         {formatINR(entry.cost_incurred_paise, {
                           maximumFractionDigits: 2,
@@ -635,7 +650,9 @@ export function CaseDetailDrawer({
 
           {activeTab === 'actions' && (
             <section className="space-y-3 rounded-panel border border-border bg-surface-sunken/40 p-4">
-              <h3 className="text-sm font-semibold text-ink">Operator actions</h3>
+              <h3 className="text-sm font-semibold text-ink">
+                Operator actions
+              </h3>
               <p className="text-sm text-ink-muted">
                 Approve an escalated case or simulate a successful customer
                 payment through the webhook pipeline.

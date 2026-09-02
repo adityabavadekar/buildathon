@@ -182,3 +182,62 @@ async def test_orchestrator_high_value_routes_to_escalated() -> None:
     assert case.touches_count == 0
     events = [e.event_name for e in case.audit_trail]
     assert "intervention.escalated" in events
+
+
+@pytest.mark.anyio
+async def test_orchestrator_p2p_followup_reaches_legal_state() -> None:
+    """A P2P follow-up must not target a state unreachable from ANALYSIS_QUEUED.
+
+    Regression: the plan targeted P2P_PROMISED directly, which the state machine
+    rejects from ANALYSIS_QUEUED. The notification had already been sent by then,
+    so each worker retry re-messaged the same customer without ever advancing.
+    """
+    repo = _isolated_repo()
+    orchestrator = RecoveryOrchestrator(repository=repo)
+
+    event = RawFailureEvent(
+        event_id="evt_orch_p2p",
+        payment_id="pay_orch_p2p",
+        customer_id="cust_orch_p2p",
+        amount_paise=400000,
+        payment_rail=PaymentRail.UPI,
+        error_code="P2P_PROMISED",
+        error_reason="customer promised to pay after salary credit",
+        occurred_at=datetime.now(UTC),
+    )
+
+    case = await orchestrator.process_failure_event(
+        event, experiment_arm_override=ExperimentArm.TREATMENT
+    )
+
+    assert case.state != RecoveryState.ANALYSIS_QUEUED
+    assert case.outreach_count == 1
+    stored = repo.get_by_id(case.case_id)
+    assert stored is not None
+    assert stored.outreach_count == 1
+
+
+@pytest.mark.anyio
+async def test_discount_uses_integer_paise_arithmetic() -> None:
+    """Discount must be computed in integer paise, never via float division."""
+    repo = _isolated_repo()
+    orchestrator = RecoveryOrchestrator(repository=repo)
+
+    # 500 bps of 100003 paise is 5000.15; integer arithmetic must floor to 5000.
+    event = RawFailureEvent(
+        event_id="evt_orch_disc",
+        payment_id="pay_orch_disc",
+        customer_id="cust_orch_disc",
+        amount_paise=100003,
+        payment_rail=PaymentRail.UPI,
+        error_code="BAD_REQUEST_ERROR",
+        error_step="payment_authentication",
+        error_reason="otp_timeout",
+        occurred_at=datetime.now(UTC),
+    )
+
+    case = await orchestrator.process_failure_event(
+        event, experiment_arm_override=ExperimentArm.TREATMENT
+    )
+    assert case.discount_paise_granted == 5000
+    assert isinstance(case.discount_paise_granted, int)

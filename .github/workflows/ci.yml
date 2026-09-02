@@ -29,6 +29,25 @@ jobs:
     defaults:
       run:
         working-directory: backend
+    # The suite runs against a real PostgreSQL: the audit store is SQL-backed and
+    # the app applies its Alembic migrations at start-up, so there is no
+    # in-memory fallback to test against.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: fortx
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/fortx
     steps:
       - uses: actions/checkout@v5
 

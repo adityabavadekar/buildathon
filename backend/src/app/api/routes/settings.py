@@ -3,14 +3,22 @@
 from __future__ import annotations
 
 import time
-from typing import Any
+from typing import Annotated, Any
 
 import httpx2
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, File, HTTPException, Request, UploadFile
 from pydantic import BaseModel
 
+from app.audit.global_log import record_global_audit
 from app.audit.repository import get_case_repository
 from app.core.config import get_settings
+from app.core.credential_csv import CredentialCsvError, parse_credential_csv
+from app.core.credential_resolver import (
+    resolve_gateway_credentials,
+    resolve_webhook_secret,
+)
+from app.core.credentials import get_gateway_credential_store
+from app.core.enums import AuditActor
 from app.core.logging import get_logger
 from app.llm.client import configured_providers
 from app.llm.settings_store import (
@@ -295,22 +303,19 @@ async def get_llm_report() -> LLMReportResponse:
 async def test_gateway_connection(request: Request) -> GatewayTestResponse:
     """Probe Razorpay gateway API configuration, credentials, and webhook ingress readiness."""
     start = time.perf_counter()
-    settings = get_settings()
 
     base_url = str(request.base_url).rstrip("/")
     webhook_url = f"{base_url}/api/webhooks/razorpay"
 
-    has_key = bool(settings.razorpay_key_id and settings.razorpay_key_secret)
-    has_secret = bool(
-        settings.razorpay_webhook_secret
-        and settings.razorpay_webhook_secret.get_secret_value().strip()
-    )
+    active_key_id, active_key_secret = resolve_gateway_credentials()
+    has_key = bool(active_key_id and active_key_secret)
+    has_secret = bool(resolve_webhook_secret())
 
     min_key_mask_len = 12
     masked_key = (
-        f"{settings.razorpay_key_id[:8]}...{settings.razorpay_key_id[-4:]}"
-        if settings.razorpay_key_id and len(settings.razorpay_key_id) > min_key_mask_len
-        else (settings.razorpay_key_id or "Sandbox Mode (Mock Keys)")
+        f"{active_key_id[:8]}...{active_key_id[-4:]}"
+        if active_key_id and len(active_key_id) > min_key_mask_len
+        else (active_key_id or "Sandbox Mode (Mock Keys)")
     )
 
     elapsed_ms = round((time.perf_counter() - start) * 1000 + 12.4, 1)
@@ -340,3 +345,95 @@ async def test_gateway_connection(request: Request) -> GatewayTestResponse:
         ],
         message=msg,
     )
+
+
+class GatewayCredentialStatus(BaseModel):
+    """Non-sensitive view of the active gateway credentials."""
+
+    configured: bool
+    key_id_masked: str | None
+    webhook_secret_configured: bool
+    source: str
+    updated_at: str | None
+    updated_by: str | None
+
+
+def _credential_status() -> GatewayCredentialStatus:
+    stored = get_gateway_credential_store().load()
+    key_id, key_secret = resolve_gateway_credentials()
+    masked: str | None = None
+    if key_id:
+        min_mask_len = 12
+        masked = (
+            f"{key_id[:8]}...{key_id[-4:]}" if len(key_id) > min_mask_len else key_id
+        )
+    return GatewayCredentialStatus(
+        configured=bool(key_id and key_secret),
+        key_id_masked=masked,
+        webhook_secret_configured=bool(resolve_webhook_secret()),
+        source=stored.source if stored else "environment",
+        updated_at=stored.updated_at.isoformat() if stored else None,
+        updated_by=stored.updated_by if stored else None,
+    )
+
+
+@router.get(
+    "/gateway-credentials",
+    response_model=GatewayCredentialStatus,
+    summary="Get Active Gateway Credential Status",
+)
+async def get_gateway_credentials() -> GatewayCredentialStatus:
+    """Report which gateway credentials are active, without revealing secrets."""
+    return _credential_status()
+
+
+@router.post(
+    "/gateway-credentials/import",
+    response_model=GatewayCredentialStatus,
+    summary="Import Razorpay Credentials From Key CSV",
+)
+async def import_gateway_credentials(
+    file: Annotated[UploadFile, File(description="Razorpay key CSV export")],
+) -> GatewayCredentialStatus:
+    """Import the Razorpay key CSV as the active gateway credentials.
+
+    The secret is persisted but never returned, logged, or echoed in an error.
+    """
+    raw = await file.read()
+    try:
+        creds = parse_credential_csv(raw, updated_by="operator")
+    except CredentialCsvError as exc:
+        # The parser's messages are written to be safe to surface verbatim.
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    get_gateway_credential_store().save(creds)
+    record_global_audit(
+        event_name="settings.gateway_credentials_imported",
+        actor=AuditActor.HUMAN_OPERATOR,
+        reason="Operator imported Razorpay credentials from key CSV.",
+        notes=f"Active key set to {creds.masked_key_id()} from {file.filename or 'upload'}.",
+        decision_inputs={
+            "source": creds.source,
+            "key_id_masked": creds.masked_key_id(),
+            "webhook_secret_included": creds.webhook_secret is not None,
+        },
+    )
+    return _credential_status()
+
+
+@router.delete(
+    "/gateway-credentials",
+    response_model=GatewayCredentialStatus,
+    summary="Clear Imported Gateway Credentials",
+)
+async def clear_gateway_credentials() -> GatewayCredentialStatus:
+    """Drop imported credentials and fall back to the environment values."""
+    removed = get_gateway_credential_store().clear()
+    if removed:
+        record_global_audit(
+            event_name="settings.gateway_credentials_cleared",
+            actor=AuditActor.HUMAN_OPERATOR,
+            reason="Operator cleared imported Razorpay credentials.",
+            notes="Gateway credentials reverted to environment configuration.",
+        )
+    return _credential_status()

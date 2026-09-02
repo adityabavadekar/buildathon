@@ -18,19 +18,15 @@ logger = get_logger(__name__)
 
 DEFAULT_MODELS: dict[str, list[str]] = {
     "openrouter": [
-        "nvidia/nemotron-3.5-lightning:free",
-        "google/gemma-4-26b-a4b-it:free",
-        "liquid/lfm-2.5-2.6b:free",
-        "nvidia/nemotron-nano-9b-v2:free",
-        "nvidia/nemotron-3-super-120b-a12b:free",
-        "poolside/laguna-s-2.1:free",
-        "openai/gpt-4o",
-        "deepseek/deepseek-r1",
         "meta-llama/llama-3.3-70b-instruct",
+        "nvidia/nemotron-nano-9b-v2:free",
+        "deepseek/deepseek-r1",
+        "openai/gpt-4o",
     ],
     "anthropic": [
-        "anthropic/claude-3-5-sonnet-20241022",
-        "anthropic/claude-3-5-haiku-20241022",
+        "anthropic/claude-opus-5",
+        "anthropic/claude-sonnet-5",
+        "anthropic/claude-haiku-4-5",
     ],
     "openai": [
         "openai/gpt-4o",
@@ -39,11 +35,10 @@ DEFAULT_MODELS: dict[str, list[str]] = {
     ],
     "groq": [
         "meta-llama/llama-4-scout-17b-16e-instruct",
-        "meta-llama/llama-3.3-70b-instruct",
+        "openai/gpt-oss-120b",
+        "openai/gpt-oss-20b",
         "groq/compound",
         "groq/compound-mini",
-        "qwen/qwen3.6-27b",
-        "qwen/qwen3.8-27b",
     ],
     "deterministic_rules": [
         "NPCI & Razorpay Rule Classifier",
@@ -124,7 +119,7 @@ class LLMSettingsStore:
                     label="Anthropic Claude Direct API",
                     enabled=True,
                     priority=3,
-                    active_model="anthropic/claude-3-5-sonnet-20241022",
+                    active_model=f"anthropic/{settings.anthropic_model}",
                     available_models=anthropic_available,
                     has_api_key=has_anthropic,
                 ),

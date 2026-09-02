@@ -13,14 +13,13 @@ from app.llm.settings_store import DEFAULT_MODELS
 
 
 def test_groq_default_models_present() -> None:
-    """Verify exact six Groq models exist in settings store defaults."""
+    """Verify the served Groq models exist in settings store defaults."""
     expected_models = [
+        "meta-llama/llama-4-scout-17b-16e-instruct",
         "openai/gpt-oss-120b",
         "openai/gpt-oss-20b",
         "groq/compound",
         "groq/compound-mini",
-        "qwen/qwen3.6-27b",
-        "qwen/qwen3.8-27b",
     ]
     assert "groq" in DEFAULT_MODELS
     assert DEFAULT_MODELS["groq"] == expected_models
@@ -31,7 +30,7 @@ def test_groq_provider_resolution() -> None:
     assert _resolve_provider_name("groq/compound") == "groq"
     assert _resolve_provider_name("groq/groq/compound") == "groq"
     assert _resolve_provider_name("groq/openai/gpt-oss-120b") == "groq"
-    assert _resolve_provider_name("groq/qwen/qwen3.6-27b") == "groq"
+    assert _resolve_provider_name("groq/openai/gpt-oss-20b") == "groq"
 
 
 def test_groq_configured_providers(monkeypatch: pytest.MonkeyPatch) -> None:

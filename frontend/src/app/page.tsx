@@ -29,12 +29,41 @@ import { PoliciesView } from '@/components/views/PoliciesView'
 import { RecoveryView } from '@/components/views/RecoveryView'
 import { SettingsView } from '@/components/views/SettingsView'
 import { StatusView } from '@/components/views/StatusView'
-import { NAV_SECTION_LABELS } from '@/lib/navigation'
+import {
+  NAV_SECTION_LABELS,
+  hashForSection,
+  sectionFromHash,
+} from '@/lib/navigation'
 import { CaseDetailDrawer } from '@/components/cases/CaseDetailDrawer'
 import { CommandPalette } from '@/components/command/CommandPalette'
 
 export default function DashboardPage() {
   const [activeSection, setActiveSection] = useState<NavSection>('overview')
+
+  // The section lives in the URL hash so a screen can be linked to and survives
+  // a reload; navigate() is the single writer, popstate the single reader.
+  const navigate = useCallback((section: NavSection): void => {
+    setActiveSection(section)
+    if (window.location.hash !== hashForSection(section)) {
+      window.history.pushState(null, '', hashForSection(section))
+    }
+  }, [])
+
+  useEffect(() => {
+    const applyHash = (): void => {
+      const fromHash = sectionFromHash(window.location.hash)
+      if (fromHash) {
+        setActiveSection(fromHash)
+      }
+    }
+    applyHash()
+    window.addEventListener('popstate', applyHash)
+    window.addEventListener('hashchange', applyHash)
+    return () => {
+      window.removeEventListener('popstate', applyHash)
+      window.removeEventListener('hashchange', applyHash)
+    }
+  }, [])
   const [health, setHealth] = useState<HealthResponse | null>(null)
   const [healthLoading, setHealthLoading] = useState<boolean>(true)
   const [cases, setCases] = useState<RecoveryCase[]>([])
@@ -49,6 +78,7 @@ export default function DashboardPage() {
   )
   const [selectedCase, setSelectedCase] = useState<RecoveryCase | null>(null)
   const [commandOpen, setCommandOpen] = useState<boolean>(false)
+  const [paletteSearch, setPaletteSearch] = useState<string>('')
   const [lastRefreshedAt, setLastRefreshedAt] = useState<Date | null>(null)
 
   const [isOffline, setIsOffline] = useState<boolean>(false)
@@ -176,7 +206,7 @@ export default function DashboardPage() {
         <Sidebar
           activeSection={activeSection}
           onSelectSection={(section) => {
-            setActiveSection(section)
+            navigate(section)
           }}
           casesCount={cases.length}
           escalatedCount={escalatedCount}
@@ -208,10 +238,10 @@ export default function DashboardPage() {
                     setSelectedCase(c)
                   }}
                   onNavigateToRecovery={() => {
-                    setActiveSection('recovery')
+                    navigate('recovery')
                   }}
                   onNavigateToSection={(sec) => {
-                    setActiveSection(sec)
+                    navigate(sec)
                   }}
                   onRefresh={() => {
                     void fetchData()
@@ -227,6 +257,7 @@ export default function DashboardPage() {
                   onSelectCase={(c) => {
                     setSelectedCase(c)
                   }}
+                  initialSearch={paletteSearch}
                 />
               )}
 
@@ -243,10 +274,7 @@ export default function DashboardPage() {
               )}
 
               {activeSection === 'analytics' && (
-                <AnalyticsView
-                  analytics={analytics}
-                  loading={casesLoading}
-                />
+                <AnalyticsView analytics={analytics} loading={casesLoading} />
               )}
 
               {activeSection === 'agent' && (
@@ -335,7 +363,7 @@ export default function DashboardPage() {
           setCommandOpen(false)
         }}
         cases={cases}
-        onNavigate={setActiveSection}
+        onNavigate={navigate}
         onSelectCase={setSelectedCase}
         onSeed={() => {
           void fetchData()
@@ -343,6 +371,7 @@ export default function DashboardPage() {
         onReset={() => {
           void fetchData()
         }}
+        onSearchTerm={setPaletteSearch}
       />
     </div>
   )

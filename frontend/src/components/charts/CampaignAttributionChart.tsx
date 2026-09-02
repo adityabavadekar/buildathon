@@ -1,13 +1,7 @@
 'use client'
 
 import React, { useState } from 'react'
-import {
-  Code2,
-  Filter,
-  Layers,
-  Sparkles,
-  Tag,
-} from 'lucide-react'
+import { Code2, Filter, Layers, Sparkles, Tag } from 'lucide-react'
 import type { CampaignMetrics } from '@/lib/api'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -24,7 +18,11 @@ interface CampaignAttributionChartProps {
   campaigns?: CampaignMetrics[]
 }
 
-type SortKey = 'at_risk_paise' | 'recovered_paise' | 'recovery_rate_pct' | 'net_recovered_value_paise'
+type SortKey =
+  | 'at_risk_paise'
+  | 'recovered_paise'
+  | 'recovery_rate_pct'
+  | 'net_recovered_value_paise'
 
 export function CampaignAttributionChart({
   campaigns = [],
@@ -45,8 +43,14 @@ export function CampaignAttributionChart({
   })
 
   const totalAtRisk = campaigns.reduce((acc, c) => acc + c.at_risk_paise, 0)
-  const totalRecovered = campaigns.reduce((acc, c) => acc + c.recovered_paise, 0)
-  const totalNRV = campaigns.reduce((acc, c) => acc + c.net_recovered_value_paise, 0)
+  const totalRecovered = campaigns.reduce(
+    (acc, c) => acc + c.recovered_paise,
+    0,
+  )
+  const totalNRV = campaigns.reduce(
+    (acc, c) => acc + c.net_recovered_value_paise,
+    0,
+  )
 
   const handleSort = (key: SortKey) => {
     if (sortBy === key) {
@@ -99,13 +103,18 @@ export function CampaignAttributionChart({
               <Sparkles className="h-4 w-4" />
               <span>Razorpay Metadata (notes) Attribution Specification</span>
             </div>
-            <p className="mt-1 text-ink-muted leading-relaxed">
-              Razorpay does not have a native campaign entity. FORTX extracts custom cohort tags
-              directly from the <code className="font-mono text-ink">notes</code> dictionary in Orders, Payments, and Subscriptions payloads (max 15 keys, 256 chars each).
+            <p className="mt-1 leading-relaxed text-ink-muted">
+              Razorpay does not have a native campaign entity. FORTX extracts
+              custom cohort tags directly from the{' '}
+              <code className="font-mono text-ink">notes</code> dictionary in
+              Orders, Payments, and Subscriptions payloads (max 15 keys, 256
+              chars each).
             </p>
 
             <div className="mt-3 rounded border border-border bg-surface-sunken p-3 font-mono text-xs">
-              <p className="text-ink-muted">// Example: Razorpay Order creation payload</p>
+              <p className="text-ink-muted">
+                // Example: Razorpay Order creation payload
+              </p>
               <p className="text-ink">
                 {`client.order.create({
   "amount": 149900,
@@ -131,22 +140,28 @@ export function CampaignAttributionChart({
           </div>
           <div className="rounded-control border border-border bg-surface-sunken p-3">
             <p className="text-xs text-ink-muted">Total at risk</p>
-            <p className="text-lg font-bold money text-ink">{formatINR(totalAtRisk)}</p>
+            <p className="money text-lg font-bold text-ink">
+              {formatINR(totalAtRisk)}
+            </p>
           </div>
           <div className="rounded-control border border-recovered/30 bg-recovered-subtle/20 p-3">
             <p className="text-xs text-recovered">Total captured</p>
-            <p className="text-lg font-bold money text-recovered">{formatINR(totalRecovered)}</p>
+            <p className="money text-lg font-bold text-recovered">
+              {formatINR(totalRecovered)}
+            </p>
           </div>
           <div className="rounded-control border border-accent/30 bg-accent-subtle/20 p-3">
             <p className="text-xs text-accent">Net recovered yield</p>
-            <p className="text-lg font-bold money text-accent">{formatINR(totalNRV)}</p>
+            <p className="money text-lg font-bold text-accent">
+              {formatINR(totalNRV)}
+            </p>
           </div>
         </div>
 
         {/* Filter & Sort Controls */}
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between border-t border-border/40 pt-3">
-          <div className="relative flex-1 max-w-xs">
-            <Filter className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-ink-muted" />
+        <div className="flex flex-col gap-2 border-t border-border/40 pt-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="relative max-w-xs flex-1">
+            <Filter className="absolute top-2.5 left-2.5 h-3.5 w-3.5 text-ink-muted" />
             <input
               type="text"
               placeholder="Filter campaign ID..."
@@ -154,7 +169,7 @@ export function CampaignAttributionChart({
               onChange={(e) => {
                 setFilterQuery(e.target.value)
               }}
-              className="h-8 w-full rounded-control border border-border bg-surface-sunken pl-8 pr-3 text-xs text-ink placeholder:text-ink-muted focus:border-accent focus:outline-none"
+              className="h-8 w-full rounded-control border border-border bg-surface-sunken pr-3 pl-8 text-xs text-ink placeholder:text-ink-muted focus:border-accent focus:outline-none"
             />
           </div>
 
@@ -167,7 +182,7 @@ export function CampaignAttributionChart({
               }}
               className={`rounded px-2 py-1 transition-colors ${
                 sortBy === 'at_risk_paise'
-                  ? 'bg-surface text-ink font-medium border border-border'
+                  ? 'border border-border bg-surface font-medium text-ink'
                   : 'hover:text-ink'
               }`}
             >
@@ -180,7 +195,7 @@ export function CampaignAttributionChart({
               }}
               className={`rounded px-2 py-1 transition-colors ${
                 sortBy === 'recovered_paise'
-                  ? 'bg-surface text-ink font-medium border border-border'
+                  ? 'border border-border bg-surface font-medium text-ink'
                   : 'hover:text-ink'
               }`}
             >
@@ -193,7 +208,7 @@ export function CampaignAttributionChart({
               }}
               className={`rounded px-2 py-1 transition-colors ${
                 sortBy === 'recovery_rate_pct'
-                  ? 'bg-surface text-ink font-medium border border-border'
+                  ? 'border border-border bg-surface font-medium text-ink'
                   : 'hover:text-ink'
               }`}
             >
@@ -206,11 +221,12 @@ export function CampaignAttributionChart({
               }}
               className={`rounded px-2 py-1 transition-colors ${
                 sortBy === 'net_recovered_value_paise'
-                  ? 'bg-surface text-ink font-medium border border-border'
+                  ? 'border border-border bg-surface font-medium text-ink'
                   : 'hover:text-ink'
               }`}
             >
-              NRV {sortBy === 'net_recovered_value_paise' && (sortAsc ? '^' : 'v')}
+              NRV{' '}
+              {sortBy === 'net_recovered_value_paise' && (sortAsc ? '^' : 'v')}
             </button>
           </div>
         </div>
@@ -224,7 +240,8 @@ export function CampaignAttributionChart({
           <div className="space-y-2.5">
             {sortedCampaigns.map((c) => {
               const recoveryPct = c.recovery_rate_pct
-              const recoveredWidth = (c.recovered_paise / Math.max(1, c.at_risk_paise)) * 100
+              const recoveredWidth =
+                (c.recovered_paise / Math.max(1, c.at_risk_paise)) * 100
 
               return (
                 <div
@@ -233,8 +250,8 @@ export function CampaignAttributionChart({
                 >
                   <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex items-center gap-2">
-                      <Layers className="h-3.5 w-3.5 text-accent shrink-0" />
-                      <span className="font-semibold text-ink font-mono">
+                      <Layers className="h-3.5 w-3.5 shrink-0 text-accent" />
+                      <span className="font-mono font-semibold text-ink">
                         {c.campaign_id}
                       </span>
                       <Badge variant="outline" className="text-[10px]">
@@ -250,19 +267,19 @@ export function CampaignAttributionChart({
                     <div className="flex items-center gap-4 text-right">
                       <div>
                         <span className="text-ink-muted">At risk: </span>
-                        <span className="font-semibold money text-ink">
+                        <span className="money font-semibold text-ink">
                           {formatINR(c.at_risk_paise)}
                         </span>
                       </div>
                       <div>
                         <span className="text-ink-muted">Recovered: </span>
-                        <span className="font-semibold money text-recovered">
+                        <span className="money font-semibold text-recovered">
                           {formatINR(c.recovered_paise)}
                         </span>
                       </div>
                       <div>
                         <span className="text-ink-muted">NRV: </span>
-                        <span className="font-bold money text-accent">
+                        <span className="money font-bold text-accent">
                           {formatINR(c.net_recovered_value_paise)}
                         </span>
                       </div>
@@ -277,14 +294,18 @@ export function CampaignAttributionChart({
 
                   {/* Proportional Volume & Recovery Bar */}
                   <div className="space-y-1">
-                    <div className="h-2 w-full overflow-hidden rounded bg-surface border border-border/50">
+                    <div className="h-2 w-full overflow-hidden rounded border border-border/50 bg-surface">
                       <div
                         className="h-full bg-recovered transition-all duration-300"
-                        style={{ width: `${Math.min(100, recoveredWidth).toFixed(1)}%` }}
+                        style={{
+                          width: `${Math.min(100, recoveredWidth).toFixed(1)}%`,
+                        }}
                       />
                     </div>
                     <div className="flex justify-between text-[11px] text-ink-muted">
-                      <span>{c.recovered_cases} recovered / {c.total_cases} failures</span>
+                      <span>
+                        {c.recovered_cases} recovered / {c.total_cases} failures
+                      </span>
                       <span>Mean ticket: {formatINR(c.avg_amount_paise)}</span>
                     </div>
                   </div>

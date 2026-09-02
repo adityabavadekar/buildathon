@@ -28,6 +28,7 @@ Run from the repository root. All are in the `Makefile`.
 | All lint + typecheck | `make lint` |
 | Auto-format | `make format` |
 | Everything CI runs | `make check` |
+| Benchmark + write report | `make benchmark` |
 
 Per-service, if you need finer control:
 

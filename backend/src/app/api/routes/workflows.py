@@ -71,8 +71,14 @@ def update_workflow_template(
 ) -> WorkflowTemplateDefinition:
     if template_id != definition.template_id:
         raise HTTPException(status_code=400, detail="Template ID does not match path")
-    if not get_workflow_repository().get_template_definition(template_id):
+    existing = get_workflow_repository().get_template_definition(template_id)
+    if not existing:
         raise HTTPException(status_code=404, detail="Workflow template not found")
+    if existing.is_builtin:
+        raise HTTPException(
+            status_code=409,
+            detail="Built-in templates cannot be edited. Duplicate it to customise.",
+        )
     return get_workflow_repository().save_template_definition(definition)
 
 

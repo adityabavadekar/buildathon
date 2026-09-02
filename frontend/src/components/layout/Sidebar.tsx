@@ -6,6 +6,7 @@ import {
   MAIN_NAV_ITEMS,
   OPERATIONS_NAV_ITEMS,
   SETTINGS_NAV_ITEMS,
+  hashForSection,
   type NavSection,
 } from '@/lib/navigation'
 
@@ -47,18 +48,27 @@ export function Sidebar({
       escalatedCount > 0
 
     return (
-      <button
+      <a
         key={item.id}
-        type="button"
-        onClick={() => {
+        href={hashForSection(item.id)}
+        aria-current={isActive ? 'page' : undefined}
+        onClick={(event) => {
+          // Let modified clicks (new tab/window) fall through to the browser.
+          if (
+            event.metaKey ||
+            event.ctrlKey ||
+            event.shiftKey ||
+            event.button !== 0
+          ) {
+            return
+          }
+          event.preventDefault()
           onSelectSection(item.id)
         }}
         className={`sidebar-nav-item ${isActive ? 'sidebar-nav-item--active' : ''} ${nested ? 'sidebar-nav-item--nested' : ''}`}
       >
         <div className="flex min-w-0 items-center gap-3">
-          <Icon
-            className="sidebar-nav-icon h-[1.125rem] w-[1.125rem] shrink-0"
-          />
+          <Icon className="sidebar-nav-icon h-[1.125rem] w-[1.125rem] shrink-0" />
           <span className="truncate">{item.label}</span>
         </div>
         {badge !== undefined ? (
@@ -68,7 +78,7 @@ export function Sidebar({
             {badge.toString()}
           </span>
         ) : null}
-      </button>
+      </a>
     )
   }
 

@@ -33,6 +33,12 @@ MIN_CONFIDENCE_THRESHOLD: Decimal = Decimal(
 # its own literal.
 DEFAULT_AGENTIC_MODEL: str = "meta-llama/llama-4-scout-17b-16e-instruct"
 
+DEFAULT_ANTHROPIC_MODEL: str = "claude-opus-5"
+
+# Synthetic case id for audit rows describing system-wide actions rather than a
+# single recovery case. Deliberately not a foreign key into cases.
+GLOBAL_AUDIT_CASE_ID: str = "SYSTEM_GLOBAL"
+
 # Time Windows (Hours / Minutes)
 TRANSIENT_BANK_WINDOW_DELAY_HOURS: int = 4
 SALARY_CYCLE_RETRY_SPACING_HOURS: int = 48

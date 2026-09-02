@@ -1,7 +1,13 @@
 'use client'
 
 import React, { useState } from 'react'
-import { CheckCheck, ExternalLink, ShieldCheck, Volume2, VolumeX } from 'lucide-react'
+import {
+  CheckCheck,
+  ExternalLink,
+  ShieldCheck,
+  Volume2,
+  VolumeX,
+} from 'lucide-react'
 import type { RecoveryCase } from '@/lib/api'
 import { formatCustomerName } from '@/lib/format'
 import { RazorpaySymbol, WhatsAppIcon } from '@/components/ui/BrandIcons'
@@ -46,12 +52,18 @@ export function WhatsAppPreview({ caseItem }: WhatsAppPreviewProps) {
 
   // Discover drafting model or engine from audit trail
   const draftEntry = caseItem.audit_trail.find(
-    (a) => a.event_name === 'agent.message_drafted' || a.event_name === 'agent.plan_formulated'
+    (a) =>
+      a.event_name === 'agent.message_drafted' ||
+      a.event_name === 'agent.plan_formulated',
   )
-  const modelUsed = draftEntry?.model_metadata?.model || 'deterministic-rules-v1'
-  const isAgentDrafted = !draftEntry?.model_metadata?.used_fallback && modelUsed !== 'deterministic-rules-v1'
+  const modelUsed =
+    draftEntry?.model_metadata?.model || 'deterministic-rules-v1'
+  const isAgentDrafted =
+    !draftEntry?.model_metadata?.used_fallback &&
+    modelUsed !== 'deterministic-rules-v1'
 
-  const messageText = lang === 'en' ? (draftedEn || defaultMsgEn) : (draftedHi || defaultMsgHi)
+  const messageText =
+    lang === 'en' ? draftedEn || defaultMsgEn : draftedHi || defaultMsgHi
   const [isPlayingAudio, setIsPlayingAudio] = useState(false)
 
   const handleToggleVoice = () => {
@@ -103,10 +115,14 @@ export function WhatsAppPreview({ caseItem }: WhatsAppPreviewProps) {
           <button
             type="button"
             onClick={handleToggleVoice}
-            title={isPlayingAudio ? 'Stop voice call' : 'Simulate voice recovery call'}
+            title={
+              isPlayingAudio
+                ? 'Stop voice call'
+                : 'Simulate voice recovery call'
+            }
             className={`flex items-center gap-1 rounded-control px-2 py-1 font-mono text-[10px] transition-colors ${
               isPlayingAudio
-                ? 'bg-red-500 text-white animate-pulse'
+                ? 'animate-pulse bg-red-500 text-white'
                 : 'bg-black/20 text-white hover:bg-black/30'
             }`}
           >
@@ -127,7 +143,8 @@ export function WhatsAppPreview({ caseItem }: WhatsAppPreviewProps) {
             <button
               type="button"
               onClick={() => {
-                if (isPlayingAudio && typeof window !== 'undefined') window.speechSynthesis.cancel()
+                if (isPlayingAudio && typeof window !== 'undefined')
+                  window.speechSynthesis.cancel()
                 setIsPlayingAudio(false)
                 setLang('en')
               }}
@@ -142,7 +159,8 @@ export function WhatsAppPreview({ caseItem }: WhatsAppPreviewProps) {
             <button
               type="button"
               onClick={() => {
-                if (isPlayingAudio && typeof window !== 'undefined') window.speechSynthesis.cancel()
+                if (isPlayingAudio && typeof window !== 'undefined')
+                  window.speechSynthesis.cancel()
                 setIsPlayingAudio(false)
                 setLang('hi')
               }}
@@ -159,12 +177,16 @@ export function WhatsAppPreview({ caseItem }: WhatsAppPreviewProps) {
       </div>
 
       {/* Model & Drafting Origin Bar */}
-      <div className="flex items-center justify-between border-b border-black/5 bg-[#054C44] px-3.5 py-1 text-[10px] font-mono text-white/90">
+      <div className="flex items-center justify-between border-b border-black/5 bg-[#054C44] px-3.5 py-1 font-mono text-[10px] text-white/90">
         <span className="flex items-center gap-1">
-          <span className={`h-1.5 w-1.5 rounded-full ${isAgentDrafted ? 'bg-[#25D366] animate-pulse' : 'bg-white/60'}`} />
-          {isAgentDrafted ? 'AI Personalized Outreach' : 'Deterministic Rules Template'}
+          <span
+            className={`h-1.5 w-1.5 rounded-full ${isAgentDrafted ? 'animate-pulse bg-[#25D366]' : 'bg-white/60'}`}
+          />
+          {isAgentDrafted
+            ? 'AI Personalized Outreach'
+            : 'Deterministic Rules Template'}
         </span>
-        <span className="truncate max-w-[180px] text-white/70">
+        <span className="max-w-[180px] truncate text-white/70">
           {modelUsed}
         </span>
       </div>

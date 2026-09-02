@@ -52,7 +52,9 @@ def test_classifier_drafts_multilingual_messages() -> None:
     classifier = FailureClassifier()
 
     # 1. Checkout drop off
-    event1 = make_test_event(reason="otp_timeout", amount_paise=250000)
+    event1 = make_test_event(
+        code="BAD_REQUEST_ERROR", reason="otp_timeout", amount_paise=250000
+    )
     res1 = classifier.classify(event1)
     assert res1.category == FailureCategory.CHECKOUT_DROP_OFF
     assert res1.dunning_message_en is not None

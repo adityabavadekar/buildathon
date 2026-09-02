@@ -394,7 +394,7 @@ export function AgentView({
                           <p className="text-[10px] font-bold text-failed uppercase">
                             Exact error trace
                           </p>
-                          <pre className="max-h-40 overflow-auto whitespace-pre-wrap rounded bg-surface-sunken p-2 text-[10px] leading-relaxed text-failed">
+                          <pre className="max-h-40 overflow-auto rounded bg-surface-sunken p-2 text-[10px] leading-relaxed whitespace-pre-wrap text-failed">
                             {entry.error_detail}
                           </pre>
                         </div>
@@ -413,7 +413,7 @@ export function AgentView({
                       <span className="mb-1 block text-[10px] font-semibold tracking-wider text-accent uppercase">
                         LLM Response
                       </span>
-                      <pre className="max-h-40 overflow-auto whitespace-pre-wrap rounded bg-surface-sunken p-2 text-[10px] leading-relaxed text-ink">
+                      <pre className="max-h-40 overflow-auto rounded bg-surface-sunken p-2 text-[10px] leading-relaxed whitespace-pre-wrap text-ink">
                         {entry.response_content}
                       </pre>
                     </div>

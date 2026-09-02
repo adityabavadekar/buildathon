@@ -10,7 +10,7 @@ from typing import Any
 from app.audit.models import ScheduledJob
 from app.audit.repository import get_case_repository
 from app.core.config import get_settings
-from app.core.enums import ExperimentArm, PaymentRail
+from app.core.enums import ExperimentArm, JobStatus, PaymentRail
 from app.core.logging import get_logger
 from app.detection.models import RawFailureEvent
 from app.intervention.orchestrator import get_recovery_orchestrator
@@ -186,12 +186,14 @@ class FleetSimulator:
             use_llm=is_agentic,
         )
 
-        # Record observable job record with status DONE
+        # The diagnosis already ran inline above, so this row is the audit record
+        # of that work rather than pending work: it is terminal on creation and
+        # must not be claimable, or the worker would re-diagnose every event.
         job = ScheduledJob(
             case_id=case.case_id,
             job_type="INGESTION_DIAGNOSIS",
             due_at=now,
-            status="DONE",
+            status=JobStatus.DONE.value,
             idempotency_key=f"ingest_{payment_id}",
             payload={
                 "event_id": event_id,

@@ -23,19 +23,47 @@ class FailureClassifier:
     # Set of NPCI codes indicating transient window
     TRANSIENT_NPCI_CODES: ClassVar[set[str]] = {"XT", "XU", "XY"}
     # Error codes indicating transient bank / PSP timeout (not NPCI codes)
-    TRANSIENT_ERROR_CODES: ClassVar[set[str]] = {"U30", "U31", "U32", "GATEWAY_TIMEOUT"}
+    TRANSIENT_ERROR_CODES: ClassVar[set[str]] = {
+        "U30",
+        "U31",
+        "U32",
+        "GATEWAY_TIMEOUT",
+        "NB_SESSION_EXPIRED",
+    }
     # NPCI codes indicating balance or liquidity
-    LIQUIDITY_NPCI_CODES: ClassVar[set[str]] = {"AP15", "AP21", "U19", "U68", "ZM"}
+    LIQUIDITY_NPCI_CODES: ClassVar[set[str]] = {
+        "AP15",
+        "AP21",
+        "U19",
+        "U68",
+        "ZM",
+        "CARD_LIMIT_EXCEEDED",
+        "ENACH_INSUFFICIENT_FUNDS",
+    }
     # NPCI codes indicating structural mandate breakdown
     MANDATE_FAIL_NPCI_CODES: ClassVar[set[str]] = {
         "AP09",
         "AP10",
+        "AP12",
         "AP24",
         "VA",
         "FL",
         "K1",
         "MD01",
         "MD02",
+        "CARD_EXPIRED",
+    }
+    # Fleet-wide rail outage rather than a single customer's failure.
+    SYSTEMIC_ERROR_CODES: ClassVar[set[str]] = {
+        "GATEWAY_ERROR",
+        "SERVER_ERROR",
+        "INTERNAL_SERVER_ERROR",
+        "NB_BANK_UNAVAILABLE",
+        "UPI_PSP_DOWN",
+    }
+    CHECKOUT_ABANDON_ERROR_CODES: ClassVar[set[str]] = {
+        "OTP_TIMEOUT",
+        "UPI_COLLECT_DECLINED",
     }
 
     def classify(self, event: RawFailureEvent) -> DiagnosisResult:  # noqa: PLR0911
@@ -144,6 +172,7 @@ class FailureClassifier:
         # 4. Structural Mandate Failure
         if (
             npci in self.MANDATE_FAIL_NPCI_CODES
+            or code in self.MANDATE_FAIL_NPCI_CODES
             or "mandate_revoked" in reason
             or "mandate_inactive" in reason
             or "funds_blocked_by_mandate" in reason
@@ -173,6 +202,7 @@ class FailureClassifier:
         # 5. Liquidity Constraint / Insufficient Funds
         if (
             npci in self.LIQUIDITY_NPCI_CODES
+            or code in self.LIQUIDITY_NPCI_CODES
             or "insufficient_funds" in reason
             or "debit_declined" in reason
             or "credit_limit_exceeded" in reason
@@ -200,7 +230,8 @@ class FailureClassifier:
 
         # 6. Checkout Drop-off / Authentication Failure
         if (
-            "otp_timeout" in reason
+            code in self.CHECKOUT_ABANDON_ERROR_CODES
+            or "otp_timeout" in reason
             or "authentication_failed" in reason
             or "payment_cancelled" in reason
             or "timed_out" in reason
@@ -228,10 +259,7 @@ class FailureClassifier:
             )
 
         # 7. Systemic Gateway 5XX Error
-        if (
-            code in {"GATEWAY_ERROR", "SERVER_ERROR", "INTERNAL_SERVER_ERROR"}
-            or source == "gateway"
-        ):
+        if code in self.SYSTEMIC_ERROR_CODES or source == "gateway":
             msg_en = f"Hi, your payment of INR {amt_inr} experienced a technical gateway issue. We are automatically retrying."
             msg_hi = f"Namaste, gateway error ke karan INR {amt_inr} ka payment ruk gaya tha. Hum auto-retry kar rahe hain."
             signals["dunning_message_en"] = msg_en

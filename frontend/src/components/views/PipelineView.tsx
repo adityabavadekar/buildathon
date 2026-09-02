@@ -342,8 +342,8 @@ export function PipelineView() {
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         <StatCard
           title="Queued Inbox"
-          value={(overview?.counts.QUEUED_DUE_NOW ?? 0).toString()}
-          subtitle={`Due now (${(overview?.counts.QUEUED_FUTURE ?? 0).toString()} future-scheduled)`}
+          value={(overview?.counts.QUEUED ?? 0).toString()}
+          subtitle={`${(overview?.counts.QUEUED_DUE_NOW ?? 0).toString()} due now, ${(overview?.counts.QUEUED_FUTURE ?? 0).toString()} scheduled later`}
           icon={<Layers className="h-4 w-4 text-accent" />}
           variant="default"
         />

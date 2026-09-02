@@ -9,6 +9,9 @@ import {
   type SystemStatusResponse,
 } from '@/lib/api'
 import { Badge } from '@/components/ui/badge'
+import { CopyButton } from '@/components/ui/CopyButton'
+import { CredentialImportPanel } from '@/components/settings/CredentialImportPanel'
+import { WEBHOOK_INGRESS_PATH } from '@/lib/constants'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -86,10 +89,7 @@ export function IntegrationsView({
                       'Name unavailable in test mode'}
                   </span>
                   {settings?.razorpay_account_type && (
-                    <Badge
-                      variant="outline"
-                      className="text-[10px] uppercase"
-                    >
+                    <Badge variant="outline" className="text-[10px] uppercase">
                       {settings.razorpay_account_type}
                     </Badge>
                   )}
@@ -165,20 +165,29 @@ export function IntegrationsView({
                 </span>
                 <div className="flex items-center justify-between gap-2">
                   <span className="truncate text-ink select-all">
-                    {settings?.webhook_ingress_url || '/api/webhooks/razorpay'}
+                    {settings?.webhook_ingress_url || WEBHOOK_INGRESS_PATH}
                   </span>
-                  <Badge
-                    variant={
-                      settings?.webhook_secret_configured
-                        ? 'recovered'
-                        : 'outline'
-                    }
-                    className="text-[10px]"
-                  >
-                    {settings?.webhook_secret_configured
-                      ? 'HMAC Verification Active'
-                      : 'Unsigned (Simulated)'}
-                  </Badge>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <CopyButton
+                      value={
+                        settings?.webhook_ingress_url ?? WEBHOOK_INGRESS_PATH
+                      }
+                      subject="webhook endpoint"
+                      variant="outline"
+                    />
+                    <Badge
+                      variant={
+                        settings?.webhook_secret_configured
+                          ? 'recovered'
+                          : 'outline'
+                      }
+                      className="text-[10px]"
+                    >
+                      {settings?.webhook_secret_configured
+                        ? 'HMAC Verification Active'
+                        : 'Unsigned (Simulated)'}
+                    </Badge>
+                  </div>
                 </div>
               </div>
             </div>
@@ -211,6 +220,8 @@ export function IntegrationsView({
           </div>
         </CardContent>
       </Card>
+
+      <CredentialImportPanel onImported={onRefresh} />
 
       <StatusView
         status={status}

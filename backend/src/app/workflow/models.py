@@ -137,6 +137,7 @@ class WorkflowTemplateDefinition(BaseModel):
     graph_nodes: list[dict[str, Any]] = Field(default_factory=list)
     graph_edges: list[dict[str, Any]] = Field(default_factory=list)
     stopping_rules: WorkflowStoppingRules = Field(default_factory=WorkflowStoppingRules)
+    is_builtin: bool = False
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
