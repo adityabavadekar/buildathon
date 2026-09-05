@@ -65,7 +65,7 @@ export function DailyVolumeTrendsChart({
                 setGranularity('daily')
                 setHoveredIdx(null)
               }}
-              className="h-7 px-2.5 font-mono text-xs"
+              className="h-7 px-2.5 text-xs"
             >
               <Calendar className="mr-1 h-3 w-3" />
               Daily
@@ -77,7 +77,7 @@ export function DailyVolumeTrendsChart({
                 setGranularity('monthly')
                 setHoveredIdx(null)
               }}
-              className="h-7 px-2.5 font-mono text-xs"
+              className="h-7 px-2.5 text-xs"
             >
               <BarChart3 className="mr-1 h-3 w-3" />
               Monthly

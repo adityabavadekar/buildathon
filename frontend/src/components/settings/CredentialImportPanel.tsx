@@ -88,6 +88,7 @@ export function CredentialImportPanel({
   }, [onImported])
 
   const isImported = status?.source === 'csv_import'
+  const configured = status?.configured === true
 
   return (
     <Card>
@@ -113,26 +114,29 @@ export function CredentialImportPanel({
       </CardHeader>
 
       <CardContent className="space-y-4">
-        <dl className="grid gap-3 text-xs md:grid-cols-3">
-          <div className="space-y-1 rounded-control border border-border bg-surface-sunken p-3">
-            <dt className="text-[11px] text-ink-muted">Active key</dt>
-            <dd className="font-mono font-semibold text-ink">
-              {status?.key_id_masked ?? 'None'}
-            </dd>
+        <div className="flex flex-wrap items-center gap-4 rounded-panel border border-border bg-surface-sunken p-4">
+          <div
+            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${
+              configured
+                ? 'bg-recovered/15 text-recovered'
+                : 'bg-border/60 text-ink-muted'
+            }`}
+          >
+            <KeyRound className="h-5 w-5" aria-hidden="true" />
           </div>
-          <div className="space-y-1 rounded-control border border-border bg-surface-sunken p-3">
-            <dt className="text-[11px] text-ink-muted">Source</dt>
-            <dd className="font-semibold text-ink">
-              {isImported ? 'Imported CSV' : 'Environment'}
-            </dd>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-ink">
+              {configured
+                ? (status.key_id_masked ?? 'Key configured')
+                : 'No API key configured'}
+            </p>
+            <p className="text-xs text-ink-muted">
+              {status?.webhook_secret_configured
+                ? 'Webhook signatures are verified.'
+                : 'Webhook signatures are not being verified.'}
+            </p>
           </div>
-          <div className="space-y-1 rounded-control border border-border bg-surface-sunken p-3">
-            <dt className="text-[11px] text-ink-muted">Webhook secret</dt>
-            <dd className="font-semibold text-ink">
-              {status?.webhook_secret_configured ? 'Configured' : 'Missing'}
-            </dd>
-          </div>
-        </dl>
+        </div>
 
         {error !== null && (
           <p
@@ -181,7 +185,7 @@ export function CredentialImportPanel({
             onClick={() => {
               fileInput.current?.click()
             }}
-            className="cursor-pointer gap-2 font-mono text-xs"
+            className="cursor-pointer gap-2 text-xs"
           >
             <Upload className="h-3.5 w-3.5" aria-hidden="true" />
             {busy ? 'Importing...' : 'Import key CSV'}
@@ -195,17 +199,12 @@ export function CredentialImportPanel({
               onClick={() => {
                 void handleClear()
               }}
-              className="cursor-pointer font-mono text-xs"
+              className="cursor-pointer text-xs"
             >
               Revert to environment
             </Button>
           )}
         </div>
-
-        <p className="text-[11px] text-ink-muted">
-          Accepts the CSV as downloaded. Expected columns are the key id and key
-          secret; a webhook signing secret column is used when present.
-        </p>
       </CardContent>
     </Card>
   )

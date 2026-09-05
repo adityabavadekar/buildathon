@@ -246,7 +246,6 @@ export interface AnalyticsSummaryResponse {
   simulated_executions: number
   simulated_cost_paise: number
   health_score: number
-  recovery_streak: number
   category_distribution: CategoryBreakdown[]
   intervention_performance: ChannelPerformance[]
   rail_performance: RailBreakdown[]

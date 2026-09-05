@@ -101,7 +101,7 @@ headers.append((REQUEST_ID_HEADER, request_id))
 
 - Read `docs/FORTX_MASTER.md` first - it is the single source of truth for
   architecture, implemented state, and every pending spec with its verification
-  contract. Archived/superseded docs live under `docs/_archive/`.
+  contract.
 - Read `docs/DECISIONS.md` before changing architecture; append to it when you
   make a decision, and when something breaks and you fix it. It doubles as the
   build log.

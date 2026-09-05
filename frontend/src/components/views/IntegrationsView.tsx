@@ -6,7 +6,6 @@ import {
   testGatewayConnection,
   type GatewayTestResponse,
   type SystemSettingsResponse,
-  type SystemStatusResponse,
 } from '@/lib/api'
 import { Badge } from '@/components/ui/badge'
 import { CopyButton } from '@/components/ui/CopyButton'
@@ -23,18 +22,15 @@ import {
 } from '@/components/ui/card'
 import { RazorpaySymbol } from '@/components/ui/BrandIcons'
 import { SkeletonCard } from '@/components/ui/skeleton'
-import { StatusView } from '@/components/views/StatusView'
 
 interface IntegrationsViewProps {
   settings: SystemSettingsResponse | null
-  status: SystemStatusResponse | null
   loading: boolean
   onRefresh: () => void
 }
 
 export function IntegrationsView({
   settings,
-  status,
   loading,
   onRefresh,
 }: IntegrationsViewProps) {
@@ -57,7 +53,7 @@ export function IntegrationsView({
   return (
     <div className="space-y-6">
       <div className="border-b border-border pb-4">
-        <h1 className="font-mono text-2xl font-bold text-ink">Integrations</h1>
+        <h1 className="text-2xl font-bold text-ink">Integrations</h1>
         <p className="mt-0.5 text-sm text-ink-muted">
           Razorpay gateway connectivity, webhook ingress, and subsystem health.
         </p>
@@ -78,7 +74,7 @@ export function IntegrationsView({
           {loading ? (
             <SkeletonCard />
           ) : (
-            <div className="grid grid-cols-1 gap-4 font-mono text-xs md:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 text-xs md:grid-cols-2">
               <div className="space-y-2 rounded-control border border-accent/30 bg-accent/5 p-3 md:col-span-2">
                 <span className="block text-[11px] text-ink-muted">
                   Linked Merchant Account
@@ -202,7 +198,7 @@ export function IntegrationsView({
                 void handleTestGateway()
               }}
               disabled={testingGateway}
-              className="cursor-pointer gap-2 font-mono text-xs"
+              className="cursor-pointer gap-2 text-xs"
             >
               <RazorpaySymbol className="h-3.5 w-3.5" />
               <span>
@@ -212,7 +208,7 @@ export function IntegrationsView({
               </span>
             </Button>
             {gatewayTestResult ? (
-              <span className="flex items-center gap-1.5 font-mono text-xs text-recovered">
+              <span className="flex items-center gap-1.5 text-xs text-recovered">
                 <CheckCircle2 className="h-3.5 w-3.5" />
                 {gatewayTestResult.message} (
                 {gatewayTestResult.latency_ms.toFixed(0)}ms)
@@ -225,13 +221,6 @@ export function IntegrationsView({
       <OAuthConnectPanel onChanged={onRefresh} />
 
       <CredentialImportPanel onImported={onRefresh} />
-
-      <StatusView
-        status={status}
-        loading={loading}
-        onRefresh={onRefresh}
-        showPageHeader={false}
-      />
     </div>
   )
 }

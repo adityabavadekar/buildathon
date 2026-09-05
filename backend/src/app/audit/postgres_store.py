@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import text
 
 from app.audit.models import AuditEntry, ModelTelemetryEntry, RecoveryCase, ScheduledJob
+from app.core.constants import GLOBAL_AUDIT_CASE_ID
 from app.core.db import get_db_connection
 from app.core.enums import AuditActor, ExperimentArm, JobStatus, RecoveryState
 from app.core.logging import get_logger
@@ -17,6 +18,7 @@ from app.core.logging import get_logger
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
+    from sqlalchemy.engine.row import RowMapping
     from sqlalchemy.sql.elements import TextClause
 
 logger = get_logger(__name__)
@@ -676,6 +678,62 @@ class RelationalCaseStore:
             cnt = conn.execute(text(query), params).scalar()
             return int(cnt or 0)
 
+    def _row_to_audit_entry(self, r: RowMapping) -> AuditEntry:
+        """Build an AuditEntry from a row, tolerating str or dict JSON columns."""
+
+        def as_dict(raw: Any) -> dict[str, Any]:
+            if isinstance(raw, dict):
+                return raw
+            return dict(json.loads(raw)) if raw else {}
+
+        raw_meta = r["model_metadata"]
+        meta = (
+            raw_meta
+            if isinstance(raw_meta, dict)
+            else (json.loads(raw_meta) if raw_meta else None)
+        )
+        ts = r["timestamp"]
+        return AuditEntry(
+            entry_id=r["entry_id"],
+            case_id=r["case_id"],
+            event_name=r["event_name"],
+            actor=AuditActor(r["actor"]),
+            from_state=RecoveryState(r["from_state"]) if r["from_state"] else None,
+            to_state=RecoveryState(r["to_state"]) if r["to_state"] else None,
+            notes=r["notes"] or r["reason"],
+            decision_inputs=as_dict(r["decision_inputs"]),
+            decision_outputs=as_dict(r["decision_outputs"]),
+            model_metadata=meta,
+            cost_incurred_paise=r["cost_incurred_paise"],
+            timestamp=ts
+            if isinstance(ts, datetime)
+            else datetime.fromisoformat(str(ts)),
+        )
+
+    def get_global_audit_trail(self, limit: int = 200) -> list[AuditEntry]:
+        """System-scoped audit rows, which belong to no single case.
+
+        Mode switches, logins, and OAuth changes were written but unreadable: the
+        UI builds its trail from cases, and these rows have no case to hang off.
+        """
+        with self._lock, get_db_connection() as conn:
+            rows = (
+                conn.execute(
+                    text(
+                        """
+                        SELECT * FROM audit
+                        WHERE case_id = :case_id
+                        ORDER BY timestamp DESC
+                        LIMIT :limit
+                        """
+                    ),
+                    {"case_id": GLOBAL_AUDIT_CASE_ID, "limit": limit},
+                )
+                .mappings()
+                .fetchall()
+            )
+        return [self._row_to_audit_entry(r) for r in rows]
+
     def last_customer_outreach_at(
         self, customer_id: str, exclude_case_id: str
     ) -> datetime | None:
@@ -761,53 +819,7 @@ class RelationalCaseStore:
                 .fetchall()
             )
 
-            entries: list[AuditEntry] = []
-            for r in rows:
-                raw_in = r["decision_inputs"]
-                d_in = (
-                    raw_in
-                    if isinstance(raw_in, dict)
-                    else (json.loads(raw_in) if raw_in else {})
-                )
-                raw_out = r["decision_outputs"]
-                d_out = (
-                    raw_out
-                    if isinstance(raw_out, dict)
-                    else (json.loads(raw_out) if raw_out else {})
-                )
-                raw_meta = r["model_metadata"]
-                d_meta = (
-                    raw_meta
-                    if isinstance(raw_meta, dict)
-                    else (json.loads(raw_meta) if raw_meta else None)
-                )
-
-                ts = r["timestamp"]
-                ts_dt = (
-                    ts if isinstance(ts, datetime) else datetime.fromisoformat(str(ts))
-                )
-
-                entries.append(
-                    AuditEntry(
-                        entry_id=r["entry_id"],
-                        case_id=r["case_id"],
-                        event_name=r["event_name"],
-                        actor=AuditActor(r["actor"]),
-                        from_state=RecoveryState(r["from_state"])
-                        if r["from_state"]
-                        else None,
-                        to_state=RecoveryState(r["to_state"])
-                        if r["to_state"]
-                        else None,
-                        notes=r["notes"] or r["reason"],
-                        decision_inputs=d_in,
-                        decision_outputs=d_out,
-                        model_metadata=d_meta,
-                        cost_incurred_paise=r["cost_incurred_paise"],
-                        timestamp=ts_dt,
-                    )
-                )
-            return entries
+            return [self._row_to_audit_entry(r) for r in rows]
 
     def schedule_job(self, job: ScheduledJob) -> None:
         """Schedule a background execution job in PostgreSQL with idempotency deduplication."""

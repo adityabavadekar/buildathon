@@ -91,7 +91,7 @@ function GraphEditor({
   const nodeTypes = React.useMemo(
     () => ({
       workflow: ({ data }: { data: { label?: string; type?: string } }) => (
-        <div className="relative min-w-32 rounded-control border border-accent/50 bg-surface px-3 py-2 font-mono text-[11px] text-ink">
+        <div className="relative min-w-32 rounded-control border border-accent/50 bg-surface px-3 py-2 text-[11px] text-ink">
           <Handle type="target" position={Position.Left} />
           <span className="flex items-center gap-1 text-[10px] text-accent uppercase">
             {iconForNodeType(data.type ?? 'action')}
@@ -481,9 +481,7 @@ export function WorkflowView() {
         <div>
           <div className="flex items-center gap-2">
             <GitBranch className="h-5 w-5 text-accent" />
-            <h1 className="font-mono text-2xl font-bold text-ink">
-              FORTX Workflows
-            </h1>
+            <h1 className="text-2xl font-bold text-ink">FORTX Workflows</h1>
           </div>
           <p className="mt-0.5 text-sm text-ink-muted">
             Durable recovery workflows, decision history, and event-driven
@@ -498,7 +496,6 @@ export function WorkflowView() {
             void fetchWorkflows()
           }}
           disabled={loading}
-          className="font-mono"
         >
           <RefreshCw className="h-3.5 w-3.5" />
           Refresh
@@ -544,9 +541,7 @@ export function WorkflowView() {
       <div className="grid gap-6 xl:grid-cols-2">
         <Card>
           <CardHeader className="p-5 pb-3">
-            <CardTitle className="font-mono text-base">
-              Stage Breakdown
-            </CardTitle>
+            <CardTitle className="text-base">Stage Breakdown</CardTitle>
             <CardDescription>
               Live stage counts from the workflow engine.
             </CardDescription>
@@ -561,7 +556,7 @@ export function WorkflowView() {
                   <Badge variant={badgeForStage(stage)}>
                     {labelFor(stage)}
                   </Badge>
-                  <span className="font-mono text-sm font-bold text-ink">
+                  <span className="text-sm font-bold text-ink">
                     {count.toString()}
                   </span>
                 </div>
@@ -577,9 +572,7 @@ export function WorkflowView() {
 
         <Card>
           <CardHeader className="p-5 pb-3">
-            <CardTitle className="font-mono text-base">
-              Template Breakdown
-            </CardTitle>
+            <CardTitle className="text-base">Template Breakdown</CardTitle>
             <CardDescription>
               Built-in lifecycle templates in persisted use.
             </CardDescription>
@@ -591,10 +584,10 @@ export function WorkflowView() {
                   key={template}
                   className="flex items-center justify-between rounded-control border border-border px-3 py-2"
                 >
-                  <span className="font-mono text-xs font-semibold text-ink">
+                  <span className="text-xs font-semibold text-ink">
                     {labelFor(template)}
                   </span>
-                  <span className="font-mono text-sm font-bold text-ink">
+                  <span className="text-sm font-bold text-ink">
                     {count.toString()}
                   </span>
                 </div>
@@ -611,9 +604,7 @@ export function WorkflowView() {
 
       <Card>
         <CardHeader className="p-5 pb-3">
-          <CardTitle className="font-mono text-base">
-            Template Authoring
-          </CardTitle>
+          <CardTitle className="text-base">Template Authoring</CardTitle>
           <CardDescription>
             Create and manage persisted workflow definitions anchored to
             built-in lifecycles.
@@ -627,20 +618,20 @@ export function WorkflowView() {
                 setTemplateName(event.target.value)
               }}
               placeholder="Template name"
-              className="h-8 rounded-control border border-border bg-surface px-2 font-mono text-xs"
+              className="h-8 rounded-control border border-border bg-surface px-2 text-xs"
             />
             <input
               value={templateDescription}
               onChange={(event) => setTemplateDescription(event.target.value)}
               placeholder="What this workflow recovers"
-              className="h-8 rounded-control border border-border bg-surface px-2 font-mono text-xs"
+              className="h-8 rounded-control border border-border bg-surface px-2 text-xs"
             />
             <select
               value={templateBase}
               onChange={(event) => {
                 setTemplateBase(event.target.value as WorkflowTemplate | '')
               }}
-              className="h-8 rounded-control border border-border bg-surface px-2 font-mono text-xs"
+              className="h-8 rounded-control border border-border bg-surface px-2 text-xs"
             >
               {Array.from(
                 new Set(templates.map((template) => template.base_template)),
@@ -653,7 +644,7 @@ export function WorkflowView() {
             <select
               value={templateTrigger}
               onChange={(event) => setTemplateTrigger(event.target.value)}
-              className="h-8 rounded-control border border-border bg-surface px-2 font-mono text-xs"
+              className="h-8 rounded-control border border-border bg-surface px-2 text-xs"
             >
               <option value="">Select trigger</option>
               {(options?.trigger_types ?? []).map((value) => (
@@ -666,7 +657,7 @@ export function WorkflowView() {
               {(options?.actions ?? []).map((action) => (
                 <label
                   key={action}
-                  className="flex items-center gap-1 font-mono text-[10px] text-ink-muted"
+                  className="flex items-center gap-1 text-[10px] text-ink-muted"
                 >
                   <input
                     type="checkbox"
@@ -696,17 +687,11 @@ export function WorkflowView() {
                 !templateBase ||
                 !templateTrigger.trim()
               }
-              className="font-mono"
             >
               {editingTemplate ? 'Update Template' : 'Create Template'}
             </Button>
             {editingTemplate && (
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={resetTemplateForm}
-                className="font-mono"
-              >
+              <Button size="sm" variant="ghost" onClick={resetTemplateForm}>
                 Cancel
               </Button>
             )}
@@ -714,9 +699,7 @@ export function WorkflowView() {
           <div className="rounded-panel border border-border bg-surface-sunken p-4">
             <div className="mb-3 flex items-center justify-between">
               <div>
-                <p className="font-mono text-xs font-bold text-ink">
-                  Workflow graph
-                </p>
+                <p className="text-xs font-bold text-ink">Workflow graph</p>
                 <p className="text-[11px] text-ink-muted">
                   Nodes execute left to right through the bounded backend
                   lifecycle.
@@ -757,7 +740,7 @@ export function WorkflowView() {
                     key={node.id}
                     type="button"
                     onClick={() => setSelectedNode(node)}
-                    className="flex cursor-pointer items-center gap-1 rounded-control border border-accent/30 bg-surface px-2 py-1 font-mono text-[10px] text-ink"
+                    className="flex cursor-pointer items-center gap-1 rounded-control border border-accent/30 bg-surface px-2 py-1 text-[10px] text-ink"
                   >
                     {iconForNodeType(node.type ?? 'action')}
                     {node.label ?? node.id}
@@ -767,7 +750,7 @@ export function WorkflowView() {
             )}
             {selectedNode && (
               <div className="mt-3 flex items-center gap-2 rounded-control border border-border bg-surface px-3 py-2">
-                <span className="font-mono text-[10px] text-ink-muted uppercase">
+                <span className="text-[10px] text-ink-muted uppercase">
                   Edit node
                 </span>
                 <input
@@ -781,9 +764,9 @@ export function WorkflowView() {
                       ),
                     )
                   }}
-                  className="h-7 flex-1 rounded-control border border-border bg-surface px-2 font-mono text-xs"
+                  className="h-7 flex-1 rounded-control border border-border bg-surface px-2 text-xs"
                 />
-                <span className="rounded-control bg-surface-sunken px-2 py-1 font-mono text-[10px] text-accent">
+                <span className="rounded-control bg-surface-sunken px-2 py-1 text-[10px] text-accent">
                   {selectedNode.type}
                 </span>
               </div>
@@ -796,10 +779,8 @@ export function WorkflowView() {
                 className="flex flex-wrap items-center justify-between gap-3 rounded-control border border-border px-3 py-2"
               >
                 <div>
-                  <p className="font-mono text-xs font-bold text-ink">
-                    {template.name}
-                  </p>
-                  <p className="font-mono text-[10px] text-ink-muted">
+                  <p className="text-xs font-bold text-ink">{template.name}</p>
+                  <p className="text-[10px] text-ink-muted">
                     {labelFor(template.base_template)} | {template.trigger_type}
                   </p>
                 </div>
@@ -838,7 +819,7 @@ export function WorkflowView() {
 
       <Card>
         <CardHeader className="p-5 pb-3">
-          <CardTitle className="font-mono text-base">Launch workflow</CardTitle>
+          <CardTitle className="text-base">Launch workflow</CardTitle>
           <CardDescription>
             Attach a durable workflow to an existing recovery case.
           </CardDescription>
@@ -848,14 +829,14 @@ export function WorkflowView() {
             value={launchCaseId}
             onChange={(event) => setLaunchCaseId(event.target.value)}
             placeholder="Recovery case ID"
-            className="h-8 flex-1 rounded-control border border-border bg-surface px-2 font-mono text-xs"
+            className="h-8 flex-1 rounded-control border border-border bg-surface px-2 text-xs"
           />
           <select
             value={launchTemplate}
             onChange={(event) =>
               setLaunchTemplate(event.target.value as WorkflowTemplate | '')
             }
-            className="h-8 rounded-control border border-border bg-surface px-2 font-mono text-xs"
+            className="h-8 rounded-control border border-border bg-surface px-2 text-xs"
           >
             <option value="">Default template</option>
             {(options?.trigger_types ?? []).map((trigger) => {
@@ -873,7 +854,6 @@ export function WorkflowView() {
             size="sm"
             onClick={() => void handleLaunch()}
             disabled={launching || !launchCaseId.trim()}
-            className="font-mono"
           >
             <GitBranch className="h-3.5 w-3.5" />
             {launching ? 'Launching...' : 'Launch'}
@@ -883,9 +863,7 @@ export function WorkflowView() {
 
       <Card>
         <CardHeader className="p-5 pb-3">
-          <CardTitle className="font-mono text-base">
-            Workflow Registry
-          </CardTitle>
+          <CardTitle className="text-base">Workflow Registry</CardTitle>
           <CardDescription>
             Select a workflow to inspect its replayable history and deliver an
             external signal.
@@ -912,13 +890,13 @@ export function WorkflowView() {
                     void selectWorkflow(workflow.workflow_id)
                   }}
                 >
-                  <TableCell className="font-mono text-xs font-semibold text-ink">
+                  <TableCell className="text-xs font-semibold text-ink">
                     {workflow.workflow_id}
                   </TableCell>
-                  <TableCell className="font-mono text-xs text-ink-muted">
+                  <TableCell className="text-xs text-ink-muted">
                     {workflow.case_id}
                   </TableCell>
-                  <TableCell className="font-mono text-xs">
+                  <TableCell className="text-xs">
                     {labelFor(workflow.template)}
                   </TableCell>
                   <TableCell>
@@ -926,10 +904,10 @@ export function WorkflowView() {
                       {labelFor(workflow.current_stage)}
                     </Badge>
                   </TableCell>
-                  <TableCell className="text-right font-mono text-xs">
+                  <TableCell className="text-right text-xs">
                     {workflow.attempts_count.toString()}
                   </TableCell>
-                  <TableCell className="font-mono text-xs text-ink-muted">
+                  <TableCell className="text-xs text-ink-muted">
                     {formatTimestamp(workflow.updated_at)}
                   </TableCell>
                 </TableRow>
@@ -947,9 +925,7 @@ export function WorkflowView() {
       {(detailLoading || selectedWorkflow) && (
         <Card className="border-accent/30">
           <CardHeader className="p-5 pb-3">
-            <CardTitle className="font-mono text-base">
-              Workflow Detail
-            </CardTitle>
+            <CardTitle className="text-base">Workflow Detail</CardTitle>
             <CardDescription>
               {selectedWorkflow
                 ? `${selectedWorkflow.workflow_id} for case ${selectedWorkflow.case_id}`
@@ -965,9 +941,7 @@ export function WorkflowView() {
             <CardContent className="space-y-6 p-5 pt-0">
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 <div className="rounded-control border border-border bg-surface-sunken p-3">
-                  <p className="font-mono text-[11px] text-ink-muted">
-                    Current stage
-                  </p>
+                  <p className="text-[11px] text-ink-muted">Current stage</p>
                   <Badge
                     variant={badgeForStage(selectedWorkflow.current_stage)}
                   >
@@ -975,26 +949,20 @@ export function WorkflowView() {
                   </Badge>
                 </div>
                 <div className="rounded-control border border-border bg-surface-sunken p-3">
-                  <p className="font-mono text-[11px] text-ink-muted">
-                    Recovery state
-                  </p>
-                  <p className="mt-1 font-mono text-xs font-semibold text-ink">
+                  <p className="text-[11px] text-ink-muted">Recovery state</p>
+                  <p className="mt-1 text-xs font-semibold text-ink">
                     {labelFor(selectedWorkflow.recovery_state)}
                   </p>
                 </div>
                 <div className="rounded-control border border-border bg-surface-sunken p-3">
-                  <p className="font-mono text-[11px] text-ink-muted">
-                    Touches
-                  </p>
-                  <p className="mt-1 font-mono text-lg font-bold text-ink">
+                  <p className="text-[11px] text-ink-muted">Touches</p>
+                  <p className="mt-1 text-lg font-bold text-ink">
                     {selectedWorkflow.touches_count.toString()}
                   </p>
                 </div>
                 <div className="rounded-control border border-border bg-surface-sunken p-3">
-                  <p className="font-mono text-[11px] text-ink-muted">
-                    Terminal outcome
-                  </p>
-                  <p className="mt-1 font-mono text-xs font-semibold text-ink">
+                  <p className="text-[11px] text-ink-muted">Terminal outcome</p>
+                  <p className="mt-1 text-xs font-semibold text-ink">
                     {selectedWorkflow.terminal_outcome ?? 'Active'}
                   </p>
                 </div>
@@ -1002,7 +970,7 @@ export function WorkflowView() {
 
               <div className="grid gap-6 xl:grid-cols-2">
                 <div>
-                  <h3 className="mb-3 font-mono text-sm font-bold text-ink">
+                  <h3 className="mb-3 text-sm font-bold text-ink">
                     Execution History
                   </h3>
                   <div className="max-h-96 space-y-2 overflow-y-auto pr-1">
@@ -1012,21 +980,21 @@ export function WorkflowView() {
                         className="rounded-control border border-border p-3"
                       >
                         <div className="flex flex-wrap items-center justify-between gap-2">
-                          <span className="font-mono text-xs font-bold text-ink">
+                          <span className="text-xs font-bold text-ink">
                             {labelFor(event.event_name)}
                           </span>
-                          <span className="font-mono text-[10px] text-ink-muted">
+                          <span className="text-[10px] text-ink-muted">
                             {formatTimestamp(event.timestamp)}
                           </span>
                         </div>
-                        <p className="mt-1 font-mono text-[11px] text-ink-muted">
+                        <p className="mt-1 text-[11px] text-ink-muted">
                           {event.from_stage
                             ? `${labelFor(event.from_stage)} -> `
                             : ''}
                           {labelFor(event.to_stage)}
                         </p>
                         {Object.keys(event.details).length > 0 && (
-                          <pre className="mt-2 overflow-x-auto rounded-control bg-surface-sunken p-2 font-mono text-[10px] text-ink-muted">
+                          <pre className="mt-2 overflow-x-auto rounded-control bg-surface-sunken p-2 text-[10px] text-ink-muted">
                             {formatDetails(event.details)}
                           </pre>
                         )}
@@ -1042,7 +1010,7 @@ export function WorkflowView() {
 
                 <div className="space-y-6">
                   <div>
-                    <h3 className="mb-3 font-mono text-sm font-bold text-ink">
+                    <h3 className="mb-3 text-sm font-bold text-ink">
                       Received Signals
                     </h3>
                     <div className="max-h-48 space-y-2 overflow-y-auto pr-1">
@@ -1052,14 +1020,14 @@ export function WorkflowView() {
                           className="rounded-control border border-border p-3"
                         >
                           <div className="flex items-center justify-between gap-2">
-                            <span className="font-mono text-xs font-bold text-ink">
+                            <span className="text-xs font-bold text-ink">
                               {labelFor(signal.signal_type)}
                             </span>
-                            <span className="font-mono text-[10px] text-ink-muted">
+                            <span className="text-[10px] text-ink-muted">
                               {formatTimestamp(signal.timestamp)}
                             </span>
                           </div>
-                          <p className="mt-1 font-mono text-[10px] text-ink-muted">
+                          <p className="mt-1 text-[10px] text-ink-muted">
                             Source: {signal.source}
                           </p>
                         </div>
@@ -1073,7 +1041,7 @@ export function WorkflowView() {
                   </div>
 
                   <div className="rounded-panel border border-accent/30 bg-accent/5 p-4">
-                    <h3 className="font-mono text-sm font-bold text-ink">
+                    <h3 className="text-sm font-bold text-ink">
                       Deliver Signal
                     </h3>
                     <p className="mt-1 text-xs text-ink-muted">
@@ -1089,7 +1057,7 @@ export function WorkflowView() {
                         )
                       }}
                       placeholder="Signal type"
-                      className="mt-3 h-8 w-full rounded-control border border-border bg-surface px-2.5 font-mono text-xs text-ink outline-none focus:border-accent"
+                      className="mt-3 h-8 w-full rounded-control border border-border bg-surface px-2.5 text-xs text-ink outline-none focus:border-accent"
                     />
                     <textarea
                       value={signalPayload}
@@ -1098,7 +1066,7 @@ export function WorkflowView() {
                       }}
                       placeholder="Optional JSON payload"
                       rows={3}
-                      className="mt-2 w-full rounded-control border border-border bg-surface p-2.5 font-mono text-xs text-ink outline-none focus:border-accent"
+                      className="mt-2 w-full rounded-control border border-border bg-surface p-2.5 text-xs text-ink outline-none focus:border-accent"
                     />
                     <Button
                       size="sm"
@@ -1106,7 +1074,7 @@ export function WorkflowView() {
                         void handleSignal()
                       }}
                       disabled={signalLoading || !signalType}
-                      className="mt-3 font-mono"
+                      className="mt-3"
                     >
                       <Send className="h-3.5 w-3.5" />
                       {signalLoading ? 'Delivering' : 'Deliver Signal'}

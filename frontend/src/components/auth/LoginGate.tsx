@@ -58,7 +58,7 @@ export function LoginGate({ children }: LoginGateProps) {
   if (!checked) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-canvas">
-        <span className="font-mono text-xs text-ink-muted">Loading...</span>
+        <span className="text-xs text-ink-muted">Loading...</span>
       </div>
     )
   }
@@ -80,7 +80,7 @@ export function LoginGate({ children }: LoginGateProps) {
             <RazorpaySymbol className="h-5 w-5" />
           </div>
           <div>
-            <h1 className="font-mono text-sm font-semibold text-ink">FORTX</h1>
+            <h1 className="text-sm font-semibold text-ink">FORTX</h1>
             <p className="text-xs text-ink-muted">Operator sign in</p>
           </div>
         </div>
@@ -101,7 +101,7 @@ export function LoginGate({ children }: LoginGateProps) {
             onChange={(event) => {
               setPassword(event.target.value)
             }}
-            className="w-full rounded-control border border-border bg-surface-sunken px-3 py-2 font-mono text-sm text-ink focus:outline-none"
+            className="w-full rounded-control border border-border bg-surface-sunken px-3 py-2 text-sm text-ink focus:outline-none"
           />
         </div>
 
@@ -123,7 +123,7 @@ export function LoginGate({ children }: LoginGateProps) {
           variant="primary"
           size="sm"
           disabled={busy || password === ''}
-          className="w-full cursor-pointer gap-2 font-mono text-xs"
+          className="w-full cursor-pointer gap-2 text-xs"
         >
           <Lock className="h-3.5 w-3.5" aria-hidden="true" />
           {busy ? 'Signing in...' : 'Sign in'}

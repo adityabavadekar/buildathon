@@ -51,7 +51,7 @@ export const NAV_SECTION_LABELS: Record<NavSection, string> = {
   'settings-policies': 'Merchant Policies',
   'settings-general': 'General Settings',
   'settings-integrations': 'Integrations',
-  pipeline: 'Data Pipeline',
+  pipeline: 'Data Pipeline (dev)',
   workflows: 'Workflows',
   recovery: 'Recovery Cases',
   approvals: 'Awaiting Approval',
@@ -90,7 +90,7 @@ export const OPERATIONS_NAV_ITEMS: {
   icon: LucideIcon
   badgeKey?: 'cases' | 'escalated'
 }[] = [
-  { id: 'pipeline', label: 'Data Pipeline', icon: Radio },
+  { id: 'pipeline', label: 'Data Pipeline (dev)', icon: Radio },
   { id: 'agent', label: 'AI Agent Telemetry', icon: Bot },
   { id: 'status', label: 'System Status', icon: Activity },
 ]

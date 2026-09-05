@@ -99,7 +99,7 @@ export function WhatsAppPreview({ caseItem }: WhatsAppPreviewProps) {
       {/* WhatsApp Chat Header */}
       <div className="flex items-center justify-between bg-[#075E54] px-4 py-3 text-white">
         <div className="flex items-center gap-2.5">
-          <div className="flex h-7 w-7 items-center justify-center rounded-full bg-white font-mono text-xs font-bold text-[#075E54] shadow-xs">
+          <div className="flex h-7 w-7 items-center justify-center rounded-full bg-white text-xs font-bold text-[#075E54] shadow-xs">
             <RazorpaySymbol className="h-4 w-4" />
           </div>
           <div>
@@ -110,7 +110,7 @@ export function WhatsAppPreview({ caseItem }: WhatsAppPreviewProps) {
               <ShieldCheck className="h-3.5 w-3.5 text-[#25D366]" />
               <WhatsAppIcon className="h-3.5 w-3.5" />
             </div>
-            <span className="block font-mono text-[10px] text-white/80">
+            <span className="block text-[10px] text-white/80">
               +91 98765 00000 · Official Recovery Bot
             </span>
           </div>
@@ -126,7 +126,7 @@ export function WhatsAppPreview({ caseItem }: WhatsAppPreviewProps) {
                 ? 'Stop voice call'
                 : 'Simulate voice recovery call'
             }
-            className={`flex items-center gap-1 rounded-control px-2 py-1 font-mono text-[10px] transition-colors ${
+            className={`flex items-center gap-1 rounded-control px-2 py-1 text-[10px] transition-colors ${
               isPlayingAudio
                 ? 'animate-pulse bg-red-500 text-white'
                 : 'bg-black/20 text-white hover:bg-black/30'
@@ -145,7 +145,7 @@ export function WhatsAppPreview({ caseItem }: WhatsAppPreviewProps) {
             )}
           </button>
 
-          <div className="flex items-center gap-1 rounded-control bg-black/20 p-0.5 font-mono text-[10px]">
+          <div className="flex items-center gap-1 rounded-control bg-black/20 p-0.5 text-[10px]">
             <button
               type="button"
               onClick={() => {
@@ -183,7 +183,7 @@ export function WhatsAppPreview({ caseItem }: WhatsAppPreviewProps) {
       </div>
 
       {/* Model & Drafting Origin Bar */}
-      <div className="flex items-center justify-between border-b border-black/5 bg-[#054C44] px-3.5 py-1 font-mono text-[10px] text-white/90">
+      <div className="flex items-center justify-between border-b border-black/5 bg-[#054C44] px-3.5 py-1 text-[10px] text-white/90">
         <span className="flex items-center gap-1">
           <span
             className={`h-1.5 w-1.5 rounded-full ${isAgentDrafted ? 'animate-pulse bg-[#25D366]' : 'bg-white/60'}`}
@@ -207,12 +207,12 @@ export function WhatsAppPreview({ caseItem }: WhatsAppPreviewProps) {
 
           {/* Interactive Single-Use Payment Link Card */}
           <div className="space-y-1.5 rounded-control border border-black/10 bg-[#F0F2F5] p-2.5 dark:border-white/10 dark:bg-[#111B21]">
-            <div className="flex items-center justify-between font-mono text-[11px] font-bold text-ink">
+            <div className="flex items-center justify-between text-[11px] font-bold text-ink">
               <span>Razorpay Secure Link</span>
               <span className="text-recovered">{formatINR(payablePaise)}</span>
             </div>
             {discountPaise > 0 && (
-              <div className="flex items-center justify-between font-mono text-[10px] text-ink-muted">
+              <div className="flex items-center justify-between text-[10px] text-ink-muted">
                 <span>Original: {formatINR(amountPaise)}</span>
                 <span className="font-semibold text-accent">
                   Saved {formatINR(discountPaise)}
@@ -221,25 +221,25 @@ export function WhatsAppPreview({ caseItem }: WhatsAppPreviewProps) {
             )}
             {paymentLinkUrl ? (
               <div className="space-y-1 pt-1">
-                <div className="flex items-center gap-1 font-mono text-[10px] text-accent">
+                <div className="flex items-center gap-1 text-[10px] text-accent">
                   <ExternalLink className="h-3 w-3" />
                   <span className="break-all">{paymentLinkUrl}</span>
                 </div>
                 {isSimulatedLink && (
-                  <span className="font-mono text-[9px] text-ink-muted">
+                  <span className="text-[9px] text-ink-muted">
                     Sandbox link - no live gateway call was made.
                   </span>
                 )}
               </div>
             ) : (
-              <div className="flex items-center gap-1 pt-1 font-mono text-[10px] text-ink-muted">
+              <div className="flex items-center gap-1 pt-1 text-[10px] text-ink-muted">
                 <ExternalLink className="h-3 w-3" />
                 <span>No payment link issued for this case yet.</span>
               </div>
             )}
           </div>
 
-          <div className="flex items-center justify-end gap-1 font-mono text-[9px] text-ink-muted">
+          <div className="flex items-center justify-end gap-1 text-[9px] text-ink-muted">
             <span>
               {new Date(caseItem.created_at).toLocaleTimeString([], {
                 hour: '2-digit',
@@ -253,7 +253,7 @@ export function WhatsAppPreview({ caseItem }: WhatsAppPreviewProps) {
         {/* Informational Mandate Guidance */}
         {isMandate && (
           <div className="text-center">
-            <span className="inline-block rounded-control bg-white/80 px-2.5 py-1 font-mono text-[10px] text-ink-muted shadow-2xs dark:bg-[#1F2C34]/80">
+            <span className="inline-block rounded-control bg-white/80 px-2.5 py-1 text-[10px] text-ink-muted shadow-2xs dark:bg-[#1F2C34]/80">
               Automatic retry scheduled per RBI mandate circular
             </span>
           </div>

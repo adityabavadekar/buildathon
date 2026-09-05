@@ -66,7 +66,7 @@ export function CopyButton({
       onClick={() => {
         void handleCopy()
       }}
-      className={`shrink-0 cursor-pointer gap-1.5 font-mono text-xs ${className}`}
+      className={`shrink-0 cursor-pointer gap-1.5 text-xs ${className}`}
     >
       {copied ? (
         <Check className="h-3.5 w-3.5" aria-hidden="true" />

@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import {
   AlertTriangle,
   ArrowRight,
@@ -11,9 +11,9 @@ import {
   TrendingUp,
 } from 'lucide-react'
 import {
-  resetSimulation,
-  seedSimulationBatch,
+  getOperatorMode,
   type AnalyticsSummaryResponse,
+  type OperatorAutonomyMode,
   type RecoveryCase,
 } from '@/lib/api'
 import { Badge } from '@/components/ui/badge'
@@ -43,6 +43,7 @@ import { PaymentRailChart } from '@/components/charts/PaymentRailChart'
 import { RecoveryVelocityChart } from '@/components/charts/RecoveryVelocityChart'
 import { HealthScoreCard } from '@/components/charts/HealthScoreCard'
 import { formatINR, humanizeToken } from '@/lib/format'
+import { AUTONOMY_MODE_COPY, OPEN_CASE_STATES } from '@/lib/constants'
 import type { NavSection } from '@/components/layout/Sidebar'
 
 interface OverviewViewProps {
@@ -52,7 +53,6 @@ interface OverviewViewProps {
   onSelectCase: (c: RecoveryCase) => void
   onNavigateToRecovery: (subTab?: string) => void
   onNavigateToSection?: (section: NavSection) => void
-  onRefresh: () => void
 }
 
 export function OverviewView({
@@ -62,13 +62,23 @@ export function OverviewView({
   onSelectCase,
   onNavigateToRecovery,
   onNavigateToSection,
-  onRefresh,
 }: OverviewViewProps) {
-  const [seeding, setSeeding] = useState(false)
+  const [autonomyMode, setAutonomyMode] = useState<OperatorAutonomyMode | null>(
+    null,
+  )
 
-  const totalAtRiskPaise = analytics
-    ? analytics.total_at_risk_paise
-    : cases.reduce((acc, c) => acc + c.amount_paise, 0)
+  useEffect(() => {
+    let mounted = true
+    getOperatorMode()
+      .then((state) => {
+        if (mounted) setAutonomyMode(state.mode)
+      })
+      .catch(() => null)
+    return () => {
+      mounted = false
+    }
+  }, [])
+
   const totalRecoveredPaise = analytics
     ? analytics.recovered_amount_paise
     : cases
@@ -80,23 +90,22 @@ export function OverviewView({
   const totalNrvPaise = analytics
     ? analytics.net_recovered_value_paise
     : totalRecoveredPaise
+  const attributableLiftPct = analytics?.attributable_lift_pct ?? 0
+  const holdoutTotal = analytics?.holdout_total ?? 0
+  // Only cases still being worked: total at-risk includes resolved ones, which is
+  // not money the merchant can still act on.
+  const openAtRiskPaise = cases
+    .filter((c) => OPEN_CASE_STATES.some((s) => s === c.state))
+    .reduce((acc, c) => acc + c.amount_paise, 0)
 
   const recoveredCasesCount = cases.filter(
     (c) => c.state === 'RECOVERED',
   ).length
-  const totalCasesCount = cases.length
 
   const activeCount =
     analytics?.active_cases !== undefined
       ? analytics.active_cases
-      : cases.filter((c) =>
-          [
-            'IN_DUNNING',
-            'OUTREACH_PENDING',
-            'RETRY_SCHEDULED',
-            'ANALYSIS_QUEUED',
-          ].includes(c.state),
-        ).length
+      : cases.filter((c) => OPEN_CASE_STATES.some((s) => s === c.state)).length
   const escalatedCount =
     analytics?.escalated_cases !== undefined
       ? analytics.escalated_cases
@@ -105,40 +114,37 @@ export function OverviewView({
     analytics?.recovered_cases !== undefined
       ? analytics.recovered_cases
       : recoveredCasesCount
-  const totalCount =
-    analytics?.total_cases !== undefined
-      ? analytics.total_cases
-      : totalCasesCount
-
-  let recoveryRate = 0
-  if (analytics) {
-    recoveryRate = analytics.overall_recovery_rate_pct
-  } else if (totalCasesCount > 0) {
-    recoveryRate = (recoveredCasesCount / totalCasesCount) * 100
-  }
-
-  const handleSeedBatch = async (count: number = 50) => {
-    try {
-      setSeeding(true)
-      await seedSimulationBatch(count)
-      onRefresh()
-    } finally {
-      setSeeding(false)
-    }
-  }
-
-  const handleResetData = async () => {
-    try {
-      setSeeding(true)
-      await resetSimulation()
-      onRefresh()
-    } finally {
-      setSeeding(false)
-    }
-  }
 
   return (
     <div className="space-y-6">
+      {autonomyMode && autonomyMode !== 'FULL_AUTONOMY' ? (
+        <div
+          className={`flex flex-col gap-1 rounded-panel border p-4 ${
+            autonomyMode === 'MONITORING_ONLY'
+              ? 'border-failed/50 bg-failed/10'
+              : 'border-pending/50 bg-pending/10'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <ShieldAlert
+              className={`h-4 w-4 ${
+                autonomyMode === 'MONITORING_ONLY'
+                  ? 'text-failed'
+                  : 'text-pending'
+              }`}
+            />
+            <span className="text-sm font-semibold text-ink">
+              {autonomyMode === 'MONITORING_ONLY'
+                ? 'Recovery is paused'
+                : 'Every action needs your approval'}
+            </span>
+          </div>
+          <p className="text-sm text-ink-muted">
+            {AUTONOMY_MODE_COPY[autonomyMode].effect}
+          </p>
+        </div>
+      ) : null}
+
       {/* View Header with Plain-Language Context */}
       <div className="flex flex-col gap-3 border-b border-border pb-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
@@ -149,27 +155,6 @@ export function OverviewView({
             Autonomous intervention lifecycle for failed payments, abandoned
             checkouts, and overdue receivables.
           </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              void handleResetData()
-            }}
-            disabled={seeding}
-          >
-            Reset Test Cohort
-          </Button>
-          <Button
-            size="sm"
-            onClick={() => {
-              void handleSeedBatch(50)
-            }}
-            disabled={seeding}
-          >
-            {seeding ? 'Generating...' : 'Seed 50 Failures'}
-          </Button>
         </div>
       </div>
 
@@ -184,7 +169,6 @@ export function OverviewView({
         }}
       />
 
-      {/* 4 Primary Top Metrics with High-Contrast Typography */}
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {loading ? (
           <>
@@ -197,51 +181,39 @@ export function OverviewView({
           <>
             <StatCard
               title={
-                <GlossaryTerm termKey="AT_RISK_REVENUE">
-                  At Risk Revenue
-                </GlossaryTerm>
-              }
-              value={formatINR(totalAtRiskPaise)}
-              subtitle={`${totalCount.toString()} total failed transactions worked`}
-              icon={<AlertTriangle className="h-4 w-4 text-failed" />}
-              variant="default"
-            />
-
-            <StatCard
-              title={
                 <GlossaryTerm termKey="RECOVERED_NRV">
-                  Recovered (NRV)
+                  Net recovered
                 </GlossaryTerm>
               }
               value={formatINR(totalNrvPaise)}
-              subtitle={`Gross: ${formatINR(totalRecoveredPaise)} (Net of Costs)`}
+              subtitle={`Gross ${formatINR(totalRecoveredPaise)}, after retry and outreach cost`}
               icon={<CheckCircle2 className="h-4 w-4 text-recovered" />}
               variant="recovered"
             />
 
             <StatCard
               title={
-                <GlossaryTerm termKey="RECOVERY_RATE">
-                  Recovery Rate
+                <GlossaryTerm termKey="HOLDOUT_ARM">
+                  Lift vs holdout
                 </GlossaryTerm>
               }
-              value={`${recoveryRate.toFixed(1)}%`}
-              subtitle={`${recoveredCount.toString()} of ${totalCount.toString()} cases resolved`}
+              value={`+${attributableLiftPct.toFixed(1)}%`}
+              subtitle={`Measured against ${holdoutTotal.toString()} uncontacted control cases`}
               icon={<TrendingUp className="h-4 w-4 text-accent" />}
-              variant="default"
+              variant="accent"
             />
 
             <StatCard
               title={
                 <GlossaryTerm termKey="HUMAN_IN_THE_LOOP">
-                  Need Attention
+                  Awaiting your signoff
                 </GlossaryTerm>
               }
               value={escalatedCount.toString()}
               subtitle={
                 escalatedCount > 0
-                  ? 'Escalated cases require operator signoff'
-                  : 'Zero high-risk escalations pending'
+                  ? 'Recovery is paused on these until you decide'
+                  : 'Nothing waiting on you'
               }
               icon={
                 <ShieldAlert
@@ -249,6 +221,18 @@ export function OverviewView({
                 />
               }
               variant={escalatedCount > 0 ? 'escalated' : 'default'}
+            />
+
+            <StatCard
+              title={
+                <GlossaryTerm termKey="AT_RISK_REVENUE">
+                  Still at risk
+                </GlossaryTerm>
+              }
+              value={formatINR(openAtRiskPaise)}
+              subtitle={`${activeCount.toString()} cases still being worked`}
+              icon={<AlertTriangle className="h-4 w-4 text-failed" />}
+              variant="default"
             />
           </>
         )}
@@ -369,7 +353,6 @@ export function OverviewView({
           <HealthScoreCard
             healthScore={analytics.health_score}
             returnOnSpend={analytics.return_on_recovery_spend}
-            recoveryStreak={analytics.recovery_streak}
           />
         </section>
       )}
@@ -384,7 +367,7 @@ export function OverviewView({
                 <CardTitle className="text-base">
                   Campaign Recovery Attribution
                 </CardTitle>
-                <Badge variant="outline" className="font-mono text-[10px]">
+                <Badge variant="outline" className="text-[10px]">
                   Razorpay notes
                 </Badge>
               </div>
@@ -419,7 +402,7 @@ export function OverviewView({
                   >
                     <div className="flex items-center justify-between">
                       <span
-                        className="max-w-[140px] truncate font-mono font-semibold text-ink"
+                        className="max-w-[140px] truncate font-semibold text-ink"
                         title={c.campaign_id}
                       >
                         {c.campaign_id}
@@ -428,7 +411,7 @@ export function OverviewView({
                         variant={
                           c.recovery_rate_pct >= 50 ? 'recovered' : 'default'
                         }
-                        className="font-mono text-[10px]"
+                        className="text-[10px]"
                       >
                         {c.recovery_rate_pct.toFixed(1)}%
                       </Badge>
@@ -511,8 +494,8 @@ export function OverviewView({
                     colSpan={6}
                     className="h-24 text-center text-sm text-ink-muted"
                   >
-                    No recovery cases found. Click &quot;Seed 50 Failures&quot;
-                    to generate synthetic cases.
+                    No recovery cases yet. Cases appear here as failed payment
+                    webhooks arrive.
                   </TableCell>
                 </TableRow>
               ) : (
@@ -592,7 +575,7 @@ export function OverviewView({
               in net recovery over natural recovery in uncontacted holdout
               cases.
             </p>
-            <p className="font-mono text-[10px] text-ink-muted">
+            <p className="text-[10px] text-ink-muted">
               {analytics.simulated_executions > 0 &&
               analytics.live_executions > 0
                 ? `Mixed rails: ${analytics.live_executions.toLocaleString()} live and ${analytics.simulated_executions.toLocaleString()} simulated interventions, including ${formatINR(analytics.simulated_cost_paise)} of simulated cost.`

@@ -1,21 +1,9 @@
 'use client'
 
-import React, { useState } from 'react'
-import {
-  AlertTriangle,
-  Brain,
-  DollarSign,
-  Play,
-  Sparkles,
-  Zap,
-} from 'lucide-react'
-import {
-  seedSimulation,
-  type RecoveryCase,
-  type SystemStatusResponse,
-} from '@/lib/api'
+import React from 'react'
+import { AlertTriangle, Brain, DollarSign, Zap } from 'lucide-react'
+import { type RecoveryCase, type SystemStatusResponse } from '@/lib/api'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
 import {
   Card,
   CardContent,
@@ -29,20 +17,10 @@ import { StatCard } from '@/components/ui/StatCard'
 interface AgentViewProps {
   cases: RecoveryCase[]
   status: SystemStatusResponse | null
-  loading: boolean
-  onRefresh?: () => void
   onSelectCase?: (c: RecoveryCase) => void
 }
 
-export function AgentView({
-  cases,
-  status,
-  loading,
-  onRefresh,
-  onSelectCase,
-}: AgentViewProps) {
-  const [seeding, setSeeding] = useState(false)
-
+export function AgentView({ cases, status, onSelectCase }: AgentViewProps) {
   const caseById = new Map<string, RecoveryCase>()
   for (const c of cases) caseById.set(c.case_id, c)
 
@@ -146,16 +124,6 @@ export function AgentView({
     (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
   )
 
-  const handleSeedBatch = async () => {
-    setSeeding(true)
-    try {
-      await seedSimulation(30, true)
-      if (onRefresh) onRefresh()
-    } finally {
-      setSeeding(false)
-    }
-  }
-
   const llmEngine = status?.llm_engine
   const activeModelName =
     llmEngine?.active_model || 'Deterministic Rules Engine'
@@ -167,7 +135,7 @@ export function AgentView({
       {/* View Header */}
       <div className="flex flex-col gap-3 border-b border-border pb-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="font-mono text-2xl font-bold text-ink">
+          <h1 className="text-2xl font-bold text-ink">
             Autonomous Decision Stream
           </h1>
           <p className="mt-0.5 text-sm text-ink-muted">
@@ -175,21 +143,6 @@ export function AgentView({
             latencies, and token cost accounting.
           </p>
         </div>
-
-        <Button
-          variant="primary"
-          size="sm"
-          disabled={seeding || loading}
-          onClick={() => {
-            void handleSeedBatch()
-          }}
-          className="cursor-pointer gap-2 self-start font-mono text-xs sm:self-auto"
-        >
-          <Sparkles className="h-3.5 w-3.5" />
-          <span>
-            {seeding ? 'Generating Decisions...' : 'Seed Decision Cohort'}
-          </span>
-        </Button>
       </div>
 
       {/* Live Agent Status Cards */}
@@ -229,7 +182,7 @@ export function AgentView({
                 execution latency, and token cost snapshotted at execution time
               </CardDescription>
             </div>
-            <Badge variant="outline" className="font-mono text-xs">
+            <Badge variant="outline" className="text-xs">
               {agentEntries.length} Recorded Traces
             </Badge>
           </div>
@@ -241,26 +194,14 @@ export function AgentView({
                 <Brain className="h-6 w-6 text-accent" />
               </div>
               <div>
-                <p className="font-mono text-sm font-semibold text-ink">
+                <p className="text-sm font-semibold text-ink">
                   No Decision Events Recorded Yet
                 </p>
                 <p className="mx-auto mt-1 max-w-md text-xs text-ink-muted">
-                  Run a recovery simulation or trigger webhook ingress to
-                  inspect live AI strategy plans and safety audits.
+                  Strategy plans and safety audits appear here as the agent
+                  works incoming failures.
                 </p>
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={seeding}
-                onClick={() => {
-                  void handleSeedBatch()
-                }}
-                className="cursor-pointer gap-2 font-mono text-xs"
-              >
-                <Play className="h-3 w-3 text-recovered" />
-                <span>Run Decision Simulation</span>
-              </Button>
             </div>
           ) : (
             agentEntries.map((entry, idx) => {
@@ -281,14 +222,14 @@ export function AgentView({
                       openCase(entry.case_id)
                     }
                   }}
-                  className="space-y-3 rounded-panel border border-border bg-surface-sunken/40 p-4 font-mono text-xs transition-colors hover:border-accent/40"
+                  className="space-y-3 rounded-panel border border-border bg-surface-sunken/40 p-4 text-xs transition-colors hover:border-accent/40"
                 >
                   {/* Top Metadata Header */}
                   <div className="flex flex-col justify-between gap-2 border-b border-border/60 pb-2 sm:flex-row sm:items-center">
                     <div className="flex flex-wrap items-center gap-2">
                       <Badge
                         variant="outline"
-                        className="font-mono text-[11px] font-semibold text-ink"
+                        className="text-[11px] font-semibold text-ink"
                       >
                         {entry.case_id.slice(0, 13)}...
                       </Badge>
@@ -379,7 +320,7 @@ export function AgentView({
 
                   {/* Explicit LLM Provider Exception Alert Box */}
                   {entry.fallback_reason && (
-                    <div className="space-y-1 rounded-control border border-failed/30 bg-failed/10 p-3 font-mono text-xs">
+                    <div className="space-y-1 rounded-control border border-failed/30 bg-failed/10 p-3 text-xs">
                       <div className="flex items-center gap-1.5 text-xs font-bold text-failed">
                         <AlertTriangle className="h-3.5 w-3.5" />
                         <span>
@@ -409,7 +350,7 @@ export function AgentView({
                   )}
 
                   {entry.response_content && (
-                    <div className="rounded-control border border-border bg-surface p-3 font-mono text-xs">
+                    <div className="rounded-control border border-border bg-surface p-3 text-xs">
                       <span className="mb-1 block text-[10px] font-semibold tracking-wider text-accent uppercase">
                         LLM Response
                       </span>

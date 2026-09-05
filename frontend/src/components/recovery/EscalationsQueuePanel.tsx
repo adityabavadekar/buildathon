@@ -167,7 +167,7 @@ export function EscalationsQueuePanel({
           <div>
             <div className="flex items-center gap-2">
               <ShieldAlert className="h-5 w-5 text-escalated" />
-              <CardTitle className="font-mono text-lg text-ink">
+              <CardTitle className="text-lg text-ink">
                 Awaiting Approval (EV-Prioritized)
               </CardTitle>
             </div>
@@ -178,7 +178,7 @@ export function EscalationsQueuePanel({
             </CardDescription>
           </div>
 
-          <div className="flex items-center gap-3 self-start font-mono text-xs sm:self-auto">
+          <div className="flex items-center gap-3 self-start text-xs sm:self-auto">
             <div className="rounded-control border border-border bg-surface p-2.5">
               <span className="block text-[10px] text-ink-muted uppercase">
                 Queue Size
@@ -220,7 +220,7 @@ export function EscalationsQueuePanel({
             <SkeletonRow />
           </div>
         ) : queue.length === 0 ? (
-          <div className="flex flex-col items-center justify-center gap-2 py-12 text-center font-mono text-xs text-ink-muted">
+          <div className="flex flex-col items-center justify-center gap-2 py-12 text-center text-xs text-ink-muted">
             <CheckCircle2 className="h-8 w-8 text-recovered/60" />
             <p className="font-semibold text-ink">
               Zero Operator Escalations Pending
@@ -448,7 +448,7 @@ export function EscalationsQueuePanel({
                               e.stopPropagation()
                               void handleQuickApprove(item)
                             }}
-                            className="gap-1.5 bg-accent font-mono text-xs text-white hover:bg-accent/90"
+                            className="gap-1.5 bg-accent text-xs text-white hover:bg-accent/90"
                           >
                             {isApproving ? (
                               <RefreshCw className="h-3.5 w-3.5 animate-spin" />
@@ -474,7 +474,7 @@ export function EscalationsQueuePanel({
             </Table>
 
             {filtered.length > 0 && (
-              <div className="border-t border-border/60 px-4 py-2 text-right font-mono text-[11px] text-ink-muted">
+              <div className="border-t border-border/60 px-4 py-2 text-right text-[11px] text-ink-muted">
                 Showing {filtered.length.toString()} of{' '}
                 {queue.length.toString()} escalation(s)
               </div>

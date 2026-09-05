@@ -61,7 +61,7 @@ export function OpportunityMatrix({
             probability
           </CardDescription>
         </div>
-        <div className="flex items-center gap-3 font-mono text-[11px] text-ink-muted">
+        <div className="flex items-center gap-3 text-[11px] text-ink-muted">
           <span className="flex items-center gap-1">
             <span className="h-2 w-2 rounded-full bg-recovered" /> Recovered
           </span>
@@ -80,40 +80,40 @@ export function OpportunityMatrix({
           <div className="pointer-events-none absolute inset-0 grid grid-cols-2 grid-rows-2 divide-x divide-y divide-border/60">
             {/* Top-Left: Quick Wins */}
             <div className="bg-recovered-subtle/5 p-3">
-              <span className="block font-mono text-[10px] font-bold tracking-wider text-recovered uppercase">
+              <span className="block text-[10px] font-bold tracking-wider text-recovered uppercase">
                 Quick Wins
               </span>
-              <span className="block font-mono text-[9px] text-ink-subtle">
+              <span className="block text-[9px] text-ink-subtle">
                 High Probability · Low Value (Automated Retries)
               </span>
             </div>
 
             {/* Top-Right: High Value */}
             <div className="bg-accent-subtle/5 p-3">
-              <span className="block font-mono text-[10px] font-bold tracking-wider text-accent uppercase">
+              <span className="block text-[10px] font-bold tracking-wider text-accent uppercase">
                 High Value Priority
               </span>
-              <span className="block font-mono text-[9px] text-ink-subtle">
+              <span className="block text-[9px] text-ink-subtle">
                 High Probability · High Value (Smart Links)
               </span>
             </div>
 
             {/* Bottom-Left: Low Priority */}
             <div className="p-3">
-              <span className="block font-mono text-[10px] font-bold tracking-wider text-ink-subtle uppercase">
+              <span className="block text-[10px] font-bold tracking-wider text-ink-subtle uppercase">
                 Low Priority
               </span>
-              <span className="block font-mono text-[9px] text-ink-subtle">
+              <span className="block text-[9px] text-ink-subtle">
                 Low Probability · Low Value (Standard Nudges)
               </span>
             </div>
 
             {/* Bottom-Right: Human Review */}
             <div className="bg-escalated-subtle/5 p-3">
-              <span className="block font-mono text-[10px] font-bold tracking-wider text-escalated uppercase">
+              <span className="block text-[10px] font-bold tracking-wider text-escalated uppercase">
                 Human Review
               </span>
-              <span className="block font-mono text-[9px] text-ink-subtle">
+              <span className="block text-[9px] text-ink-subtle">
                 Low Probability · High Value (Operator Escalation)
               </span>
             </div>
@@ -121,9 +121,8 @@ export function OpportunityMatrix({
 
           {/* Plotted Case Bubbles */}
           {activeCases.length === 0 ? (
-            <div className="flex h-full items-center justify-center font-mono text-xs text-ink-muted">
-              No active recovery cases to map. Seed synthetic cohort to
-              visualize.
+            <div className="flex h-full items-center justify-center text-xs text-ink-muted">
+              No active recovery cases to map.
             </div>
           ) : (
             activeCases.map((c) => {
@@ -173,7 +172,7 @@ export function OpportunityMatrix({
 
           {/* Floating Tooltip when hovering over a case */}
           {hoveredCase && (
-            <div className="animate-in fade-in pointer-events-none absolute bottom-3 left-3 z-20 max-w-xs rounded-panel border border-border bg-surface p-3 font-mono text-xs shadow-xl duration-150">
+            <div className="animate-in fade-in pointer-events-none absolute bottom-3 left-3 z-20 max-w-xs rounded-panel border border-border bg-surface p-3 text-xs shadow-xl duration-150">
               <div className="flex items-center justify-between gap-4">
                 <span className="font-bold text-ink">
                   {hoveredCase.case_id}

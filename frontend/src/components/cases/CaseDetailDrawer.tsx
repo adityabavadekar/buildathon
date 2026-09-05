@@ -1,18 +1,10 @@
 'use client'
 
 import React, { useEffect, useState } from 'react'
-import {
-  Brain,
-  DollarSign,
-  MessageSquare,
-  ShieldCheck,
-  Sparkles,
-  X,
-} from 'lucide-react'
+import { Brain, MessageSquare, ShieldCheck, Sparkles, X } from 'lucide-react'
 import {
   approveCase,
   getPolicies,
-  resolveCaseSim,
   type PolicyResponse,
   type RecoveryCase,
   type RecoveryState,
@@ -89,17 +81,6 @@ export function CaseDetailDrawer({
       setActionLoading(true)
       await approveCase(caseItem.case_id, 'Approved via operator drawer')
       onActionComplete()
-    } finally {
-      setActionLoading(false)
-    }
-  }
-
-  const handleSimulatePayment = async () => {
-    try {
-      setActionLoading(true)
-      await resolveCaseSim(caseItem.case_id)
-      onActionComplete()
-      onClose()
     } finally {
       setActionLoading(false)
     }
@@ -258,7 +239,7 @@ export function CaseDetailDrawer({
                       </div>
                       <Badge
                         variant="default"
-                        className="border-accent/30 bg-accent/10 font-mono text-[10px] text-accent"
+                        className="border-accent/30 bg-accent/10 text-[10px] text-accent"
                       >
                         {strategy.replaceAll('_', ' ')}
                       </Badge>
@@ -266,7 +247,7 @@ export function CaseDetailDrawer({
 
                     {rationale ? (
                       <div className="rounded-control border border-border/80 bg-surface p-3 text-xs leading-relaxed text-ink shadow-2xs">
-                        <p className="mb-1 font-mono text-[10px] font-semibold tracking-wider text-ink-muted uppercase">
+                        <p className="mb-1 text-[10px] font-semibold tracking-wider text-ink-muted uppercase">
                           Diagnostic Rationale & Strategy
                         </p>
                         <p className="font-medium text-ink">{rationale}</p>
@@ -274,7 +255,7 @@ export function CaseDetailDrawer({
                     ) : null}
 
                     {/* Model Metadata Bar */}
-                    <div className="flex flex-wrap items-center gap-2 font-mono text-[11px] text-ink-muted">
+                    <div className="flex flex-wrap items-center gap-2 text-[11px] text-ink-muted">
                       <span className="inline-flex items-center gap-1 rounded-control border border-border bg-surface px-2 py-1">
                         <Sparkles className="h-3 w-3 text-accent" />
                         <span>
@@ -306,12 +287,12 @@ export function CaseDetailDrawer({
                     {/* Drafted Messages Preview if present */}
                     {(msgEn || msgHi) && (
                       <div className="mt-2 space-y-2 border-t border-border/40 pt-2">
-                        <p className="font-mono text-[10px] font-bold tracking-wider text-ink-subtle uppercase">
+                        <p className="text-[10px] font-bold tracking-wider text-ink-subtle uppercase">
                           Drafted Recovery Outreach
                         </p>
                         {msgEn && (
                           <div className="rounded-control border border-border bg-surface p-2.5 text-xs text-ink">
-                            <span className="mb-0.5 block font-mono text-[9px] font-bold text-accent uppercase">
+                            <span className="mb-0.5 block text-[9px] font-bold text-accent uppercase">
                               English Draft
                             </span>
                             <span>{msgEn}</span>
@@ -319,7 +300,7 @@ export function CaseDetailDrawer({
                         )}
                         {msgHi && (
                           <div className="rounded-control border border-border bg-surface p-2.5 text-xs text-ink">
-                            <span className="mb-0.5 block font-mono text-[9px] font-bold text-accent uppercase">
+                            <span className="mb-0.5 block text-[9px] font-bold text-accent uppercase">
                               Hinglish Draft
                             </span>
                             <span>{msgHi}</span>
@@ -349,7 +330,7 @@ export function CaseDetailDrawer({
                   <div className="flex justify-between gap-3">
                     <span className="text-ink-muted">Error</span>
                     <span className="text-right text-ink">
-                      <span className="font-mono font-medium">
+                      <span className="font-medium">
                         {caseItem.failure_event.error_code}
                       </span>
                       {' · '}
@@ -439,7 +420,7 @@ export function CaseDetailDrawer({
                 {caseItem.dunning_message_en && (
                   <Badge
                     variant="default"
-                    className="border-accent/30 bg-accent/10 font-mono text-[10px] text-accent"
+                    className="border-accent/30 bg-accent/10 text-[10px] text-accent"
                   >
                     AI Personalized
                   </Badge>
@@ -454,25 +435,25 @@ export function CaseDetailDrawer({
 
               {(caseItem.dunning_message_en || caseItem.dunning_message_hi) && (
                 <div className="space-y-3 rounded-panel border border-border bg-surface-sunken/40 p-4">
-                  <h4 className="font-mono text-xs font-bold tracking-wider text-ink uppercase">
+                  <h4 className="text-xs font-bold tracking-wider text-ink uppercase">
                     Drafted Outreach Copy
                   </h4>
                   {caseItem.dunning_message_en && (
                     <div className="space-y-1">
-                      <span className="font-mono text-[10px] font-semibold text-ink-muted">
+                      <span className="text-[10px] font-semibold text-ink-muted">
                         English Copy
                       </span>
-                      <div className="rounded-control border border-border bg-surface p-3 font-mono text-xs text-ink">
+                      <div className="rounded-control border border-border bg-surface p-3 text-xs text-ink">
                         {caseItem.dunning_message_en}
                       </div>
                     </div>
                   )}
                   {caseItem.dunning_message_hi && (
                     <div className="space-y-1">
-                      <span className="font-mono text-[10px] font-semibold text-ink-muted">
+                      <span className="text-[10px] font-semibold text-ink-muted">
                         Hinglish Copy
                       </span>
-                      <div className="rounded-control border border-border bg-surface p-3 font-mono text-xs text-ink">
+                      <div className="rounded-control border border-border bg-surface p-3 text-xs text-ink">
                         {caseItem.dunning_message_hi}
                       </div>
                     </div>
@@ -488,7 +469,7 @@ export function CaseDetailDrawer({
                 <h3 className="text-sm font-semibold text-ink">
                   Immutable state machine chronology
                 </h3>
-                <span className="font-mono text-xs text-ink-muted">
+                <span className="text-xs text-ink-muted">
                   {caseItem.audit_trail.length} audit checkpoints
                 </span>
               </div>
@@ -543,7 +524,7 @@ export function CaseDetailDrawer({
                         </span>
                         <Badge
                           variant={isAgent ? 'default' : 'outline'}
-                          className={`font-mono text-[10px] ${
+                          className={`text-[10px] ${
                             isAgent
                               ? 'border-accent/30 bg-accent/10 text-accent'
                               : ''
@@ -552,7 +533,7 @@ export function CaseDetailDrawer({
                           {entry.actor}
                         </Badge>
                       </div>
-                      <span className="font-mono text-[10px]">
+                      <span className="text-[10px]">
                         {new Date(entry.timestamp).toLocaleString()}
                       </span>
                     </div>
@@ -560,7 +541,7 @@ export function CaseDetailDrawer({
                     {/* Agent Diagnostic Reasoning Callout */}
                     {rationale && (
                       <div className="mt-2 rounded-control border border-accent/30 bg-accent/5 p-2.5 text-xs text-ink">
-                        <div className="mb-1 flex items-center gap-1.5 font-mono text-[10px] font-bold text-accent">
+                        <div className="mb-1 flex items-center gap-1.5 text-[10px] font-bold text-accent">
                           <Brain className="h-3 w-3" />
                           <span>Agent Strategy Rationale</span>
                         </div>
@@ -570,7 +551,7 @@ export function CaseDetailDrawer({
 
                     {/* Decision Confidence Callout */}
                     {(decisionConfidence || decisionThreshold) && (
-                      <div className="mt-2 flex flex-wrap items-center gap-2 rounded-control border border-border/80 bg-surface-sunken/60 p-2 font-mono text-[11px] text-ink-muted">
+                      <div className="mt-2 flex flex-wrap items-center gap-2 rounded-control border border-border/80 bg-surface-sunken/60 p-2 text-[11px] text-ink-muted">
                         <span className="text-[10px] font-bold tracking-wider text-ink-muted uppercase">
                           Model confidence
                         </span>
@@ -594,7 +575,7 @@ export function CaseDetailDrawer({
                     {/* Drafted Customer Message Callout in Timeline */}
                     {(msgEn || msgHi) && (
                       <div className="mt-2 space-y-1.5 rounded-control border border-border bg-surface-sunken/60 p-2.5 text-xs">
-                        <div className="flex items-center gap-1.5 font-mono text-[10px] font-bold text-ink-muted">
+                        <div className="flex items-center gap-1.5 text-[10px] font-bold text-ink-muted">
                           <MessageSquare className="h-3 w-3 text-accent" />
                           <span>Customer Outreach Message Drafted</span>
                         </div>
@@ -622,7 +603,7 @@ export function CaseDetailDrawer({
 
                     {/* Model Telemetry Chips */}
                     {entry.model_metadata && (
-                      <div className="mt-2 flex flex-wrap gap-1.5 font-mono text-[10px] text-ink-muted">
+                      <div className="mt-2 flex flex-wrap gap-1.5 text-[10px] text-ink-muted">
                         <span className="rounded border border-border/80 bg-surface-sunken px-1.5 py-0.5">
                           {entry.model_metadata.model}
                         </span>
@@ -645,14 +626,14 @@ export function CaseDetailDrawer({
                         <p className="mb-1 text-[10px] font-bold text-failed uppercase">
                           LLM error trace
                         </p>
-                        <pre className="max-h-40 overflow-auto rounded bg-surface-sunken p-2 font-mono text-[10px] leading-relaxed whitespace-pre-wrap text-failed">
+                        <pre className="max-h-40 overflow-auto rounded bg-surface-sunken p-2 text-[10px] leading-relaxed whitespace-pre-wrap text-failed">
                           {entry.model_metadata.error_detail}
                         </pre>
                       </div>
                     ) : null}
 
                     {entry.cost_incurred_paise > 0 ? (
-                      <span className="mt-0.5 block font-mono text-xs font-medium text-failed">
+                      <span className="mt-0.5 block text-xs font-medium text-failed">
                         Cost incurred: -
                         {formatINR(entry.cost_incurred_paise, {
                           maximumFractionDigits: 2,
@@ -671,8 +652,7 @@ export function CaseDetailDrawer({
                 Operator actions
               </h3>
               <p className="text-sm text-ink-muted">
-                Approve an escalated case or simulate a successful customer
-                payment through the webhook pipeline.
+                Recovery is paused on an escalated case until you approve it.
               </p>
               <div className="flex flex-wrap gap-2 pt-1">
                 {caseItem.state === 'ESCALATED' ? (
@@ -684,20 +664,6 @@ export function CaseDetailDrawer({
                     disabled={actionLoading}
                   >
                     {actionLoading ? 'Approving...' : 'Approve case'}
-                  </Button>
-                ) : null}
-                {caseItem.state !== 'RECOVERED' ? (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => {
-                      void handleSimulatePayment()
-                    }}
-                    disabled={actionLoading}
-                    className="gap-1.5"
-                  >
-                    <DollarSign className="h-3.5 w-3.5 text-recovered" />
-                    {actionLoading ? 'Processing...' : 'Simulate payment'}
                   </Button>
                 ) : null}
               </div>

@@ -152,7 +152,7 @@ export function HistogramChart({
           className="pointer-events-none absolute top-2 right-2 rounded-control border border-border bg-surface px-2.5 py-1.5 text-[11px] shadow-sm"
         >
           <span className="block font-medium text-ink">{activeBar.label}</span>
-          <span className="block font-mono text-ink-muted">
+          <span className="block text-ink-muted">
             {activeBar.value.toString()}
             {valueSuffix}
             {activeBar.detail !== undefined ? ` · ${activeBar.detail}` : ''}

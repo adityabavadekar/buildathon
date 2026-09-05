@@ -84,7 +84,14 @@ export function Sidebar({
 
   return (
     <aside className="app-sidebar flex h-screen w-[17.5rem] shrink-0 flex-col select-none">
-      <div className="flex h-16 items-center gap-3 border-b border-sidebar-border px-5">
+      <button
+        type="button"
+        onClick={() => {
+          onSelectSection('overview')
+        }}
+        aria-label="Go to overview"
+        className="flex h-16 w-full cursor-pointer items-center gap-3 border-b border-sidebar-border px-5 text-left transition-colors hover:bg-sidebar-elevated"
+      >
         <div className="sidebar-brand-logo flex h-9 w-9 items-center justify-center rounded-control border">
           <RazorpaySymbol className="h-5 w-5" />
         </div>
@@ -96,7 +103,7 @@ export function Sidebar({
             Revenue recovery
           </span>
         </div>
-      </div>
+      </button>
 
       <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 py-2">
         <div className="sidebar-section-label">Main</div>

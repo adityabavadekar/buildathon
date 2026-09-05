@@ -66,3 +66,30 @@ export const WEBHOOK_INGRESS_PATH = '/api/webhooks/razorpay'
 
 /** Mirrors SIMULATED_PAYMENT_LINK_PREFIX in the backend's core constants. */
 export const SIMULATED_PAYMENT_LINK_PREFIX = 'plink_sim_'
+
+/** Case states still being worked, so their value is money a merchant can still recover. */
+export const OPEN_CASE_STATES = [
+  'IN_DUNNING',
+  'OUTREACH_PENDING',
+  'RETRY_SCHEDULED',
+  'ANALYSIS_QUEUED',
+] as const
+
+/** What each autonomy mode changes, shown before an operator switches into it. */
+export const AUTONOMY_MODE_COPY = {
+  FULL_AUTONOMY: {
+    label: 'Autonomous',
+    effect:
+      'The agent will retry payments and contact customers on its own, within your policy caps. You will not be asked to approve each action.',
+  },
+  HUMAN_IN_THE_LOOP: {
+    label: 'Human in the loop',
+    effect:
+      'The agent will keep diagnosing and planning, but every customer-facing action waits for your approval. Recovery slows down, and cases queue up until you act on them.',
+  },
+  MONITORING_ONLY: {
+    label: 'Paused',
+    effect:
+      'All outbound retries and customer outreach stop immediately. The agent keeps watching and recording, but recovers nothing while this is on.',
+  },
+} as const

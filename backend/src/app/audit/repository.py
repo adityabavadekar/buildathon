@@ -15,7 +15,12 @@ if TYPE_CHECKING:
     from datetime import datetime
     from pathlib import Path
 
-    from app.audit.models import ModelTelemetryEntry, RecoveryCase, ScheduledJob
+    from app.audit.models import (
+        AuditEntry,
+        ModelTelemetryEntry,
+        RecoveryCase,
+        ScheduledJob,
+    )
     from app.core.enums import ExperimentArm, RecoveryState
 
 logger = get_logger(__name__)
@@ -246,6 +251,10 @@ class CaseRepository:
     def get_strategy_experiments_report(self) -> list[dict[str, Any]]:
         """Fetch recovery strategy experiments report measuring incremental value."""
         return self._store.get_strategy_experiments_report()
+
+    def get_global_audit_trail(self, limit: int = 200) -> list[AuditEntry]:
+        """System-scoped audit rows: mode switches, logins, OAuth changes."""
+        return self._store.get_global_audit_trail(limit)
 
     def last_customer_outreach_at(
         self, customer_id: str, exclude_case_id: str

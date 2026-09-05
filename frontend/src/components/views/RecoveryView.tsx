@@ -674,7 +674,7 @@ export function RecoveryView({
 
                       {/* Error */}
                       <TableCell>
-                        <div className="font-mono text-xs font-semibold text-ink">
+                        <div className="text-xs font-semibold text-ink">
                           {c.failure_event.error_code}
                         </div>
                         <div className="line-clamp-1 max-w-[200px] text-[11px] text-ink-muted">

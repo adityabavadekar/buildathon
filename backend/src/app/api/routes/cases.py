@@ -230,6 +230,19 @@ async def get_case(case_id: str) -> RecoveryCase:
 
 
 @router.get(
+    "/audit/global",
+    response_model=list[AuditEntry],
+    summary="Get System Audit Trail",
+)
+async def get_global_audit(limit: int = 200) -> list[AuditEntry]:
+    """System-wide audit rows that belong to no single case.
+
+    Declared before /{case_id}/audit, or the path parameter would swallow it.
+    """
+    return get_case_repository().get_global_audit_trail(limit)
+
+
+@router.get(
     "/{case_id}/audit", response_model=list[AuditEntry], summary="Get Case Audit Trail"
 )
 async def get_case_audit(case_id: str) -> list[AuditEntry]:

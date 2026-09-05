@@ -73,14 +73,16 @@ export function AnalyticsView({ analytics, loading }: AnalyticsViewProps) {
       .then((model) => {
         setRecoveryModel(model)
         setTrainMessage(
-          `Retrained ${model.version} on ${model.trained_count.toString()} treatment cases.`,
+          model.trained_count > 0
+            ? `Forecasts updated from ${model.trained_count.toString()} completed cases.`
+            : 'Not enough completed cases yet to update forecasts.',
         )
       })
       .catch((err: unknown) => {
         setTrainMessage(
           err instanceof Error
-            ? `Train failed: ${err.message}`
-            : 'Train failed',
+            ? `Could not update forecasts: ${err.message}`
+            : 'Could not update forecasts',
         )
       })
       .finally(() => {
@@ -340,7 +342,6 @@ export function AnalyticsView({ analytics, loading }: AnalyticsViewProps) {
       <HealthScoreCard
         healthScore={analytics.health_score}
         returnOnSpend={analytics.return_on_recovery_spend}
-        recoveryStreak={analytics.recovery_streak}
       />
 
       <Card>
@@ -361,31 +362,20 @@ export function AnalyticsView({ analytics, loading }: AnalyticsViewProps) {
                 >
                   {recoveryModel.status}
                 </Badge>
-                <span className="text-sm text-ink">
-                  {recoveryModel.version}
-                </span>
-                <span className="text-xs text-ink-muted">
-                  {recoveryModel.trained_count.toString()} training cases
-                </span>
               </div>
 
-              <div className="grid gap-4 rounded-panel border border-border p-4 sm:grid-cols-3">
+              <div className="grid gap-4 rounded-panel border border-border p-4 sm:grid-cols-2">
                 <GaugeMeter
-                  label="Cross-validated accuracy"
-                  value={metricValue(recoveryModel.cv_metrics, 'mean_accuracy')}
-                  hint="How often recovery predictions matched outcomes in training."
+                  label="Prediction accuracy"
+                  value={metricValue(recoveryModel.holdout_metrics, 'accuracy')}
+                  hint="How often the forecast was right on cases it had never seen."
                 />
                 <GaugeMeter
-                  label="Cross-validated AUC"
+                  label="Confidence in ranking"
                   value={metricValue(recoveryModel.cv_metrics, 'mean_auc')}
-                  hint="Separation between cases that recover and those that do not."
+                  hint="How reliably it separates cases that recover from those that do not."
                   warnBelow={0.7}
                   criticalBelow={0.6}
-                />
-                <GaugeMeter
-                  label="Holdout accuracy"
-                  value={metricValue(recoveryModel.holdout_metrics, 'accuracy')}
-                  hint="Accuracy on cases the model never trained on."
                 />
               </div>
             </div>

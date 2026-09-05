@@ -87,7 +87,7 @@ export function RecoveryLifecycleStrip({
     <div className="space-y-3 rounded-panel border border-border bg-surface-sunken/40 p-4">
       <div className="flex flex-col justify-between gap-1 border-b border-border/40 pb-2 sm:flex-row sm:items-center">
         <div className="flex items-center gap-2">
-          <span className="font-mono text-xs font-bold tracking-wider text-ink uppercase">
+          <span className="text-xs font-bold tracking-wider text-ink uppercase">
             Autonomous Recovery Pipeline
           </span>
           <span className="hidden text-[11px] text-ink-muted md:inline">
@@ -95,7 +95,7 @@ export function RecoveryLifecycleStrip({
             guardrails, and resolution
           </span>
         </div>
-        <span className="font-mono text-[10px] text-ink-subtle uppercase">
+        <span className="text-[10px] text-ink-subtle uppercase">
           10% Holdout Arm Enforced
         </span>
       </div>
@@ -111,10 +111,10 @@ export function RecoveryLifecycleStrip({
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <span className="font-mono text-[11px] font-bold text-ink-subtle group-hover:text-accent">
+                  <span className="text-[11px] font-bold text-ink-subtle group-hover:text-accent">
                     {step.stepNumber}
                   </span>
-                  <span className="font-mono text-xs font-semibold text-ink">
+                  <span className="text-xs font-semibold text-ink">
                     {step.title}
                   </span>
                 </div>
@@ -125,7 +125,7 @@ export function RecoveryLifecycleStrip({
                 {step.description}
               </p>
 
-              <div className="flex items-center justify-between border-t border-border/40 pt-1.5 font-mono text-[10px]">
+              <div className="flex items-center justify-between border-t border-border/40 pt-1.5 text-[10px]">
                 <span className="text-ink-subtle">{step.subtitle}</span>
                 <span className="font-semibold text-ink">{step.metric}</span>
               </div>

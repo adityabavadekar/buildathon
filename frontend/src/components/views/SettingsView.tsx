@@ -134,7 +134,7 @@ export function SettingsView({ settings, loading }: SettingsViewProps) {
     <div className="space-y-6">
       {/* View Header */}
       <div className="border-b border-border pb-4">
-        <h1 className="font-mono text-2xl font-bold text-ink">
+        <h1 className="text-2xl font-bold text-ink">
           System & Engine Settings
         </h1>
         <p className="mt-0.5 text-sm text-ink-muted">
@@ -159,7 +159,7 @@ export function SettingsView({ settings, loading }: SettingsViewProps) {
           {loading ? (
             <SkeletonCard />
           ) : (
-            <div className="grid grid-cols-1 gap-4 font-mono text-xs md:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 text-xs md:grid-cols-2">
               <div className="space-y-1 rounded-control border border-border bg-surface-sunken p-3">
                 <span className="block text-[11px] text-ink-muted">
                   Active Environment
@@ -213,7 +213,7 @@ export function SettingsView({ settings, loading }: SettingsViewProps) {
                 void handleTestGateway()
               }}
               disabled={testingGateway}
-              className="cursor-pointer gap-2 font-mono text-xs"
+              className="cursor-pointer gap-2 text-xs"
             >
               <RazorpaySymbol className="h-3.5 w-3.5" />
               <span>
@@ -223,7 +223,7 @@ export function SettingsView({ settings, loading }: SettingsViewProps) {
               </span>
             </Button>
             {gatewayTestResult && (
-              <span className="flex items-center gap-1.5 font-mono text-xs text-recovered">
+              <span className="flex items-center gap-1.5 text-xs text-recovered">
                 <CheckCircle2 className="h-3.5 w-3.5" />
                 {gatewayTestResult.message} (
                 {gatewayTestResult.latency_ms.toFixed(0)}ms)
@@ -255,7 +255,7 @@ export function SettingsView({ settings, loading }: SettingsViewProps) {
               onClick={() => {
                 void handleSaveLLMConfig()
               }}
-              className="cursor-pointer gap-2 self-start font-mono text-xs sm:self-auto"
+              className="cursor-pointer gap-2 self-start text-xs sm:self-auto"
             >
               {saveSuccess ? (
                 <Check className="h-3.5 w-3.5 text-recovered" />
@@ -286,11 +286,11 @@ export function SettingsView({ settings, loading }: SettingsViewProps) {
                 <div className="flex items-center gap-2">
                   <Badge
                     variant="outline"
-                    className="bg-surface font-mono text-[10px] font-bold text-ink"
+                    className="bg-surface text-[10px] font-bold text-ink"
                   >
                     Priority #{provider.priority.toString()}
                   </Badge>
-                  <span className="font-mono text-xs font-bold text-ink">
+                  <span className="text-xs font-bold text-ink">
                     {provider.label}
                   </span>
                   <Badge
@@ -302,7 +302,7 @@ export function SettingsView({ settings, loading }: SettingsViewProps) {
                 </div>
 
                 {/* Model Selector */}
-                <div className="flex items-center gap-2 pt-1 font-mono text-xs">
+                <div className="flex items-center gap-2 pt-1 text-xs">
                   <span className="text-[11px] text-ink-muted">
                     Active Model:
                   </span>
@@ -313,7 +313,7 @@ export function SettingsView({ settings, loading }: SettingsViewProps) {
                     }}
                     disabled={!provider.enabled}
                     aria-label={`Active model for ${provider.label}`}
-                    className="cursor-pointer rounded-control border border-border bg-surface px-2.5 py-1 font-mono text-xs text-ink focus:outline-hidden"
+                    className="cursor-pointer rounded-control border border-border bg-surface px-2.5 py-1 text-xs text-ink focus:outline-hidden"
                   >
                     {provider.available_models.map((m) => (
                       <option key={m} value={m}>
@@ -357,7 +357,7 @@ export function SettingsView({ settings, loading }: SettingsViewProps) {
                   onClick={() => {
                     handleToggleProvider(provider.name)
                   }}
-                  className="h-8 cursor-pointer px-3 font-mono text-xs"
+                  className="h-8 cursor-pointer px-3 text-xs"
                 >
                   {provider.enabled ? 'Enabled' : 'Disabled'}
                 </Button>
@@ -378,7 +378,7 @@ export function SettingsView({ settings, loading }: SettingsViewProps) {
                   AI Model Telemetry & Token Accounting
                 </CardTitle>
               </div>
-              <span className="font-mono text-xs font-bold text-ink">
+              <span className="text-xs font-bold text-ink">
                 Total USD Cost: ${(llmReport.total_cost_usd || 0).toFixed(5)}
               </span>
             </div>
@@ -388,7 +388,7 @@ export function SettingsView({ settings, loading }: SettingsViewProps) {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4 p-4">
-            <div className="grid grid-cols-2 gap-3 font-mono text-xs sm:grid-cols-4">
+            <div className="grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">
               <div className="rounded-control border border-border bg-surface-sunken p-3">
                 <span className="block text-[11px] text-ink-muted">
                   Total Calls
@@ -488,7 +488,7 @@ export function SettingsView({ settings, loading }: SettingsViewProps) {
                 A/B Model Experiment Cohorts
               </CardTitle>
             </div>
-            <Badge variant="outline" className="font-mono text-xs">
+            <Badge variant="outline" className="text-xs">
               {experiments.length} Active Experiments
             </Badge>
           </div>
@@ -499,7 +499,7 @@ export function SettingsView({ settings, loading }: SettingsViewProps) {
         </CardHeader>
         <CardContent className="p-4">
           {experiments.length === 0 ? (
-            <div className="py-6 text-center font-mono text-xs text-ink-muted">
+            <div className="py-6 text-center text-xs text-ink-muted">
               No experiment tags registered yet. Seed cohorts with experiment
               tags to compare models.
             </div>

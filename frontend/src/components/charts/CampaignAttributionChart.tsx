@@ -70,7 +70,7 @@ export function CampaignAttributionChart({
             <CardTitle className="text-base">
               Campaign attribution and recovery
             </CardTitle>
-            <Badge variant="outline" className="font-mono text-xs">
+            <Badge variant="outline" className="text-xs">
               Razorpay notes
             </Badge>
           </div>
@@ -106,12 +106,12 @@ export function CampaignAttributionChart({
             <p className="mt-1 leading-relaxed text-ink-muted">
               Razorpay does not have a native campaign entity. FORTX extracts
               custom cohort tags directly from the{' '}
-              <code className="font-mono text-ink">notes</code> dictionary in
-              Orders, Payments, and Subscriptions payloads (max 15 keys, 256
-              chars each).
+              <code className="text-ink">notes</code> dictionary in Orders,
+              Payments, and Subscriptions payloads (max 15 keys, 256 chars
+              each).
             </p>
 
-            <div className="mt-3 rounded border border-border bg-surface-sunken p-3 font-mono text-xs">
+            <div className="mt-3 rounded border border-border bg-surface-sunken p-3 text-xs">
               <p className="text-ink-muted">
                 // Example: Razorpay Order creation payload
               </p>
@@ -251,7 +251,7 @@ export function CampaignAttributionChart({
                   <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex items-center gap-2">
                       <Layers className="h-3.5 w-3.5 shrink-0 text-accent" />
-                      <span className="font-mono font-semibold text-ink">
+                      <span className="font-semibold text-ink">
                         {c.campaign_id}
                       </span>
                       <Badge variant="outline" className="text-[10px]">
@@ -285,7 +285,7 @@ export function CampaignAttributionChart({
                       </div>
                       <Badge
                         variant={recoveryPct >= 50 ? 'recovered' : 'default'}
-                        className="font-mono text-xs"
+                        className="text-xs"
                       >
                         {recoveryPct.toFixed(1)}%
                       </Badge>

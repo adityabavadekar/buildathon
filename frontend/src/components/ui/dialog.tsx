@@ -44,7 +44,7 @@ export function Dialog({
       <div className="relative z-50 max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-panel border border-border bg-surface p-6 text-ink shadow-lg">
         <div className="flex items-start justify-between border-b border-border pb-4">
           <div>
-            <h2 className="font-mono text-base font-semibold tracking-tight text-ink">
+            <h2 className="text-base font-semibold tracking-tight text-ink">
               {title}
             </h2>
             {description && (
@@ -54,7 +54,7 @@ export function Dialog({
           <button
             type="button"
             onClick={onClose}
-            className="cursor-pointer rounded-control p-1 font-mono text-xs text-ink-muted transition-colors hover:bg-surface-sunken hover:text-ink"
+            className="cursor-pointer rounded-control p-1 text-xs text-ink-muted transition-colors hover:bg-surface-sunken hover:text-ink"
           >
             Esc [X]
           </button>

@@ -8,9 +8,8 @@ import {
   ChevronUp,
   RefreshCw,
   Search,
-  Sparkles,
 } from 'lucide-react'
-import { seedSimulation, type RecoveryCase } from '@/lib/api'
+import { type RecoveryCase } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import {
   formatCustomerName,
@@ -120,7 +119,6 @@ export function AuditView({
   const [searchQuery, setSearchQuery] = useState<string>('')
   const [expandedEntryId, setExpandedEntryId] = useState<string | null>(null)
   const [page, setPage] = useState<number>(1)
-  const [isSeeding, setIsSeeding] = useState<boolean>(false)
   const perPage = 25
 
   const allEntries: EnrichedAuditEntry[] = useMemo(() => {
@@ -335,30 +333,7 @@ export function AuditView({
                     colSpan={6}
                     className="px-4 py-10 text-center text-sm text-ink-muted"
                   >
-                    <div className="flex flex-col items-center gap-3">
-                      <p>No audit records match the current filters.</p>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={isSeeding}
-                        onClick={() => {
-                          setIsSeeding(true)
-                          void seedSimulation(30, true)
-                            .then(() => {
-                              if (onRefresh) onRefresh()
-                            })
-                            .finally(() => {
-                              setIsSeeding(false)
-                            })
-                        }}
-                        className="gap-2"
-                      >
-                        <Sparkles className="h-3.5 w-3.5 text-accent" />
-                        <span>
-                          {isSeeding ? 'Seeding...' : 'Seed recovery batch'}
-                        </span>
-                      </Button>
-                    </div>
+                    No audit records match the current filters.
                   </td>
                 </tr>
               ) : (
@@ -402,18 +377,18 @@ export function AuditView({
                                   e.stopPropagation()
                                   openCase(entry.case_id)
                                 }}
-                                className="font-mono text-xs text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent"
+                                className="text-xs text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent"
                                 title="Open case detail"
                               >
                                 {entry.case_id}
                               </button>
                             ) : (
-                              <span className="font-mono text-xs text-ink">
+                              <span className="text-xs text-ink">
                                 {entry.case_id}
                               </span>
                             )}
                           </div>
-                          <div className="group/case relative font-mono text-[11px] text-ink-muted">
+                          <div className="group/case relative text-[11px] text-ink-muted">
                             {onSelectCase && casesById.has(entry.case_id) ? (
                               <button
                                 type="button"
@@ -446,7 +421,7 @@ export function AuditView({
                                 <span className="truncate text-xs font-semibold text-ink">
                                   {actorInfo.label}
                                 </span>
-                                <span className="rounded border border-accent/20 bg-accent-subtle px-1.5 py-0.5 font-mono text-[9px] font-bold text-accent uppercase">
+                                <span className="rounded border border-accent/20 bg-accent-subtle px-1.5 py-0.5 text-[9px] font-bold text-accent uppercase">
                                   {entry.actor}
                                 </span>
                               </div>
@@ -542,7 +517,7 @@ export function AuditView({
                                   <span className="text-ink-muted">
                                     Audit ID
                                   </span>
-                                  <p className="font-mono text-[11px] break-all">
+                                  <p className="text-[11px] break-all">
                                     {entry.entry_id}
                                   </p>
                                 </div>

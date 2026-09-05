@@ -197,7 +197,7 @@ export function RailBadge({
 
   return (
     <span
-      className={`inline-flex items-center gap-1.5 rounded-control border border-border bg-surface-sunken/80 px-2 py-0.5 font-mono text-[11px] font-medium text-ink ${className}`}
+      className={`inline-flex items-center gap-1.5 rounded-control border border-border bg-surface-sunken/80 px-2 py-0.5 text-[11px] font-medium text-ink ${className}`}
       title={`Payment Rail: ${label}`}
     >
       {icon}

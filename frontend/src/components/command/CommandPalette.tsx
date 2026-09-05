@@ -22,8 +22,6 @@ interface CommandPaletteProps {
   cases: RecoveryCase[]
   onSelectCase: (c: RecoveryCase) => void
   onNavigate: (section: NavSection) => void
-  onSeed: () => void
-  onReset: () => void
   /** Push a term into the recovery table's server-side search. */
   onSearchTerm?: (term: string) => void
 }
@@ -68,8 +66,6 @@ export function CommandPalette({
   cases,
   onSelectCase,
   onNavigate,
-  onSeed,
-  onReset,
   onSearchTerm,
 }: CommandPaletteProps) {
   const [query, setQuery] = useState<string>('')
@@ -132,23 +128,6 @@ export function CommandPalette({
     const needle = query.trim().toLowerCase()
     const out: Row[] = []
 
-    if (needle === '') {
-      out.push({
-        kind: 'action',
-        id: 'seed',
-        label: 'Seed synthetic recovery cases',
-        tag: 'Simulation',
-        run: onSeed,
-      })
-      out.push({
-        kind: 'action',
-        id: 'reset',
-        label: 'Reset and purge all simulation data',
-        tag: 'Purge',
-        run: onReset,
-      })
-    }
-
     const usableSuggestions =
       needle.length >= MIN_SUGGEST_LENGTH ? suggestions : []
 
@@ -197,7 +176,7 @@ export function CommandPalette({
     }
 
     return out
-  }, [query, suggestions, navOptions, cases, onSeed, onReset])
+  }, [query, suggestions, navOptions, cases])
 
   const activeIndex = cursor >= rows.length ? 0 : cursor
 
@@ -302,7 +281,7 @@ export function CommandPalette({
             }}
             className="flex-1 bg-transparent text-sm text-ink placeholder:text-ink-subtle focus:outline-none"
           />
-          <kbd className="rounded border border-border px-1.5 py-0.5 font-mono text-[10px] text-ink-subtle">
+          <kbd className="rounded border border-border px-1.5 py-0.5 text-[10px] text-ink-subtle">
             Esc
           </kbd>
         </div>
@@ -346,7 +325,7 @@ export function CommandPalette({
                       {row.label}
                     </span>
                     <span
-                      className={`shrink-0 font-mono text-[10px] font-semibold ${
+                      className={`shrink-0 text-[10px] font-semibold ${
                         row.tag === 'Purge' ? 'text-failed' : 'text-accent'
                       }`}
                     >
@@ -361,13 +340,13 @@ export function CommandPalette({
                       className="h-3.5 w-3.5 shrink-0 text-ink-subtle"
                       aria-hidden="true"
                     />
-                    <span className="flex-1 truncate font-mono text-ink">
+                    <span className="flex-1 truncate text-ink">
                       {row.suggestion.value}
                     </span>
                     <span className="shrink-0 text-[10px] text-ink-muted">
                       {row.suggestion.kind}
                     </span>
-                    <span className="shrink-0 font-mono text-[10px] text-ink-subtle">
+                    <span className="shrink-0 text-[10px] text-ink-subtle">
                       {row.suggestion.case_count.toString()}
                     </span>
                   </>
@@ -394,7 +373,7 @@ export function CommandPalette({
                       aria-hidden="true"
                       className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent"
                     />
-                    <span className="shrink-0 font-mono text-ink">
+                    <span className="shrink-0 text-ink">
                       {row.recoveryCase.case_id.slice(0, 8)}
                     </span>
                     <span className="flex-1 truncate text-[11px] text-ink-muted">
@@ -404,7 +383,7 @@ export function CommandPalette({
                       · {row.recoveryCase.failure_event.payment_rail} · INR{' '}
                       {(row.recoveryCase.amount_paise / 100).toFixed(0)}
                     </span>
-                    <span className="shrink-0 font-mono text-[10px] text-ink-subtle">
+                    <span className="shrink-0 text-[10px] text-ink-subtle">
                       {row.recoveryCase.state}
                     </span>
                   </>
@@ -424,9 +403,7 @@ export function CommandPalette({
             <CornerDownLeft className="h-3 w-3" aria-hidden="true" />
             open
           </span>
-          <span className="ml-auto font-mono">
-            {rows.length.toString()} results
-          </span>
+          <span className="ml-auto">{rows.length.toString()} results</span>
         </div>
       </div>
     </div>

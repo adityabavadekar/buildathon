@@ -94,7 +94,7 @@ export function StatusView({
           <div>
             <div className="flex items-center gap-2">
               <RazorpaySymbol className="h-5 w-5" />
-              <h1 className="font-mono text-xl font-bold text-ink">
+              <h1 className="text-xl font-bold text-ink">
                 System Subsystems & Operational Health
               </h1>
             </div>
@@ -111,7 +111,7 @@ export function StatusView({
                 void handleTestGateway()
               }}
               disabled={testingGateway}
-              className="flex items-center gap-1.5 font-mono text-xs"
+              className="flex items-center gap-1.5 text-xs"
             >
               <Zap className="h-3.5 w-3.5 text-accent" />
               {testingGateway
@@ -122,7 +122,7 @@ export function StatusView({
               variant="outline"
               size="sm"
               onClick={onRefresh}
-              className="flex items-center gap-1.5 font-mono text-xs"
+              className="flex items-center gap-1.5 text-xs"
             >
               <RotateCcw className="h-3.5 w-3.5" />
               Refresh
@@ -135,7 +135,7 @@ export function StatusView({
             variant="outline"
             size="sm"
             onClick={onRefresh}
-            className="flex items-center gap-1.5 font-mono text-xs"
+            className="flex items-center gap-1.5 text-xs"
           >
             <RotateCcw className="h-3.5 w-3.5" />
             Refresh
@@ -150,12 +150,12 @@ export function StatusView({
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <CheckCircle2 className="h-4 w-4 text-recovered" />
-                <CardTitle className="font-mono text-sm font-bold text-ink">
+                <CardTitle className="text-sm font-bold text-ink">
                   Razorpay Gateway Handshake Diagnostic:{' '}
                   {gatewayTestResult.status}
                 </CardTitle>
               </div>
-              <span className="font-mono text-xs font-bold text-recovered">
+              <span className="text-xs font-bold text-recovered">
                 {gatewayTestResult.latency_ms.toFixed(1)}ms Latency
               </span>
             </div>
@@ -163,7 +163,7 @@ export function StatusView({
               {gatewayTestResult.message}
             </CardDescription>
           </CardHeader>
-          <CardContent className="grid grid-cols-1 gap-3 border-t border-border/60 p-4 pt-2 font-mono text-xs sm:grid-cols-3">
+          <CardContent className="grid grid-cols-1 gap-3 border-t border-border/60 p-4 pt-2 text-xs sm:grid-cols-3">
             <div>
               <span className="block text-[11px] text-ink-muted">Key ID:</span>
               <span className="font-semibold text-ink">
@@ -210,11 +210,9 @@ export function StatusView({
               guardrails are operational
             </CardDescription>
           </div>
-          <Badge variant="recovered" className="font-mono">
-            {status.environment.toUpperCase()}
-          </Badge>
+          <Badge variant="recovered">{status.environment.toUpperCase()}</Badge>
         </CardHeader>
-        <CardContent className="grid grid-cols-2 gap-4 pt-2 font-mono text-xs sm:grid-cols-4">
+        <CardContent className="grid grid-cols-2 gap-4 pt-2 text-xs sm:grid-cols-4">
           <div>
             <span className="block text-[11px] text-ink-muted">
               Live System Uptime
@@ -266,7 +264,7 @@ export function StatusView({
               Webhook ingress & Payment Links API
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-3 font-mono text-xs">
+          <CardContent className="space-y-3 text-xs">
             <div className="flex items-center justify-between border-b border-border/60 py-1">
               <span className="text-ink-muted">Provider:</span>
               <span className="font-semibold text-ink">
@@ -303,44 +301,39 @@ export function StatusView({
           </CardContent>
         </Card>
 
-        {/* LLM Engine */}
         <Card>
           <CardHeader>
             <div className="flex items-center gap-2">
               <Cpu className="h-4 w-4 text-accent" />
-              <CardTitle className="text-sm">LLM Reasoning Engine</CardTitle>
+              <CardTitle className="text-sm">Diagnosis engine</CardTitle>
             </div>
             <CardDescription>
-              Contextual failure diagnosis model
+              What is deciding each recovery plan
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-3 font-mono text-xs">
-            <div className="flex items-center justify-between border-b border-border/60 py-1">
-              <span className="text-ink-muted">Circuit Breaker:</span>
-              <Badge variant="recovered">
-                {status.llm_engine.circuit_breaker}
-              </Badge>
-            </div>
-            <div className="flex items-center justify-between border-b border-border/60 py-1">
-              <span className="text-ink-muted">Active Model:</span>
-              <span
-                className="max-w-[140px] truncate text-[11px] font-semibold text-accent"
-                title={status.llm_engine.active_model}
-              >
-                {status.llm_engine.active_model}
-              </span>
-            </div>
-            <div className="flex items-center justify-between border-b border-border/60 py-1">
-              <span className="text-ink-muted">Deterministic Fallback:</span>
-              <Badge variant="recovered">Active</Badge>
-            </div>
-            <div className="flex items-center justify-between py-1">
-              <span className="text-ink-muted">Configured:</span>
-              <span className="text-[10px] text-ink-subtle">
-                {status.llm_engine.configured_providers.join(', ') ||
-                  'Rule Fallback'}
-              </span>
-            </div>
+          <CardContent className="space-y-3 text-xs">
+            {status.llm_engine.configured_providers.length > 0 ? (
+              <>
+                <div className="flex items-center justify-between border-b border-border/60 py-1">
+                  <span className="text-ink-muted">Deciding with</span>
+                  <span
+                    className="max-w-[140px] truncate text-[11px] font-semibold text-accent"
+                    title={status.llm_engine.active_model}
+                  >
+                    {status.llm_engine.active_model}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between py-1">
+                  <span className="text-ink-muted">If the model fails</span>
+                  <Badge variant="recovered">Falls back to rules</Badge>
+                </div>
+              </>
+            ) : (
+              <div className="flex items-center justify-between py-1">
+                <span className="text-ink-muted">Deciding with</span>
+                <Badge variant="pending">Built-in rules</Badge>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -355,7 +348,7 @@ export function StatusView({
               Deterministic execution constraints
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-3 font-mono text-xs">
+          <CardContent className="space-y-3 text-xs">
             <div className="flex items-center justify-between border-b border-border/60 py-1">
               <span className="text-ink-muted">Max Touch Limit:</span>
               <span className="font-semibold text-ink">

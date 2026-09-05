@@ -21,7 +21,7 @@ export function MetricBar({ label, value, max = 1, hint }: MetricBarProps) {
     <div className="space-y-1">
       <div className="flex items-baseline justify-between gap-2">
         <span className="text-xs text-ink">{label}</span>
-        <span className="font-mono text-xs font-semibold text-ink">
+        <span className="text-xs font-semibold text-ink">
           {formatPercent(value, max)}
         </span>
       </div>

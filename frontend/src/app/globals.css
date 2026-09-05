@@ -781,8 +781,18 @@
     border-color 0.15s ease;
 }
 
-.autonomy-switcher-btn:hover:not(:disabled) {
+/* Excludes the active button: its background is near-white, so the light hover
+   ink would leave white text on white. */
+.autonomy-switcher-btn:hover:not(:disabled):not(
+    .autonomy-switcher-btn--active
+  ) {
   color: var(--color-sidebar-ink);
+}
+
+/* The active button keeps its status colour on hover and only deepens slightly,
+   so the label stays legible against the light active background. */
+.autonomy-switcher-btn--active:hover:not(:disabled) {
+  filter: brightness(0.92);
 }
 
 .autonomy-switcher-btn:disabled {

@@ -12,6 +12,7 @@ import sys
 from app.benchmark.dataset import DEFAULT_BENCHMARK_SEED, DEFAULT_BENCHMARK_SIZE
 from app.benchmark.report import write_report
 from app.benchmark.runner import run_benchmark
+from app.core.db import run_migrations
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -43,6 +44,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     """Run the benchmark, print a summary, and write a report unless told not to."""
     args = _parse_args(argv)
+    # Runnable before the API has ever started, so the schema may not exist yet.
+    run_migrations()
     run = asyncio.run(
         run_benchmark(size=args.size, seed=args.seed, use_llm=args.use_llm)
     )

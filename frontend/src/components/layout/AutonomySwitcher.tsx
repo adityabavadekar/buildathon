@@ -7,6 +7,9 @@ import {
   updateOperatorMode,
   type OperatorAutonomyMode,
 } from '@/lib/api'
+import { AUTONOMY_MODE_COPY } from '@/lib/constants'
+import { Dialog } from '@/components/ui/dialog'
+import { Button } from '@/components/ui/button'
 
 interface AutonomySwitcherProps {
   onModeChange?: (mode: OperatorAutonomyMode) => void
@@ -17,6 +20,9 @@ export function AutonomySwitcher({ onModeChange }: AutonomySwitcherProps) {
     useState<OperatorAutonomyMode>('FULL_AUTONOMY')
   const [isUpdating, setIsUpdating] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [pendingMode, setPendingMode] = useState<OperatorAutonomyMode | null>(
+    null,
+  )
 
   useEffect(() => {
     let mounted = true
@@ -36,10 +42,14 @@ export function AutonomySwitcher({ onModeChange }: AutonomySwitcherProps) {
     }
   }, [onModeChange])
 
-  const handleSelect = async (newMode: OperatorAutonomyMode) => {
+  const requestMode = (newMode: OperatorAutonomyMode) => {
     if (newMode === currentMode || isUpdating) return
+    setPendingMode(newMode)
+  }
 
+  const handleSelect = async (newMode: OperatorAutonomyMode) => {
     const previousMode = currentMode
+    setPendingMode(null)
     setIsUpdating(true)
     setErrorMessage(null)
 
@@ -64,7 +74,7 @@ export function AutonomySwitcher({ onModeChange }: AutonomySwitcherProps) {
           type="button"
           disabled={isUpdating}
           onClick={() => {
-            void handleSelect('FULL_AUTONOMY')
+            requestMode('FULL_AUTONOMY')
           }}
           className={`autonomy-switcher-btn ${currentMode === 'FULL_AUTONOMY' ? 'autonomy-switcher-btn--active autonomy-switcher-btn--recovered' : ''}`}
           title="Full autonomous dunning and smart retries active"
@@ -81,7 +91,7 @@ export function AutonomySwitcher({ onModeChange }: AutonomySwitcherProps) {
           type="button"
           disabled={isUpdating}
           onClick={() => {
-            void handleSelect('HUMAN_IN_THE_LOOP')
+            requestMode('HUMAN_IN_THE_LOOP')
           }}
           className={`autonomy-switcher-btn ${currentMode === 'HUMAN_IN_THE_LOOP' ? 'autonomy-switcher-btn--active autonomy-switcher-btn--accent' : ''}`}
           title="AI plans strategy; operator approval required"
@@ -98,7 +108,7 @@ export function AutonomySwitcher({ onModeChange }: AutonomySwitcherProps) {
           type="button"
           disabled={isUpdating}
           onClick={() => {
-            void handleSelect('MONITORING_ONLY')
+            requestMode('MONITORING_ONLY')
           }}
           className={`autonomy-switcher-btn ${currentMode === 'MONITORING_ONLY' ? 'autonomy-switcher-btn--active autonomy-switcher-btn--failed' : ''}`}
           title="Global circuit breaker: outbound interventions paused"
@@ -117,6 +127,53 @@ export function AutonomySwitcher({ onModeChange }: AutonomySwitcherProps) {
           {errorMessage}
         </span>
       ) : null}
+
+      <Dialog
+        open={pendingMode !== null}
+        onClose={() => {
+          setPendingMode(null)
+        }}
+        title={
+          pendingMode
+            ? `Switch to ${AUTONOMY_MODE_COPY[pendingMode].label}?`
+            : ''
+        }
+        description="This changes what the agent is allowed to do, for every open case."
+      >
+        {pendingMode ? (
+          <div className="space-y-4">
+            <p className="text-sm text-ink">
+              {AUTONOMY_MODE_COPY[pendingMode].effect}
+            </p>
+            <p className="text-xs text-ink-muted">
+              Currently {AUTONOMY_MODE_COPY[currentMode].label}. The change is
+              recorded in the audit trail.
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setPendingMode(null)
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                disabled={isUpdating}
+                onClick={() => {
+                  void handleSelect(pendingMode)
+                }}
+              >
+                {isUpdating
+                  ? 'Switching...'
+                  : `Switch to ${AUTONOMY_MODE_COPY[pendingMode].label}`}
+              </Button>
+            </div>
+          </div>
+        ) : null}
+      </Dialog>
     </div>
   )
 }

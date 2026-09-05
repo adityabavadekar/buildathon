@@ -177,7 +177,7 @@ function Dashboard() {
   return (
     <div className="flex h-screen w-full flex-col overflow-hidden bg-surface-sunken">
       {isOffline && (
-        <div className="z-50 flex w-full animate-pulse flex-col justify-between gap-3 border-b-4 border-red-950 bg-[#dc2626] px-6 py-3 font-mono text-sm font-extrabold tracking-wide text-white uppercase shadow-2xl sm:flex-row sm:items-center">
+        <div className="z-50 flex w-full animate-pulse flex-col justify-between gap-3 border-b-4 border-red-950 bg-[#dc2626] px-6 py-3 text-sm font-extrabold tracking-wide text-white uppercase shadow-2xl sm:flex-row sm:items-center">
           <div className="flex items-center gap-3">
             <AlertOctagon className="h-5 w-5 shrink-0 animate-bounce" />
             <span className="text-sm font-extrabold tracking-wide sm:text-base">
@@ -186,7 +186,7 @@ function Dashboard() {
             </span>
           </div>
           <div className="flex items-center gap-3 self-end sm:self-auto">
-            <span className="hidden font-mono text-xs opacity-90 md:inline">
+            <span className="hidden text-xs opacity-90 md:inline">
               Auto-reconnecting...
             </span>
             <button
@@ -194,7 +194,7 @@ function Dashboard() {
               onClick={() => {
                 void fetchData()
               }}
-              className="flex cursor-pointer items-center gap-1.5 rounded-control bg-white px-4 py-1.5 font-mono text-xs font-extrabold text-[#dc2626] shadow-md transition-colors hover:bg-white/90"
+              className="flex cursor-pointer items-center gap-1.5 rounded-control bg-white px-4 py-1.5 text-xs font-extrabold text-[#dc2626] shadow-md transition-colors hover:bg-white/90"
             >
               <RefreshCw className="h-3.5 w-3.5" />
               <span>Retry Connection</span>
@@ -244,9 +244,6 @@ function Dashboard() {
                   onNavigateToSection={(sec) => {
                     navigate(sec)
                   }}
-                  onRefresh={() => {
-                    void fetchData()
-                  }}
                 />
               )}
 
@@ -282,10 +279,6 @@ function Dashboard() {
                 <AgentView
                   cases={cases}
                   status={systemStatus}
-                  loading={casesLoading}
-                  onRefresh={() => {
-                    void fetchData()
-                  }}
                   onSelectCase={(c) => {
                     setSelectedCase(c)
                   }}
@@ -334,7 +327,6 @@ function Dashboard() {
               {activeSection === 'settings-integrations' && (
                 <IntegrationsView
                   settings={settings}
-                  status={systemStatus}
                   loading={casesLoading}
                   onRefresh={() => {
                     void fetchData()
@@ -366,12 +358,6 @@ function Dashboard() {
         cases={cases}
         onNavigate={navigate}
         onSelectCase={setSelectedCase}
-        onSeed={() => {
-          void fetchData()
-        }}
-        onReset={() => {
-          void fetchData()
-        }}
         onSearchTerm={setPaletteSearch}
       />
     </div>

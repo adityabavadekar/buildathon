@@ -185,7 +185,7 @@ export function ArmComparisonChart({ arms, liftPct }: ArmComparisonChartProps) {
             />
             <span className="min-w-0">
               <span className="block text-ink">{arm.label}</span>
-              <span className="block font-mono font-semibold text-ink">
+              <span className="block font-semibold text-ink">
                 {arm.ratePct.toFixed(1)}%
                 <span className="ml-1 font-normal text-ink-subtle">
                   {arm.caseCount.toString()} cases

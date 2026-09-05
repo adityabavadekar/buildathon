@@ -57,7 +57,7 @@ export function StatCard({
           )}
         </div>
         <CardTitle
-          className={`mt-1 font-mono text-3xl font-bold tracking-tight tabular-nums sm:text-4xl ${textStyles[variant]}`}
+          className={`mt-1 text-3xl font-bold tracking-tight tabular-nums sm:text-4xl ${textStyles[variant]}`}
         >
           {value}
         </CardTitle>

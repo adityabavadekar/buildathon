@@ -254,11 +254,9 @@ function PolicyEditor({ initial, onSaved }: PolicyEditorProps) {
                         setField(field, Number(event.target.value))
                       }}
                     />
-                    <span className="font-mono text-xs text-ink-muted">
-                      {unit}
-                    </span>
+                    <span className="text-xs text-ink-muted">{unit}</span>
                   </div>
-                  <p className="mt-2 font-mono text-[11px] text-ink-subtle">
+                  <p className="mt-2 text-[11px] text-ink-subtle">
                     Current: {rule.value}
                   </p>
                 </div>

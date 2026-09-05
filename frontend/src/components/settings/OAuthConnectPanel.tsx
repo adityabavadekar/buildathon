@@ -26,6 +26,7 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { CopyButton } from '@/components/ui/CopyButton'
+import { RazorpaySymbol } from '@/components/ui/BrandIcons'
 
 interface OAuthConnectPanelProps {
   onChanged: () => void
@@ -191,16 +192,10 @@ export function OAuthConnectPanel({ onChanged }: OAuthConnectPanelProps) {
             <ol className="ml-4 list-decimal space-y-1 text-ink-muted">
               <li>Sign up as a Razorpay Technology Partner via support.</li>
               <li>Register an application on the Partner Dashboard.</li>
-              <li>
-                Whitelist this redirect URI on the application, then set
-                <span className="font-mono"> RAZORPAY_OAUTH_CLIENT_ID </span>
-                and
-                <span className="font-mono"> RAZORPAY_OAUTH_CLIENT_SECRET</span>
-                .
-              </li>
+              <li>Whitelist the redirect URI below on that application.</li>
             </ol>
             <div className="flex items-center gap-2 pt-1">
-              <span className="truncate font-mono text-[11px] text-ink select-all">
+              <span className="truncate text-[11px] text-ink select-all">
                 {status?.redirect_uri ?? ''}
               </span>
               <CopyButton
@@ -212,35 +207,47 @@ export function OAuthConnectPanel({ onChanged }: OAuthConnectPanelProps) {
           </div>
         )}
 
-        <dl className="grid gap-3 text-xs md:grid-cols-4">
-          <div className="space-y-1 rounded-control border border-border bg-surface-sunken p-3">
-            <dt className="text-[11px] text-ink-muted">Sub-merchant</dt>
-            <dd className="font-mono font-semibold text-ink">
-              {status?.account_id_masked ?? 'None'}
-            </dd>
+        <div className="flex items-center gap-3 rounded-panel border border-border bg-surface-sunken p-4">
+          <div
+            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${
+              connected
+                ? 'bg-recovered/15 text-recovered'
+                : 'bg-border/60 text-ink-muted'
+            }`}
+          >
+            {connected ? (
+              <Link2 className="h-5 w-5" aria-hidden="true" />
+            ) : (
+              <Unplug className="h-5 w-5" aria-hidden="true" />
+            )}
           </div>
-          <div className="space-y-1 rounded-control border border-border bg-surface-sunken p-3">
-            <dt className="text-[11px] text-ink-muted">Scope</dt>
-            <dd className="font-semibold text-ink">
-              {status?.scope ?? status?.required_scope ?? '-'}
-            </dd>
+
+          <div className="h-px flex-1 border-t-2 border-dashed border-border" />
+
+          <div
+            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${
+              connected ? 'bg-recovered/15' : 'bg-border/60'
+            }`}
+          >
+            <RazorpaySymbol className="h-5 w-5" />
           </div>
-          <div className="space-y-1 rounded-control border border-border bg-surface-sunken p-3">
-            <dt className="text-[11px] text-ink-muted">Mode</dt>
-            <dd className="font-semibold text-ink uppercase">
-              {status?.mode ?? '-'}
-            </dd>
+
+          <div className="min-w-0 flex-1 pl-1">
+            <p className="text-sm font-semibold text-ink">
+              {connected
+                ? (status.account_id_masked ?? 'Merchant account connected')
+                : 'No account connected'}
+            </p>
+            <p className="text-xs text-ink-muted">
+              {connected
+                ? `Renews automatically, ${expiryLabel(
+                    status.token_expires_at,
+                    status.access_token_expired,
+                  ).toLowerCase()}`
+                : 'Recovery actions use your API keys until an account is connected.'}
+            </p>
           </div>
-          <div className="space-y-1 rounded-control border border-border bg-surface-sunken p-3">
-            <dt className="text-[11px] text-ink-muted">Access token</dt>
-            <dd className="font-semibold text-ink">
-              {expiryLabel(
-                status?.token_expires_at ?? null,
-                status?.access_token_expired === true,
-              )}
-            </dd>
-          </div>
-        </dl>
+        </div>
 
         {shownError !== null && (
           <p
@@ -276,7 +283,7 @@ export function OAuthConnectPanel({ onChanged }: OAuthConnectPanelProps) {
             onClick={() => {
               void handleConnect()
             }}
-            className="cursor-pointer gap-2 font-mono text-xs"
+            className="cursor-pointer gap-2 text-xs"
           >
             <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
             {connected ? 'Reconnect account' : 'Connect Razorpay account'}
@@ -291,7 +298,7 @@ export function OAuthConnectPanel({ onChanged }: OAuthConnectPanelProps) {
                 onClick={() => {
                   void handleRefresh()
                 }}
-                className="cursor-pointer gap-2 font-mono text-xs"
+                className="cursor-pointer gap-2 text-xs"
               >
                 <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
                 Refresh token
@@ -303,7 +310,7 @@ export function OAuthConnectPanel({ onChanged }: OAuthConnectPanelProps) {
                 onClick={() => {
                   void handleDisconnect()
                 }}
-                className="cursor-pointer gap-2 font-mono text-xs"
+                className="cursor-pointer gap-2 text-xs"
               >
                 <Unplug className="h-3.5 w-3.5" aria-hidden="true" />
                 Disconnect
@@ -311,13 +318,6 @@ export function OAuthConnectPanel({ onChanged }: OAuthConnectPanelProps) {
             </>
           )}
         </div>
-
-        <p className="text-[11px] text-ink-muted">
-          Tokens are held server-side and never displayed. An OAuth connection
-          takes precedence over imported API keys. Access tokens last 90 days
-          and refresh tokens 180; FORTX rotates them automatically before
-          expiry.
-        </p>
       </CardContent>
     </Card>
   )

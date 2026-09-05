@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
+from app.audit.global_log import record_global_audit
 from app.audit.repository import get_case_repository
 from app.core.enums import AuditActor, ExperimentArm, PaymentRail, RecoveryState
 from app.detection.classifier import classify_failure
@@ -61,8 +62,26 @@ async def recovery_model_status() -> dict[str, object]:
 @router.post("/recovery-model/train")
 async def train_recovery_model_endpoint() -> dict[str, object]:
     model = train_recovery_model()
+    # Retraining changes how every open case is scored, so it belongs in the
+    # trail. Zero cases is reported as untrained rather than as a success.
+    record_global_audit(
+        event_name="model.retrained",
+        actor=AuditActor.HUMAN_OPERATOR,
+        reason=f"Operator retrained the recovery model to {model.version}.",
+        notes=(
+            f"Trained on {model.trained_count} treatment cases."
+            if model.trained_count
+            else "No treatment cases available, so the model is untrained."
+        ),
+        decision_outputs={
+            "version": model.version,
+            "trained_count": model.trained_count,
+            "cv_metrics": model.cv_metrics,
+            "holdout_metrics": model.holdout_metrics,
+        },
+    )
     return {
-        "status": "trained",
+        "status": "trained" if model.trained_count else "untrained",
         "version": model.version,
         "arch": "ensemble(logistic+naive-bayes) + intervention-scorer + recovery-time",
         "trained_count": model.trained_count,
@@ -236,7 +255,6 @@ class AnalyticsSummaryResponse(BaseModel):
     simulated_cost_paise: int
 
     health_score: int
-    recovery_streak: int
 
     forecast: RecoveryForecast | None = None
     category_distribution: list[CategoryBreakdown] = Field(default_factory=list)
@@ -607,7 +625,6 @@ async def get_analytics_summary() -> AnalyticsSummaryResponse:
         if treatment_cases
         else 85
     )
-    streak = min(24, treatment_rec)
     forecast_data = _compute_recovery_forecast(cases, lift)
     campaign_list = _compute_campaign_metrics(cases)
     fidelity = repo.get_execution_fidelity()
@@ -636,7 +653,6 @@ async def get_analytics_summary() -> AnalyticsSummaryResponse:
         simulated_cost_paise=fidelity["simulated_cost_paise"],
         return_on_recovery_spend=rors,
         health_score=health_score,
-        recovery_streak=streak,
         forecast=forecast_data,
         category_distribution=cat_distribution,
         intervention_performance=perf_list,

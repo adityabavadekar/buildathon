@@ -52,9 +52,7 @@ export function GlossaryTerm({
       {open && (
         <div className="animate-in fade-in-0 zoom-in-95 pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 w-72 -translate-x-1/2 rounded-panel border border-border bg-surface p-3 text-left font-sans shadow-xl">
           <div className="mb-1.5 flex items-center justify-between border-b border-border/60 pb-1">
-            <span className="font-mono text-xs font-bold text-ink">
-              {item.title}
-            </span>
+            <span className="text-xs font-bold text-ink">{item.title}</span>
           </div>
           <p className="mb-2 text-[11px] leading-relaxed text-ink">
             {item.definition}
