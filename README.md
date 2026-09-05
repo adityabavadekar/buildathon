@@ -1,22 +1,10 @@
 # FORTX - Flow Orchestration & Revenue Trust eXecution
 
 FORTX finds revenue at risk (failed payments, abandoned checkouts, failed
-subscription renewals, overdue receivables), works out why, runs a bounded
-recovery action, and measures what it recovered against a 10% holdout control
-arm, so the figure is a counterfactual rather than an assertion.
+renewals, overdue receivables), diagnoses why, runs a bounded recovery action,
+and measures the result against a 10% holdout control arm.
 
 Built for the Razorpay AI Buildathon, Track 3 (AI Revenue Recovery).
-
-For the source, visit the
-[project repository](https://github.com/adityabavadekar/buildathon).
-
-
-## Table of contents
-
-- Requirements
-- Installation
-- Configuration
-- Maintainers
 
 
 ## Requirements
@@ -26,8 +14,7 @@ For the source, visit the
 - Node 22, since 20.x is EOL as of April 2026
 - pnpm 11, via corepack
 - PostgreSQL 16+, migrations applied at startup
-- An LLM provider key is optional; without one the agent falls back to
-  deterministic rules
+- An LLM provider key is optional; without one it falls back to rules
 
 
 ## Installation
@@ -38,25 +25,17 @@ make dev         # backend :8000, frontend :5173
 make worker      # queue-draining daemon, not started by make dev
 ```
 
-Without the worker, queued jobs stay QUEUED. Run `make help` for the rest,
-including `make check` and `make benchmark`.
+Without the worker, queued jobs stay QUEUED. `make help` lists the rest.
 
 
 ## Configuration
 
-`cp backend/.env.example backend/.env`. Nothing is required locally. Variables
-are prefixed `APP_`; add fields to `backend/src/app/core/config.py`.
+`cp backend/.env.example backend/.env`. Nothing is required locally.
 
 - `APP_OPERATOR_PASSWORD` gates the dashboard. **Unset, it is open to anyone.**
-- `APP_SESSION_SECRET` signs cookies. Unset, restarts log everyone out.
+- `APP_SESSION_SECRET` signs cookies.
 - `DATABASE_URL` defaults to `postgres:postgres@127.0.0.1:5432/fortx`.
-- `APP_RAZORPAY_KEY_ID` and `APP_RAZORPAY_KEY_SECRET` enable live gateway calls;
-  without them interventions are simulated.
-
-Recovery policy is set in the dashboard, not here. For containers,
-`make prod-up`, and terminate TLS in front of it. See
-[docs/FORTX_MASTER.md](docs/FORTX_MASTER.md) and
-[docs/DECISIONS.md](docs/DECISIONS.md).
+- `APP_RAZORPAY_KEY_ID`, `APP_RAZORPAY_KEY_SECRET` enable live gateway calls.
 
 
 ## Maintainers
