@@ -44,29 +44,19 @@ including `make check` and `make benchmark`.
 
 ## Configuration
 
-Read from the environment, every variable prefixed `APP_` except provider keys.
-Add fields to `backend/src/app/core/config.py`, never read the environment
-elsewhere. Nothing is required locally: `cp backend/.env.example backend/.env`.
+`cp backend/.env.example backend/.env`. Nothing is required locally. Variables
+are prefixed `APP_`; add fields to `backend/src/app/core/config.py`.
 
-- `APP_OPERATOR_PASSWORD` gates the dashboard. **Unset, the gate is disabled and
-  the dashboard is open to anyone who can reach the port.**
-- `APP_SESSION_SECRET` signs session cookies. Unset, restarts log everyone out.
-- `DATABASE_URL` defaults to
-  `postgresql://postgres:postgres@127.0.0.1:5432/fortx`.
-- `APP_RAZORPAY_KEY_ID` and `APP_RAZORPAY_KEY_SECRET` enable live gateway calls.
-  Without them, interventions are simulated and recorded as simulated.
+- `APP_OPERATOR_PASSWORD` gates the dashboard. **Unset, it is open to anyone.**
+- `APP_SESSION_SECRET` signs cookies. Unset, restarts log everyone out.
+- `DATABASE_URL` defaults to `postgres:postgres@127.0.0.1:5432/fortx`.
+- `APP_RAZORPAY_KEY_ID` and `APP_RAZORPAY_KEY_SECRET` enable live gateway calls;
+  without them interventions are simulated.
 
-Recovery policy (contact caps, cooldowns, maximum discount, allowed channels,
-holdout percentage) is set in the dashboard and enforced by a policy gate that
-re-derives every cap.
-
-For containers, `cp .env.prod.example .env` and `make prod-up`. Terminate TLS in
-front: under `APP_ENV=production` the session cookie is `Secure`, so a browser
-on plain HTTP will not store it.
-
-Architecture is documented in [docs/FORTX_MASTER.md](docs/FORTX_MASTER.md), with
-the build log in [docs/DECISIONS.md](docs/DECISIONS.md) and agent instructions
-in [AGENTS.md](AGENTS.md).
+Recovery policy is set in the dashboard, not here. For containers,
+`make prod-up`, and terminate TLS in front of it. See
+[docs/FORTX_MASTER.md](docs/FORTX_MASTER.md) and
+[docs/DECISIONS.md](docs/DECISIONS.md).
 
 
 ## Maintainers
