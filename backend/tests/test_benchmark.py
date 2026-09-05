@@ -133,14 +133,14 @@ async def test_small_batch_refuses_to_claim_attribution() -> None:
 
 @pytest.mark.anyio
 async def test_large_batch_reports_reliable_positive_attribution() -> None:
-    run = await run_benchmark(size=720, seed=20260902, use_llm=False)
+    run = await run_benchmark(size=1200, seed=20260902, use_llm=False)
     assert run.is_attribution_reliable is True
     assert run.attributable_recovered_paise > 0
 
 
 @pytest.mark.anyio
 async def test_report_is_written_and_states_its_verdict(tmp_path: Path) -> None:
-    run = await run_benchmark(size=720, seed=20260902, use_llm=False)
+    run = await run_benchmark(size=1200, seed=20260902, use_llm=False)
     path = write_report(run, docs_dir=tmp_path)
 
     assert path.exists()

@@ -92,6 +92,13 @@ FAILURE_TEMPLATES: list[dict[str, Any]] = [
     },
     {
         "rail": PaymentRail.CARD,
+        "category": FailureCategory.INDETERMINATE_AUTHORIZATION,
+        "error_code": "GATEWAY_TIMEOUT",
+        "error_reason": "Gateway did not respond before timeout; authorization outcome unknown",
+        "amounts": [89900, 249900, 599900],
+    },
+    {
+        "rail": PaymentRail.CARD,
         "category": FailureCategory.UNCLASSIFIED,
         "error_code": "SUSPECTED_FRAUD_HOLD",
         "error_reason": "Risk engine flagged high-dispute anomaly on card authorization; manual operator clearance required",

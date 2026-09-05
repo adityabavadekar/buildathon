@@ -19,7 +19,10 @@ if TYPE_CHECKING:
 
 BENCHMARK_DATASET_VERSION = "fortx-bench-v1"
 DEFAULT_BENCHMARK_SEED = 20260902
-DEFAULT_BENCHMARK_SIZE = 720
+# Sized so every category clears MIN_CONTROL_CASES_PER_STRATUM at a 10% holdout.
+# At 720 the thinnest strata fell under the floor and coverage dropped to 8%, so
+# the harness correctly refused to attribute anything.
+DEFAULT_BENCHMARK_SIZE = 1200
 
 # Anchored so timestamps do not drift with wall-clock time between runs.
 BENCHMARK_EPOCH = datetime(2026, 8, 1, 0, 0, 0, tzinfo=UTC)
@@ -35,6 +38,9 @@ BASE_RECOVERY_PROPENSITY: dict[FailureCategory, float] = {
     FailureCategory.B2B_RECEIVABLES_OVERDUE: 0.22,
     FailureCategory.PROMISE_TO_PAY_DELAY: 0.35,
     FailureCategory.SYSTEMIC_GATEWAY_FAILURE: 0.46,
+    # An unknown outcome is often an authorization that already succeeded, so the
+    # untreated rate is high; the agent adds little beyond reconciling it.
+    FailureCategory.INDETERMINATE_AUTHORIZATION: 0.55,
     FailureCategory.UNCLASSIFIED: 0.05,
 }
 
@@ -102,7 +108,14 @@ def build_benchmark_events(
         event = RawFailureEvent(
             event_id=_iso_id("evt_bench_", rng, run_tag),
             payment_id=_iso_id("pay_bench_", rng, run_tag),
-            customer_id=customer[0],
+            # Namespaced per run like payment_id: cooldown is scoped to the
+            # customer, so a shared id would let one run's outreach suppress the
+            # next run's and break replay determinism.
+            customer_id=(
+                customer[0]
+                if run_tag is None
+                else f"{customer[0]}{RUN_TAG_SEPARATOR}{run_tag}"
+            ),
             amount_paise=amount,
             currency="INR",
             payment_rail=template["rail"],

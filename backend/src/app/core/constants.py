@@ -53,6 +53,13 @@ SALARY_CYCLE_RETRY_SPACING_HOURS: int = 48
 CHECKOUT_DROP_OFF_LINK_VALIDITY_MINUTES: int = 15
 MAX_DUNNING_LIFECYCLE_DAYS: int = 7
 
+# Thresholds for weighting an insufficient-funds decline against customer history.
+# Repeat failures on a thin record read as solvency, not timing; a long reliable
+# record outweighs them.
+REPEAT_LIQUIDITY_FAILURE_LIMIT: int = 3
+ESTABLISHED_CUSTOMER_CASE_COUNT: int = 6
+RELIABLE_RECOVERY_RATE: float = 0.7
+
 # Marks a sandbox link, so consumers need not infer it from the environment.
 SIMULATED_PAYMENT_LINK_PREFIX: str = "plink_sim_"
 

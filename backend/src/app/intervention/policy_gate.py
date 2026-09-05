@@ -3,6 +3,7 @@
 from datetime import UTC, datetime
 
 from app.audit.models import RecoveryCase
+from app.audit.repository import get_case_repository
 from app.core.enums import ExperimentArm, InterventionType, PolicyCheckResult
 from app.detection.rail_health import get_rail_health_registry
 from app.intervention.models import InterventionPlan, MerchantPolicy, PolicyEvaluation
@@ -241,22 +242,56 @@ class PolicyGate:
         policy: MerchantPolicy,
         now: datetime,
     ) -> PolicyEvaluation | None:
-        """Evaluate minimum cooldown between customer-facing interventions."""
-        if case.last_touch_at is not None and plan.intervention_type not in {
+        """Evaluate minimum cooldown between customer-facing interventions.
+
+        Scoped to the customer, not the case: two subscriptions failing the same
+        day are one person receiving two messages.
+        """
+        if plan.intervention_type in {
             InterventionType.PASSIVE_RETRY,
             InterventionType.NO_ACTION,
         }:
-            elapsed_seconds = (plan.scheduled_at - case.last_touch_at).total_seconds()
-            min_cooldown_seconds = policy.min_cooldown_hours * 3600
-            if elapsed_seconds < min_cooldown_seconds:
-                hours_left = (min_cooldown_seconds - elapsed_seconds) / 3600
-                return PolicyEvaluation(
-                    result=PolicyCheckResult.BLOCKED_COOLDOWN,
-                    is_allowed=False,
-                    reason=(
-                        f"Cooldown constraint violated: only {elapsed_seconds / 3600:.1f}h elapsed since last touch "
-                        f"(minimum {policy.min_cooldown_hours}h required, {hours_left:.1f}h remaining)."
-                    ),
-                    evaluated_at=now,
-                )
+            return None
+
+        last_touch = case.last_touch_at
+        scope = "this case"
+        sibling_touch = self._last_sibling_touch(case)
+        if sibling_touch is not None and (
+            last_touch is None or sibling_touch > last_touch
+        ):
+            last_touch = sibling_touch
+            scope = "another case for the same customer"
+
+        if last_touch is None:
+            return None
+
+        elapsed_seconds = (plan.scheduled_at - last_touch).total_seconds()
+        min_cooldown_seconds = policy.min_cooldown_hours * 3600
+        if elapsed_seconds < min_cooldown_seconds:
+            hours_left = (min_cooldown_seconds - elapsed_seconds) / 3600
+            return PolicyEvaluation(
+                result=PolicyCheckResult.BLOCKED_COOLDOWN,
+                is_allowed=False,
+                reason=(
+                    f"Cooldown constraint violated: only {elapsed_seconds / 3600:.1f}h elapsed since last touch "
+                    f"on {scope} (minimum {policy.min_cooldown_hours}h required, {hours_left:.1f}h remaining)."
+                ),
+                evaluated_at=now,
+            )
         return None
+
+    def _last_sibling_touch(self, case: RecoveryCase) -> datetime | None:
+        """Most recent outreach to this customer on any of their other cases.
+
+        Degrades to None on a lookup failure: the per-case cooldown still applies,
+        and a gate that raises would block every intervention.
+        """
+        customer_id = case.failure_event.customer_id
+        if not customer_id:
+            return None
+        try:
+            return get_case_repository().last_customer_outreach_at(
+                customer_id, case.case_id
+            )
+        except Exception:  # noqa: BLE001
+            return None

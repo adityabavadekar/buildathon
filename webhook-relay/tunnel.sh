@@ -61,7 +61,7 @@ if [ -z "$RELAY_SECRET" ]; then
   err "RELAY_SECRET is not set. Export it or add it to webhook-relay/.env"
 fi
 
-# ---- Helpers ---------------------------------------------------------------
+# Helpers
 
 relay_request() {
   local method="$1" path="$2"
@@ -84,7 +84,7 @@ pretty() {
   fi
 }
 
-# ---- Commands --------------------------------------------------------------
+# Commands
 
 cmd_list() {
   log "Active tunnels on ${RELAY_URL}:"
@@ -160,7 +160,7 @@ cmd_cf() {
 }
 
 
-# ---- Dispatch --------------------------------------------------------------
+# Dispatch
 
 case "$CMD" in
   add)    cmd_add    "${2:-}" "${3:-}" ;;

@@ -676,6 +676,41 @@ class RelationalCaseStore:
             cnt = conn.execute(text(query), params).scalar()
             return int(cnt or 0)
 
+    def last_customer_outreach_at(
+        self, customer_id: str, exclude_case_id: str
+    ) -> datetime | None:
+        """When this customer was last contacted on any other case.
+
+        Cooldown held per case, so a customer with two failing subscriptions got
+        two messages the same day. Joined through cases because the audit row
+        carries case_id rather than customer_id.
+        """
+        query = """
+            SELECT MAX(a.timestamp)
+            FROM audit a
+            JOIN cases c ON c.case_id = a.case_id
+            WHERE c.customer_id = :customer_id
+              AND a.case_id <> :exclude_case_id
+              AND a.event_name = 'intervention.executed'
+              AND a.decision_inputs -> 'plan' ->> 'intervention_type' NOT IN (
+                  'PASSIVE_RETRY', 'NO_ACTION'
+              );
+        """
+        with self._lock, get_db_connection() as conn:
+            row = conn.execute(
+                text(query),
+                {"customer_id": customer_id, "exclude_case_id": exclude_case_id},
+            ).fetchone()
+
+        if not row or row[0] is None:
+            return None
+        stamp = row[0]
+        parsed = (
+            stamp if isinstance(stamp, datetime) else datetime.fromisoformat(str(stamp))
+        )
+        # Postgres may hand back a naive value; cooldown arithmetic needs UTC.
+        return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
+
     def get_execution_fidelity(self) -> dict[str, int]:
         """Count executed interventions that hit a live gateway versus a simulation.
 

@@ -10,14 +10,14 @@ ok()   { printf '[  OK  ] %s\n' "$*"; }
 warn() { printf '[ WARN ] %s\n' "$*"; }
 err()  { printf '[ ERR  ] %s\n' "$*"; }
 
-# ---- Config ---------------------------------------------------------------
+# Config
 DOMAIN="${DOMAIN:-webhook.adixb.me}"
 PORT="${PORT:-3099}"
 APP_DIR="${APP_DIR:-/opt/webhook-relay}"
 SERVICE_USER="${SERVICE_USER:-webhookd}"
 RELAY_SECRET="${RELAY_SECRET:-}"
 EMAIL="${EMAIL:-}"   # for certbot Let's Encrypt registration
-# ---------------------------------------------------------------------------
+# -
 
 # Require root
 if [ "$(id -u)" -ne 0 ]; then
@@ -32,7 +32,6 @@ PUBLIC_IP="$(curl -fsSL --max-time 5 https://api.ipify.org 2>/dev/null || \
 
 log "Detected public IP: ${PUBLIC_IP}"
 log ""
-log "================================================================"
 log " IMPORTANT: Before running this script, set your DNS A record:"
 log ""
 log "   Domain  : ${DOMAIN}"
@@ -42,7 +41,6 @@ log "   TTL     : 60 (or lowest available)"
 log ""
 log " Verify with:  dig +short ${DOMAIN}"
 log " (DNS may take 1-5 minutes to propagate)"
-log "================================================================"
 log ""
 
 if [ -z "$EMAIL" ]; then
@@ -59,7 +57,7 @@ fi
 log "Waiting 5 seconds - press Ctrl+C to abort if DNS is not set yet..."
 sleep 5
 
-# ---- System dependencies ---------------------------------------------------
+# System dependencies
 log "Updating apt packages..."
 apt-get update -qq
 
@@ -75,13 +73,13 @@ fi
 
 ok "Node.js $(node --version) ready"
 
-# ---- Create service user ---------------------------------------------------
+# Create service user
 if ! id "$SERVICE_USER" &>/dev/null; then
   log "Creating system user '${SERVICE_USER}'..."
   useradd --system --shell /usr/sbin/nologin --create-home "$SERVICE_USER"
 fi
 
-# ---- Deploy app ------------------------------------------------------------
+# Deploy app
 log "Deploying app to ${APP_DIR}..."
 mkdir -p "$APP_DIR"
 
@@ -98,7 +96,7 @@ sudo -u "$SERVICE_USER" npm install --production --prefix "$APP_DIR" 2>&1 | grep
 
 ok "App deployed to ${APP_DIR}"
 
-# ---- Write .env ------------------------------------------------------------
+# Write .env
 cat > "${APP_DIR}/.env" <<ENV
 PORT=${PORT}
 RELAY_SECRET=${RELAY_SECRET}
@@ -109,7 +107,7 @@ chmod 600 "${APP_DIR}/.env"
 
 ok ".env written"
 
-# ---- systemd service -------------------------------------------------------
+# systemd service
 cat > /etc/systemd/system/webhook-relay.service <<UNIT
 [Unit]
 Description=Razorpay Webhook Fanout Relay
@@ -146,7 +144,7 @@ else
   exit 1
 fi
 
-# ---- nginx config ----------------------------------------------------------
+# nginx config
 log "Writing nginx config for ${DOMAIN}..."
 
 # Use a quoted heredoc delimiter ('NGINX') to prevent shell expanding $host etc.
@@ -183,7 +181,7 @@ systemctl reload nginx
 
 ok "nginx configured for ${DOMAIN}"
 
-# ---- certbot SSL ------------------------------------------------------------
+# certbot SSL
 log "Requesting Let's Encrypt SSL certificate for ${DOMAIN}..."
 
 certbot --nginx \
@@ -196,9 +194,8 @@ certbot --nginx \
 ok "SSL certificate issued and nginx updated"
 systemctl reload nginx
 
-# ---- Final summary ----------------------------------------------------------
+# Final summary
 log ""
-log "================================================================"
 ok " Setup complete!"
 log ""
 log " Server public IP : ${PUBLIC_IP}"
@@ -224,4 +221,3 @@ log "     -H 'x-relay-secret: ${RELAY_SECRET}'"
 log ""
 log " Health check:"
 log "   curl https://${DOMAIN}/health"
-log "================================================================"

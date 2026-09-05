@@ -2,8 +2,10 @@
 
 from datetime import UTC, datetime, timedelta
 
-from app.audit.models import RecoveryCase
+from app.audit.models import AuditEntry, RecoveryCase
+from app.audit.repository import get_case_repository
 from app.core.enums import (
+    AuditActor,
     ExperimentArm,
     InterventionType,
     OutreachChannel,
@@ -207,3 +209,104 @@ def test_policy_gate_escalates_requires_human_approval_flag() -> None:
     evaluation = gate.evaluate(case, plan)
     assert evaluation.result == PolicyCheckResult.ESCALATE_REQUIRED
     assert not evaluation.is_allowed
+
+
+def _sibling_case(case_id: str, customer_id: str, touched_at: datetime) -> RecoveryCase:
+    """A second case for the same customer, already contacted."""
+    return RecoveryCase(
+        case_id=case_id,
+        amount_paise=100000,
+        experiment_arm=ExperimentArm.TREATMENT,
+        failure_event=RawFailureEvent(
+            event_id=f"evt_{case_id}",
+            payment_id=f"pay_{case_id}",
+            customer_id=customer_id,
+            amount_paise=100000,
+            error_code="AP15",
+            occurred_at=touched_at,
+        ),
+        audit_trail=[
+            AuditEntry(
+                case_id=case_id,
+                event_name="intervention.executed",
+                actor=AuditActor.SYSTEM,
+                timestamp=touched_at,
+                decision_inputs={
+                    "plan": {"intervention_type": InterventionType.CUSTOMER_NUDGE.value}
+                },
+            )
+        ],
+    )
+
+
+def test_cooldown_is_scoped_to_the_customer_not_the_case() -> None:
+    """Two subscriptions failing the same day are one person, so one message."""
+    repo = get_case_repository()
+    customer_id = "cust_two_subs"
+    now = datetime.now(UTC)
+    repo.save(_sibling_case("case_sub_a", customer_id, now - timedelta(hours=1)))
+
+    second = RecoveryCase(
+        case_id="case_sub_b",
+        amount_paise=100000,
+        experiment_arm=ExperimentArm.TREATMENT,
+        failure_event=RawFailureEvent(
+            event_id="evt_sub_b",
+            payment_id="pay_sub_b",
+            customer_id=customer_id,
+            amount_paise=100000,
+            error_code="AP15",
+            occurred_at=now,
+        ),
+    )
+    plan = InterventionPlan(
+        plan_id="plan_sub_b",
+        case_id=second.case_id,
+        intervention_type=InterventionType.CUSTOMER_NUDGE,
+        channel=OutreachChannel.WHATSAPP,
+        scheduled_at=now,
+        idempotency_key="idem_sub_b",
+        rationale="Nudge on the second subscription",
+    )
+
+    evaluation = PolicyGate().evaluate(
+        second, plan, MerchantPolicy(min_cooldown_hours=24)
+    )
+
+    assert evaluation.result == PolicyCheckResult.BLOCKED_COOLDOWN
+    assert not evaluation.is_allowed
+    assert "same customer" in evaluation.reason
+
+
+def test_a_different_customer_is_not_blocked_by_someone_elses_touch() -> None:
+    repo = get_case_repository()
+    now = datetime.now(UTC)
+    repo.save(_sibling_case("case_other", "cust_unrelated", now - timedelta(hours=1)))
+
+    mine = RecoveryCase(
+        case_id="case_mine",
+        amount_paise=100000,
+        experiment_arm=ExperimentArm.TREATMENT,
+        failure_event=RawFailureEvent(
+            event_id="evt_mine",
+            payment_id="pay_mine",
+            customer_id="cust_mine",
+            amount_paise=100000,
+            error_code="AP15",
+            occurred_at=now,
+        ),
+    )
+    plan = InterventionPlan(
+        plan_id="plan_mine",
+        case_id=mine.case_id,
+        intervention_type=InterventionType.CUSTOMER_NUDGE,
+        channel=OutreachChannel.WHATSAPP,
+        scheduled_at=now,
+        idempotency_key="idem_mine",
+        rationale="Nudge",
+    )
+
+    evaluation = PolicyGate().evaluate(
+        mine, plan, MerchantPolicy(min_cooldown_hours=24)
+    )
+    assert evaluation.is_allowed

@@ -20,7 +20,9 @@ def _event(*, source: str, code: str = "AP15") -> RawFailureEvent:
     return RawFailureEvent(
         event_id=f"evt_q_{source}_{code}",
         payment_id=f"pay_q_{source}_{code}",
-        customer_id="cust_queue_test",
+        # Distinct per source: cooldown is scoped to the customer, so a shared id
+        # would block the second event and mask what this test measures.
+        customer_id=f"cust_queue_{source}",
         amount_paise=250000,
         currency="INR",
         payment_rail=PaymentRail.UPI_AUTOPAY,

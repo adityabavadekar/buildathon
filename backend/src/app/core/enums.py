@@ -46,6 +46,9 @@ class FailureCategory(str, Enum):
     B2B_RECEIVABLES_OVERDUE = "B2B_RECEIVABLES_OVERDUE"
     PROMISE_TO_PAY_DELAY = "PROMISE_TO_PAY_DELAY"
     SYSTEMIC_GATEWAY_FAILURE = "SYSTEMIC_GATEWAY_FAILURE"
+    # The authorization outcome is unknown, not known-failed. Retrying risks a
+    # double charge, so these route to a human instead.
+    INDETERMINATE_AUTHORIZATION = "INDETERMINATE_AUTHORIZATION"
     UNCLASSIFIED = "UNCLASSIFIED"
 
 

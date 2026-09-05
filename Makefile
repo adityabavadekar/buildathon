@@ -1,4 +1,4 @@
-.PHONY: help install dev dev-backend dev-frontend test lint lint-backend lint-frontend \
+.PHONY: help setup install dev dev-backend dev-frontend test lint lint-backend lint-frontend \
         format format-backend format-frontend build check clean \
         prod-build prod-up prod-down prod-logs prod-ps
 
@@ -8,6 +8,9 @@ FRONTEND := frontend
 help: ## Show this help
 	@grep -hE '^[a-z-]+:.*?## ' $(MAKEFILE_LIST) \
 		| awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
+
+setup: ## Create the backend .venv and install frontend dependencies
+	./scripts/setup.sh
 
 install: ## Install dependencies for both services
 	cd $(BACKEND) && uv sync --all-groups

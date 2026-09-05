@@ -3,16 +3,26 @@ categories and bounded interventions by domain rule.
 """
 
 from decimal import Decimal
-from typing import ClassVar
+from typing import Any, ClassVar
 
 from app.core.constants import (
     CHECKOUT_DROP_OFF_LINK_VALIDITY_MINUTES,
+    ESTABLISHED_CUSTOMER_CASE_COUNT,
     MIN_CONFIDENCE_THRESHOLD,
+    RELIABLE_RECOVERY_RATE,
+    REPEAT_LIQUIDITY_FAILURE_LIMIT,
     SALARY_CYCLE_RETRY_SPACING_HOURS,
     TRANSIENT_BANK_WINDOW_DELAY_HOURS,
 )
 from app.core.enums import FailureCategory, InterventionType, PaymentRail
+from app.core.logging import get_logger
+from app.detection.customer_profile import (
+    CustomerProfile,
+    get_customer_profile_registry,
+)
 from app.detection.models import DiagnosisResult, RawFailureEvent
+
+logger = get_logger(__name__)
 
 
 class FailureClassifier:
@@ -25,8 +35,15 @@ class FailureClassifier:
         "U30",
         "U31",
         "U32",
-        "GATEWAY_TIMEOUT",
         "NB_SESSION_EXPIRED",
+    }
+    # A timeout never reports whether the authorization succeeded, so the payment
+    # may already have gone through. Retrying is how you double-charge.
+    INDETERMINATE_ERROR_CODES: ClassVar[set[str]] = {
+        "GATEWAY_TIMEOUT",
+        "REQUEST_TIMEOUT",
+        "NETWORK_ERROR",
+        "CONNECTION_RESET",
     }
     # NPCI codes indicating balance or liquidity
     LIQUIDITY_NPCI_CODES: ClassVar[set[str]] = {
@@ -63,6 +80,147 @@ class FailureClassifier:
         "OTP_TIMEOUT",
         "UPI_COLLECT_DECLINED",
     }
+
+    def _is_indeterminate(self, code: str, reason: str) -> bool:
+        """True when the authorization outcome is unknown rather than known-failed.
+
+        A customer-side timeout (OTP abandoned) is a real decline and stays
+        retryable; only an unanswered gateway leaves the outcome unknown.
+        """
+        if code in self.CHECKOUT_ABANDON_ERROR_CODES:
+            return False
+        return code in self.INDETERMINATE_ERROR_CODES or any(
+            token in reason
+            for token in (
+                "gateway_timeout",
+                "request_timed_out",
+                "no_response",
+                "network_error",
+                "connection_reset",
+            )
+        )
+
+    def _indeterminate_result(
+        self, code: str, amt_inr: int, signals: dict[str, str]
+    ) -> DiagnosisResult:
+        """Route an unknown-outcome failure to a human instead of retrying it."""
+        msg_en = f"Hi, we could not confirm the status of your INR {amt_inr} payment. Our team is verifying it before any further action."
+        msg_hi = f"Namaste, INR {amt_inr} ke payment ki status confirm nahi ho payi. Humari team verify kar rahi hai."
+        signals["dunning_message_en"] = msg_en
+        signals["dunning_message_hi"] = msg_hi
+        return DiagnosisResult(
+            category=FailureCategory.INDETERMINATE_AUTHORIZATION,
+            confidence=Decimal("0.90"),
+            recommended_intervention=InterventionType.MANUAL_ESCALATION,
+            recommended_delay_hours=0,
+            discount_bps_suggested=0,
+            reasoning=(
+                f"Timeout or network failure (code: {code}) leaves the authorization "
+                "outcome unknown: the payment may already have succeeded. Retrying "
+                "risks charging the customer twice, so this is routed for "
+                "reconciliation against the gateway before any retry."
+            ),
+            requires_human_approval=True,
+            dunning_message_en=msg_en,
+            dunning_message_hi=msg_hi,
+            signals_evaluated=signals,
+        )
+
+    def _liquidity_result(
+        self, event: RawFailureEvent, amt_inr: int, signals: dict[str, Any]
+    ) -> DiagnosisResult:
+        """Diagnose an insufficient-funds decline, weighted by customer history.
+
+        A flat rule treats a first-time failure and a fourth identical one the
+        same. Repeat failures against a thin history stop being a timing problem
+        and become a solvency one, which a retry cannot fix.
+        """
+        profile = self._profile(event.customer_id)
+        repeat = profile.repeat_failure_count if profile else 0
+        history = profile.total_cases if profile else 0
+        recovered_rate = profile.recovered_rate if profile else 0.0
+
+        signals["customer_total_cases"] = history
+        signals["customer_repeat_failures"] = repeat
+        signals["customer_recovered_rate"] = recovered_rate
+
+        established = history >= ESTABLISHED_CUSTOMER_CASE_COUNT
+        reliable = recovered_rate >= RELIABLE_RECOVERY_RATE
+
+        if repeat >= REPEAT_LIQUIDITY_FAILURE_LIMIT and not (established and reliable):
+            weighting = (
+                f"{repeat} prior liquidity failures against {history} case(s) of history "
+                f"and a {recovered_rate:.0%} recovery rate: too thin to read this as a "
+                "timing problem, so escalating rather than retrying into a decline."
+            )
+            msg_en = f"Hi, we could not collect INR {amt_inr}. Our team will reach out to arrange an alternative."
+            msg_hi = f"Namaste, INR {amt_inr} collect nahi ho paya. Humari team aapse alternative arrange karne ke liye sampark karegi."
+            signals["dunning_message_en"] = msg_en
+            signals["dunning_message_hi"] = msg_hi
+            return DiagnosisResult(
+                category=FailureCategory.LIQUIDITY_CONSTRAINT,
+                confidence=Decimal("0.75"),
+                recommended_intervention=InterventionType.MANUAL_ESCALATION,
+                recommended_delay_hours=0,
+                discount_bps_suggested=0,
+                reasoning=f"Declined due to insufficient liquidity. {weighting}",
+                requires_human_approval=True,
+                dunning_message_en=msg_en,
+                dunning_message_hi=msg_hi,
+                signals_evaluated=signals,
+            )
+
+        if repeat >= REPEAT_LIQUIDITY_FAILURE_LIMIT:
+            weighting = (
+                f"{repeat} prior liquidity failures, but {history} cases of history at a "
+                f"{recovered_rate:.0%} recovery rate outweigh them: this customer pays, "
+                "so the decline reads as timing and a spaced retry is still warranted."
+            )
+        elif history == 0:
+            weighting = (
+                "No prior history for this customer, so nothing outweighs the decline "
+                "itself; treated as a first-occurrence timing failure."
+            )
+        else:
+            weighting = (
+                f"{repeat} prior liquidity failure(s) across {history} case(s): "
+                "consistent with a timing rather than a solvency problem."
+            )
+
+        msg_en = f"Hello, your payment of INR {amt_inr} was declined due to insufficient balance. Auto-retry scheduled in 48h."
+        msg_hi = f"Namaste, insufficient balance ki wajah se INR {amt_inr} ka payment decline hua. Auto-retry 48 ghante me hoga."
+        signals["dunning_message_en"] = msg_en
+        signals["dunning_message_hi"] = msg_hi
+        return DiagnosisResult(
+            category=FailureCategory.LIQUIDITY_CONSTRAINT,
+            confidence=Decimal("0.90"),
+            recommended_intervention=InterventionType.SMART_RETRY,
+            recommended_delay_hours=SALARY_CYCLE_RETRY_SPACING_HOURS,
+            discount_bps_suggested=0,
+            reasoning=(
+                "Declined due to insufficient account liquidity. Retry spaced "
+                f"{SALARY_CYCLE_RETRY_SPACING_HOURS}h to align with liquidity windows. "
+                f"{weighting}"
+            ),
+            requires_human_approval=False,
+            dunning_message_en=msg_en,
+            dunning_message_hi=msg_hi,
+            signals_evaluated=signals,
+        )
+
+    def _profile(self, customer_id: str) -> CustomerProfile | None:
+        """Customer history, or None when it cannot be read.
+
+        Diagnosis must still produce a verdict if the profile lookup fails, so a
+        failure degrades to the no-history path rather than raising.
+        """
+        if not customer_id:
+            return None
+        try:
+            return get_customer_profile_registry().get_profile(customer_id)
+        except Exception:  # noqa: BLE001
+            logger.warning("classifier.profile_lookup_failed", customer_id=customer_id)
+            return None
 
     def classify(self, event: RawFailureEvent) -> DiagnosisResult:  # noqa: PLR0911
         """Classify a failure event using error codes, reason sub-codes, and NPCI codes."""
@@ -137,7 +295,11 @@ class FailureClassifier:
                 signals_evaluated=signals,
             )
 
-        # 3. Transient Banking Window / CBS Cutoff
+        # 3. Indeterminate authorization: outcome unknown, so never auto-retry.
+        if self._is_indeterminate(code, reason):
+            return self._indeterminate_result(code, amt_inr, signals)
+
+        # 4. Transient Banking Window / CBS Cutoff
         if (
             npci in self.TRANSIENT_NPCI_CODES
             or code in self.TRANSIENT_ERROR_CODES
@@ -167,7 +329,7 @@ class FailureClassifier:
                 signals_evaluated=signals,
             )
 
-        # 4. Structural Mandate Failure
+        # 5. Structural Mandate Failure
         if (
             npci in self.MANDATE_FAIL_NPCI_CODES
             or code in self.MANDATE_FAIL_NPCI_CODES
@@ -197,7 +359,7 @@ class FailureClassifier:
                 signals_evaluated=signals,
             )
 
-        # 5. Liquidity Constraint / Insufficient Funds
+        # 6. Liquidity Constraint / Insufficient Funds
         if (
             npci in self.LIQUIDITY_NPCI_CODES
             or code in self.LIQUIDITY_NPCI_CODES
@@ -206,27 +368,9 @@ class FailureClassifier:
             or "credit_limit_exceeded" in reason
             or "balance" in reason
         ):
-            msg_en = f"Hello, your payment of INR {amt_inr} was declined due to insufficient balance. Auto-retry scheduled in 48h."
-            msg_hi = f"Namaste, insufficient balance ki wajah se INR {amt_inr} ka payment decline hua. Auto-retry 48 ghante me hoga."
-            signals["dunning_message_en"] = msg_en
-            signals["dunning_message_hi"] = msg_hi
-            return DiagnosisResult(
-                category=FailureCategory.LIQUIDITY_CONSTRAINT,
-                confidence=Decimal("0.90"),
-                recommended_intervention=InterventionType.SMART_RETRY,
-                recommended_delay_hours=SALARY_CYCLE_RETRY_SPACING_HOURS,
-                discount_bps_suggested=0,
-                reasoning=(
-                    "Declined due to insufficient account liquidity. "
-                    "Scheduled retry with minimum 48h spacing aligned with liquidity windows."
-                ),
-                requires_human_approval=False,
-                dunning_message_en=msg_en,
-                dunning_message_hi=msg_hi,
-                signals_evaluated=signals,
-            )
+            return self._liquidity_result(event, amt_inr, signals)
 
-        # 6. Checkout Drop-off / Authentication Failure
+        # 7. Checkout Drop-off / Authentication Failure
         if (
             code in self.CHECKOUT_ABANDON_ERROR_CODES
             or "otp_timeout" in reason
@@ -256,7 +400,7 @@ class FailureClassifier:
                 signals_evaluated=signals,
             )
 
-        # 7. Systemic Gateway 5XX Error
+        # 8. Systemic Gateway 5XX Error
         if code in self.SYSTEMIC_ERROR_CODES or source == "gateway":
             msg_en = f"Hi, your payment of INR {amt_inr} experienced a technical gateway issue. We are automatically retrying."
             msg_hi = f"Namaste, gateway error ke karan INR {amt_inr} ka payment ruk gaya tha. Hum auto-retry kar rahe hain."
@@ -278,7 +422,7 @@ class FailureClassifier:
                 signals_evaluated=signals,
             )
 
-        # 8. Unclassified / Low Confidence -> Escalation
+        # 9. Unclassified / Low Confidence -> Escalation
         msg_en = f"Hi, your payment of INR {amt_inr} could not be processed. Our support team is reviewing your transaction."
         msg_hi = f"Namaste, INR {amt_inr} ka payment process nahi ho paya. Humari support team review kar rahi hai."
         signals["dunning_message_en"] = msg_en

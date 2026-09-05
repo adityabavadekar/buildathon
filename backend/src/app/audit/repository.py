@@ -247,6 +247,12 @@ class CaseRepository:
         """Fetch recovery strategy experiments report measuring incremental value."""
         return self._store.get_strategy_experiments_report()
 
+    def last_customer_outreach_at(
+        self, customer_id: str, exclude_case_id: str
+    ) -> datetime | None:
+        """When this customer was last contacted on any of their other cases."""
+        return self._store.last_customer_outreach_at(customer_id, exclude_case_id)
+
     def get_execution_fidelity(self) -> dict[str, int]:
         """Count executed interventions by whether they reached a live gateway."""
         return self._store.get_execution_fidelity()

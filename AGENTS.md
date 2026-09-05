@@ -33,7 +33,7 @@ Run from the repository root. All are in the `Makefile`.
 Per-service, if you need finer control:
 
 ```bash
-# backend/  (uv manages the venv; never activate it manually)
+# backend/  (uv manages .venv; never activate it manually)
 uv sync --all-groups
 uv run pytest
 uv run ruff check .
