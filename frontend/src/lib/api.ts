@@ -1,14 +1,9 @@
 /**
- * Typed client for the backend.
- *
- * All backend calls go through here rather than scattering `fetch` across
- * components - one place to add auth headers, request IDs, and error handling.
+ * Typed client for the backend. Every call routes through here, so auth headers,
+ * request IDs, and error handling live in one place.
  */
 
-/**
- * Base URL for the API. Defaults to `/api`, which Next.js rewrites to
- * the backend in development. Set NEXT_PUBLIC_API_BASE_URL to target a deployed backend.
- */
+/** Defaults to `/api`, which next.config.ts rewrites to the backend. */
 const API_BASE_URL: string = process.env.NEXT_PUBLIC_API_BASE_URL ?? '/api'
 
 export type RecoveryState =
@@ -123,6 +118,9 @@ export interface RecoveryCase {
   next_action?: string | null
   dunning_message_en?: string | null
   dunning_message_hi?: string | null
+  payment_link_id?: string | null
+  payment_link_url?: string | null
+  payment_link_expires_at?: string | null
 }
 
 export interface CaseListResponse {
@@ -244,6 +242,9 @@ export interface AnalyticsSummaryResponse {
   total_communication_cost_paise: number
   total_discounts_granted_paise: number
   return_on_recovery_spend: number
+  live_executions: number
+  simulated_executions: number
+  simulated_cost_paise: number
   health_score: number
   recovery_streak: number
   category_distribution: CategoryBreakdown[]
@@ -645,13 +646,51 @@ export interface PatternAlert {
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const url = `${API_BASE_URL}${path}`
-  const response = await fetch(url, options)
+  const response = await fetch(url, { credentials: 'include', ...options })
 
   if (!response.ok) {
     const body = await response.text().catch(() => '')
     throw new Error(
       `API error ${response.status.toString()} from ${path}: ${body || response.statusText}`,
     )
+  }
+
+  if (response.status === 204) {
+    return undefined as T
+  }
+
+  return response.json() as Promise<T>
+}
+
+/**
+ * Surfaces FastAPI's `detail` where the operator must act on the reason - a
+ * lockout, a wrong password, an unconfigured OAuth client.
+ */
+async function requestWithDetail<T>(
+  path: string,
+  options?: RequestInit,
+): Promise<T> {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    credentials: 'include',
+    ...options,
+  })
+
+  if (!response.ok) {
+    let detail = response.statusText
+    try {
+      const body: unknown = await response.json()
+      if (
+        typeof body === 'object' &&
+        body !== null &&
+        'detail' in body &&
+        typeof body.detail === 'string'
+      ) {
+        detail = body.detail
+      }
+    } catch {
+      // Non-JSON error body: keep the status text.
+    }
+    throw new Error(detail)
   }
 
   if (response.status === 204) {
@@ -1019,40 +1058,17 @@ export function getGatewayCredentials(): Promise<GatewayCredentialStatus> {
   return request<GatewayCredentialStatus>('/settings/gateway-credentials')
 }
 
-/**
- * Upload a Razorpay key CSV. Reads the backend's `detail` so a rejected file
- * explains itself, rather than surfacing a bare status code.
- */
-export async function importGatewayCredentials(
+/** Reads the backend's `detail` so a rejected CSV explains itself. */
+export function importGatewayCredentials(
   file: File,
 ): Promise<GatewayCredentialStatus> {
   const form = new FormData()
   form.append('file', file)
-
-  const response = await fetch(
-    `${API_BASE_URL}/settings/gateway-credentials/import`,
+  // No Content-Type: the browser sets the multipart boundary.
+  return requestWithDetail<GatewayCredentialStatus>(
+    '/settings/gateway-credentials/import',
     { method: 'POST', body: form },
   )
-
-  if (!response.ok) {
-    let detail = response.statusText
-    try {
-      const body: unknown = await response.json()
-      if (
-        typeof body === 'object' &&
-        body !== null &&
-        'detail' in body &&
-        typeof body.detail === 'string'
-      ) {
-        detail = body.detail
-      }
-    } catch {
-      // Non-JSON error body: keep the status text.
-    }
-    throw new Error(detail)
-  }
-
-  return response.json() as Promise<GatewayCredentialStatus>
 }
 
 export function clearGatewayCredentials(): Promise<GatewayCredentialStatus> {
@@ -1076,4 +1092,71 @@ export function suggestSearchTerms(
   return request<SearchSuggestion[]>(
     `/cases/search/suggestions?${params.toString()}`,
   )
+}
+
+export interface OAuthConnectionStatus {
+  configured: boolean
+  connected: boolean
+  account_id: string | null
+  account_id_masked: string | null
+  public_token: string | null
+  scope: string | null
+  mode: string | null
+  token_expires_at: string | null
+  refresh_expires_at: string | null
+  connected_at: string | null
+  access_token_expired: boolean
+  refresh_token_expired: boolean
+  redirect_uri: string
+  required_scope: string
+}
+
+export function getOAuthStatus(): Promise<OAuthConnectionStatus> {
+  return request<OAuthConnectionStatus>('/integrations/oauth/status')
+}
+
+/** Returns the Razorpay URL to send the sub-merchant to. */
+export async function startOAuthConnect(): Promise<string> {
+  const body = await requestWithDetail<{ authorize_url: string }>(
+    '/integrations/oauth/authorize-url',
+    { method: 'POST' },
+  )
+  return body.authorize_url
+}
+
+export function refreshOAuthConnection(): Promise<OAuthConnectionStatus> {
+  return requestWithDetail<OAuthConnectionStatus>(
+    '/integrations/oauth/refresh',
+    {
+      method: 'POST',
+    },
+  )
+}
+
+export function disconnectOAuth(): Promise<OAuthConnectionStatus> {
+  return requestWithDetail<OAuthConnectionStatus>('/integrations/oauth', {
+    method: 'DELETE',
+  })
+}
+
+export interface SessionStatus {
+  auth_enabled: boolean
+  authenticated: boolean
+  ttl_hours: number
+}
+
+export function getSessionStatus(): Promise<SessionStatus> {
+  return request<SessionStatus>('/auth/session')
+}
+
+export function login(password: string): Promise<SessionStatus> {
+  return requestWithDetail<SessionStatus>('/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password }),
+  })
+}
+
+export function logout(): Promise<SessionStatus> {
+  return requestWithDetail<SessionStatus>('/auth/logout', { method: 'POST' })
 }

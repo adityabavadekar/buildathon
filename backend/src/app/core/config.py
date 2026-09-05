@@ -1,8 +1,5 @@
-"""Application configuration, read from the environment.
-
-Never hardcode config values or read ``os.environ`` directly elsewhere - add a
-field here instead, so every knob is discoverable in one place and validated at
-startup rather than at first use.
+"""Application configuration. Never read os.environ elsewhere: add a field here so
+every knob is discoverable in one place and validated at startup.
 """
 
 from functools import lru_cache
@@ -16,11 +13,8 @@ from app.core.constants import DEFAULT_AGENTIC_MODEL, DEFAULT_ANTHROPIC_MODEL
 
 
 class Settings(BaseSettings):
-    """Environment-backed settings.
-
-    Every variable is prefixed ``APP_`` (e.g. ``APP_LOG_LEVEL``), except the
-    provider API keys, which keep their conventional names so the provider SDKs
-    and the wider ecosystem pick them up unchanged.
+    """Environment-backed settings, all APP_-prefixed except provider API keys,
+    which keep conventional names so the SDKs pick them up unchanged.
     """
 
     model_config = SettingsConfigDict(
@@ -94,14 +88,51 @@ class Settings(BaseSettings):
     razorpay_webhook_secret: SecretStr | None = Field(
         default=None, validation_alias="RAZORPAY_WEBHOOK_SECRET"
     )
-    # Partner/OAuth access token and target account id for fetching the linked
-    # merchant account profile via GET /v2/accounts/:account_id. Requires a
-    # real RazorpayX/partner token; absent in test mode the fetch is skipped.
+    # Fetches the linked merchant profile via GET /v2/accounts/:account_id.
+    # Needs a real partner token; the fetch is skipped in test mode.
     razorpay_access_token: SecretStr | None = Field(
         default=None, validation_alias="RAZORPAY_ACCESS_TOKEN"
     )
     razorpay_account_id: str | None = Field(
         default=None, validation_alias="RAZORPAY_ACCOUNT_ID"
+    )
+
+    # Issued when registering an app on the Partner Dashboard; the redirect URI
+    # must be whitelisted there or the authorize call is rejected.
+    razorpay_oauth_client_id: str | None = Field(
+        default=None, validation_alias="RAZORPAY_OAUTH_CLIENT_ID"
+    )
+    razorpay_oauth_client_secret: SecretStr | None = Field(
+        default=None, validation_alias="RAZORPAY_OAUTH_CLIENT_SECRET"
+    )
+    razorpay_oauth_mode: str = Field(
+        default="test",
+        validation_alias="RAZORPAY_OAUTH_MODE",
+        description="test or live. Production partner clients are restricted to "
+        "live by Razorpay.",
+    )
+    # Where the OAuth callback sends the operator back to. The callback lands on
+    # the backend (the frontend has no route files), so it needs the UI's origin.
+    app_public_base_url: str = Field(
+        default="http://127.0.0.1:5173",
+        validation_alias="APP_PUBLIC_BASE_URL",
+        description="Public origin of the dashboard, used to redirect after the "
+        "OAuth callback.",
+    )
+
+    # Operator authentication. Unset password disables the gate entirely, which is
+    # what keeps local development and the test suite working.
+    operator_password: SecretStr | None = Field(
+        default=None, validation_alias="APP_OPERATOR_PASSWORD"
+    )
+    session_secret: SecretStr | None = Field(
+        default=None,
+        validation_alias="APP_SESSION_SECRET",
+        description="HMAC key for session cookies. A random per-process key is "
+        "generated when unset, which logs every operator out on restart.",
+    )
+    session_ttl_hours: int = Field(
+        default=12, ge=1, le=720, validation_alias="APP_SESSION_TTL_HOURS"
     )
 
     # Customer Outreach & Notification Webhook

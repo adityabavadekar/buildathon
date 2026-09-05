@@ -1,8 +1,5 @@
-"""Synthetic cohort generator and recovery simulation harness.
-
-Seeds realistic transaction failures across all major Indian payment rails
-(UPI, e-Mandates, Cards, Invoices) and simulates recovery outcomes against
-a 10% unassisted holdout control arm.
+"""Synthetic cohort generator across UPI, e-mandate, card, and invoice rails,
+simulating outcomes against a 10% unassisted holdout arm.
 """
 
 from __future__ import annotations

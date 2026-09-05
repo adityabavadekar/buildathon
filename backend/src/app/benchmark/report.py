@@ -1,8 +1,5 @@
-"""Markdown report writer for benchmark runs.
-
-JSON cannot be cited in a pull request or a pitch, so each run also lands in
-``docs/benchmarks/`` with its dataset fingerprint and an explicit verdict on
-whether the attribution is defensible.
+"""Markdown report writer: JSON cannot be cited in a PR or a pitch, so each run
+lands in docs/benchmarks/ with its fingerprint and a verdict on defensibility.
 """
 
 from __future__ import annotations

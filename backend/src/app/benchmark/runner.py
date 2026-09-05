@@ -1,8 +1,5 @@
-"""Benchmark runner: replay the fixed dataset and score it against the holdout.
-
-Outcomes use the dataset's pre-rolled values, so the arm a case lands in cannot
-change its coin flip - only whether the treatment uplift applies. That keeps
-measured lift attributable to the agent's actions rather than to sampling luck.
+"""Replay the fixed dataset and score it against the holdout. Outcomes are
+pre-rolled, so the arm cannot change a case's coin flip, only the uplift.
 """
 
 from __future__ import annotations
@@ -33,11 +30,8 @@ logger = get_logger(__name__)
 
 BPS_DIVISOR = 10000
 
-# A stratum's control rate is an estimate; below this many control cases it is
-# too noisy to scale onto a treatment base. At a 10% holdout, high-ticket
-# categories can otherwise land 3 control cases whose rate swings the whole
-# attribution by lakhs. Such strata are excluded and reported as uncovered
-# rather than silently trusted.
+# Below this, a stratum's control rate is too noisy to scale onto a treatment
+# base; 3 control cases can swing attribution by lakhs. Excluded as uncovered.
 MIN_CONTROL_CASES_PER_STRATUM = 8
 
 # Below this share of treatment value having a comparator, an attributed money
@@ -123,13 +117,8 @@ class BenchmarkRun:
 
     @property
     def counterfactual_recovered_paise(self) -> int:
-        """What the treatment arm would likely have recovered untouched.
-
-        Stratified by category, never pooled: ticket sizes span three orders of
-        magnitude, so a pooled rate lets one recovered B2B invoice in a small
-        holdout drive attributable recovery negative. Strata below the control
-        floor are skipped, which biases the claim high - hence
-        ``counterfactual_coverage_pct``.
+        """What treatment would have recovered untouched, stratified never pooled:
+        ticket sizes span 3 orders of magnitude. Thin strata skipped, biasing high.
         """
         total = 0
         for stratum in self.per_category_arms.values():

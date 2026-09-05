@@ -123,11 +123,8 @@ async def test_attributable_recovery_is_net_of_the_counterfactual() -> None:
 
 @pytest.mark.anyio
 async def test_small_batch_refuses_to_claim_attribution() -> None:
-    """A batch too small for per-category controls must not quote a figure.
-
-    At a 10% holdout, a 60-event batch leaves high-ticket categories with a
-    handful of control cases; scaling that rate onto a large treatment base is
-    what previously produced a negative attributable figure.
+    """A batch too small for per-category controls must not quote a figure: scaling
+    a 3-case rate onto a large treatment base produced a negative one before.
     """
     run = await run_benchmark(size=60, seed=4242, use_llm=False)
     assert run.is_attribution_reliable is False

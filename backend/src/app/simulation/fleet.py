@@ -186,9 +186,8 @@ class FleetSimulator:
             use_llm=is_agentic,
         )
 
-        # The diagnosis already ran inline above, so this row is the audit record
-        # of that work rather than pending work: it is terminal on creation and
-        # must not be claimable, or the worker would re-diagnose every event.
+        # Diagnosis already ran inline, so this row records it rather than queuing
+        # it: terminal on creation, or the worker would re-diagnose every event.
         job = ScheduledJob(
             case_id=case.case_id,
             job_type="INGESTION_DIAGNOSIS",

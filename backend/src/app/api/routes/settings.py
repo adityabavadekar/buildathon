@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from app.audit.global_log import record_global_audit
 from app.audit.repository import get_case_repository
 from app.core.config import get_settings
+from app.core.constants import RAZORPAY_API_BASE
 from app.core.credential_csv import CredentialCsvError, parse_credential_csv
 from app.core.credential_resolver import (
     resolve_gateway_credentials,
@@ -20,6 +21,7 @@ from app.core.credential_resolver import (
 from app.core.credentials import get_gateway_credential_store
 from app.core.enums import AuditActor
 from app.core.logging import get_logger
+from app.integrations.razorpay_oauth import active_connection
 from app.llm.client import configured_providers
 from app.llm.settings_store import (
     LLMSettingsState,
@@ -94,12 +96,8 @@ class LLMReportResponse(BaseModel):
 def _derive_razorpay_account(
     key_id: str | None,
 ) -> tuple[str | None, str | None]:
-    """Derive gateway mode and embedded account id from the Razorpay key id.
-
-    Razorpay key ids take the form rzp_<mode>_<account_id> where mode is either
-    'test' or 'live'. The trailing segment is the per-account credential
-    identifier Razorpay issues alongside the key. We surface it rather than
-    fabricate merchant metadata the key does not carry.
+    """Split rzp_<mode>_<account_id>, surfacing only what the key actually carries
+    rather than fabricating merchant metadata.
     """
     if not key_id:
         return None, None
@@ -113,16 +111,14 @@ async def _fetch_razorpay_account(
     access_token: str,
     account_id: str,
 ) -> dict[str, str] | None:
-    """Fetch the linked merchant account profile from Razorpay via OAuth token.
+    """Fetch the linked merchant profile; returns display-safe fields only.
 
-    Requires a real partner/OAuth access token; without one (test mode) this is
-    never reached. Returns only display-safe fields and never the token itself.
     Failures degrade to None so the Integrations screen still renders.
     """
     try:
         async with httpx2.AsyncClient(timeout=10.0) as client:
             resp = await client.get(
-                f"https://api.razorpay.com/v2/accounts/{account_id}",
+                f"{RAZORPAY_API_BASE}/v2/accounts/{account_id}",
                 headers={"Authorization": f"Bearer {access_token}"},
             )
         if not resp.is_success:
@@ -193,12 +189,23 @@ async def get_system_settings(request: Request) -> SystemSettingsResponse:
     account_name: str | None = None
     account_type: str | None = None
     account_status: str | None = None
+    # Prefer a live OAuth connection over the static env token: after connecting,
+    # the env value is stale and would describe a different account.
+    oauth = await active_connection()
     access_token = (
-        settings.razorpay_access_token.get_secret_value().strip()
-        if settings.razorpay_access_token
-        else None
+        oauth.access_token.get_secret_value()
+        if oauth
+        else (
+            settings.razorpay_access_token.get_secret_value().strip()
+            if settings.razorpay_access_token
+            else None
+        )
     )
-    fetch_account_id = settings.razorpay_account_id or razorpay_account_id
+    fetch_account_id = (
+        (oauth.razorpay_account_id if oauth else None)
+        or settings.razorpay_account_id
+        or razorpay_account_id
+    )
     if access_token and fetch_account_id:
         fetched = await _fetch_razorpay_account(access_token, fetch_account_id)
         if fetched:

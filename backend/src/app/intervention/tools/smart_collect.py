@@ -9,8 +9,9 @@ from uuid import uuid4
 import httpx2
 from pydantic import BaseModel, Field
 
-from app.core.credential_resolver import resolve_gateway_credentials
+from app.core.constants import RAZORPAY_API_BASE
 from app.core.logging import get_logger
+from app.integrations.auth import resolve_razorpay_auth
 
 if TYPE_CHECKING:
     from app.audit.models import RecoveryCase
@@ -34,7 +35,7 @@ class SmartCollectAccountResult(BaseModel):
 class SmartCollectTool:
     """Tool for creating and managing Razorpay Smart Collect virtual accounts (NEFT/RTGS/IMPS/UPI)."""
 
-    def __init__(self, base_url: str = "https://api.razorpay.com/v1") -> None:
+    def __init__(self, base_url: str = f"{RAZORPAY_API_BASE}/v1") -> None:
         self.base_url = base_url
 
     async def create_virtual_account(
@@ -45,13 +46,13 @@ class SmartCollectTool:
         close_by_hours: int = 48,
     ) -> SmartCollectAccountResult:
         """Create a per-case virtual account with receiver details and join notes."""
-        key_id, key_secret = resolve_gateway_credentials()
+        rzp = await resolve_razorpay_auth()
 
         close_by = datetime.now(UTC) + timedelta(hours=close_by_hours)
         close_by_epoch = int(close_by.timestamp())
 
         # If live credentials configured, call Razorpay API
-        if key_id and key_secret:
+        if rzp:
             try:
                 payload = {
                     "receivers": {
@@ -69,8 +70,8 @@ class SmartCollectTool:
                 async with httpx2.AsyncClient(timeout=10.0) as client:
                     resp = await client.post(
                         f"{self.base_url}/virtual_accounts",
-                        auth=(key_id, key_secret),
                         json=payload,
+                        **rzp.httpx_kwargs(),
                     )
                     if resp.status_code in (200, 201):
                         data: dict[str, Any] = resp.json()

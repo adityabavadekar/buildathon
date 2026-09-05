@@ -9,9 +9,9 @@ import httpx2
 from pydantic import SecretStr
 
 from app.core.config import get_settings
-from app.core.constants import GATEWAY_RETRY_COST_PAISE
-from app.core.credential_resolver import resolve_gateway_credentials
+from app.core.constants import GATEWAY_RETRY_COST_PAISE, RAZORPAY_API_BASE
 from app.core.logging import get_logger
+from app.integrations.auth import resolve_razorpay_auth
 from app.intervention.tools.base import BaseInterventionTool, ToolExecutionResult
 
 if TYPE_CHECKING:
@@ -47,11 +47,11 @@ class MandateRetryTool(BaseInterventionTool):
         attempt_id = f"rtr_{uuid4().hex[:14]}"
 
         settings = get_settings()
-        key_id, key_secret = resolve_gateway_credentials()
+        rzp = await resolve_razorpay_auth()
 
         # 1. Live Gateway Execution path when credentials are provided
-        if key_id and key_secret:
-            auth = (key_id, key_secret)
+        if rzp:
+            auth_kwargs = rzp.httpx_kwargs()
             post_body = {
                 "amount": case.amount_paise,
                 "currency": case.currency,
@@ -63,12 +63,18 @@ class MandateRetryTool(BaseInterventionTool):
             }
 
             try:
-                endpoint = f"https://api.razorpay.com/v1/subscriptions/{subscription_id}/charge"
+                endpoint = (
+                    f"{RAZORPAY_API_BASE}/v1/subscriptions/{subscription_id}/charge"
+                )
                 if self._client:
-                    resp = await self._client.post(endpoint, json=post_body, auth=auth)
+                    resp = await self._client.post(
+                        endpoint, json=post_body, **auth_kwargs
+                    )
                 else:
                     async with httpx2.AsyncClient(timeout=10.0) as client:
-                        resp = await client.post(endpoint, json=post_body, auth=auth)
+                        resp = await client.post(
+                            endpoint, json=post_body, **auth_kwargs
+                        )
 
                 if resp.is_success:
                     rzp_data: dict[str, Any] = resp.json()

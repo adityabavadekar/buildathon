@@ -14,9 +14,13 @@ import httpx2
 from pydantic import SecretStr
 
 from app.core.config import get_settings
-from app.core.constants import CHECKOUT_DROP_OFF_LINK_VALIDITY_MINUTES
-from app.core.credential_resolver import resolve_gateway_credentials
+from app.core.constants import (
+    CHECKOUT_DROP_OFF_LINK_VALIDITY_MINUTES,
+    RAZORPAY_API_BASE,
+    SIMULATED_PAYMENT_LINK_PREFIX,
+)
 from app.core.logging import get_logger
+from app.integrations.auth import resolve_razorpay_auth
 from app.intervention.tools.base import BaseInterventionTool, ToolExecutionResult
 
 if TYPE_CHECKING:
@@ -55,11 +59,11 @@ class RazorpayPaymentLinkTool(BaseInterventionTool):
         final_amount_paise = max(100, case.amount_paise - plan.discount_paise)
 
         settings = get_settings()
-        key_id, key_secret = resolve_gateway_credentials()
+        rzp = await resolve_razorpay_auth()
 
         # 1. Live Gateway Execution path when credentials are provided
-        if key_id and key_secret:
-            auth = (key_id, key_secret)
+        if rzp:
+            auth_kwargs = rzp.httpx_kwargs()
             post_body = {
                 "amount": final_amount_paise,
                 "currency": case.currency,
@@ -72,16 +76,16 @@ class RazorpayPaymentLinkTool(BaseInterventionTool):
             try:
                 if self._client:
                     resp = await self._client.post(
-                        "https://api.razorpay.com/v1/payment_links",
+                        f"{RAZORPAY_API_BASE}/v1/payment_links",
                         json=post_body,
-                        auth=auth,
+                        **auth_kwargs,
                     )
                 else:
                     async with httpx2.AsyncClient(timeout=10.0) as client:
                         resp = await client.post(
-                            "https://api.razorpay.com/v1/payment_links",
+                            f"{RAZORPAY_API_BASE}/v1/payment_links",
                             json=post_body,
-                            auth=auth,
+                            **auth_kwargs,
                         )
 
                 if resp.is_success:
@@ -126,7 +130,7 @@ class RazorpayPaymentLinkTool(BaseInterventionTool):
                         case_id=case.case_id,
                         response=resp.text,
                     )
-                    sim_link_id = f"plink_sim_{uuid4().hex[:12]}"
+                    sim_link_id = f"{SIMULATED_PAYMENT_LINK_PREFIX}{uuid4().hex[:12]}"
                     sim_short_url = f"https://rzp.io/i/{sim_link_id[6:]}"
                     payload = {
                         "id": sim_link_id,
@@ -184,7 +188,7 @@ class RazorpayPaymentLinkTool(BaseInterventionTool):
                 data={"error": "Razorpay credentials not configured in production"},
             )
 
-        sim_link_id = f"plink_sim_{uuid4().hex[:12]}"
+        sim_link_id = f"{SIMULATED_PAYMENT_LINK_PREFIX}{uuid4().hex[:12]}"
         sim_short_url = f"https://rzp.io/i/{sim_link_id[6:]}"
         payload = {
             "id": sim_link_id,

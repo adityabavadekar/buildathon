@@ -1,14 +1,5 @@
-"""Fixed benchmark dataset for provable recovery measurement.
-
-The buildathon brief asks for money recovered *across a batch*, not a
-cherry-picked demo, which requires the same events every run. The simulation
-seeder deliberately uses ``secrets`` for realistic variety; a benchmark cannot,
-so this module derives every field from a seeded ``random.Random``.
-
-Determinism contract: for a given ``(dataset_version, seed, size)`` the emitted
-events are byte-identical, including ids and timestamps. Timestamps are anchored
-to a fixed epoch rather than ``now`` so a run in March and a run in September
-produce the same dataset.
+"""Fixed benchmark dataset: for a given (dataset_version, seed, size) the events
+are byte-identical, timestamps included, so runs months apart stay comparable.
 """
 
 from __future__ import annotations
@@ -34,16 +25,8 @@ DEFAULT_BENCHMARK_SIZE = 720
 BENCHMARK_EPOCH = datetime(2026, 8, 1, 0, 0, 0, tzinfo=UTC)
 BENCHMARK_WINDOW_MINUTES = 20160
 
-# Untreated recovery propensity per failure category, applied identically to both
-# arms so lift comes from the agent's actions rather than a kinder coin flip.
-#
-# PROVENANCE: these eight values are modelling assumptions, not measured rates.
-# No public dataset carries the label this needs - whether a specific failed
-# payment later succeeded, and after which intervention - because that exists
-# only inside a PSP. They set the difficulty of the benchmark, not its verdict:
-# the measured lift, the stratified counterfactual, and the coverage gate are all
-# computed from the engine's real behaviour on these events. Treat an absolute
-# recovery figure as scenario-dependent and compare runs, not single numbers.
+# Modelling assumptions, not measured rates: no public dataset says whether a
+# given failed payment later recovered. They set difficulty, not the verdict.
 BASE_RECOVERY_PROPENSITY: dict[FailureCategory, float] = {
     FailureCategory.TRANSIENT_BANK_WINDOW: 0.42,
     FailureCategory.LIQUIDITY_CONSTRAINT: 0.18,
@@ -94,12 +77,8 @@ def build_benchmark_events(
     seed: int = DEFAULT_BENCHMARK_SEED,
     run_tag: str | None = None,
 ) -> list[BenchmarkEvent]:
-    """Materialise the fixed benchmark dataset.
-
-    Categories are cycled rather than sampled so the mix does not shift with
-    ``size``. ``run_tag`` namespaces ids only: the orchestrator dedupes on
-    ``payment_id``, so without it a repeat run of the same seed is absorbed by
-    idempotency and measures nothing.
+    """Materialise the dataset. Categories cycle so the mix holds across sizes, and
+    run_tag namespaces ids or idempotency absorbs a repeat run and measures nothing.
     """
     if size <= 0:
         msg = "Benchmark size must be positive"

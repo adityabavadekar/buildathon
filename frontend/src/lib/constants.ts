@@ -61,8 +61,8 @@ export type PolicyErrors = Partial<
   Record<EditablePolicyField | 'allowed_channels', string>
 >
 
-/**
- * Relative ingress path, shown only until the backend reports its absolute URL.
- * The backend is authoritative: it builds the full URL from the live request.
- */
+/** Shown only until the backend reports the absolute URL it builds per request. */
 export const WEBHOOK_INGRESS_PATH = '/api/webhooks/razorpay'
+
+/** Mirrors SIMULATED_PAYMENT_LINK_PREFIX in the backend's core constants. */
+export const SIMULATED_PAYMENT_LINK_PREFIX = 'plink_sim_'

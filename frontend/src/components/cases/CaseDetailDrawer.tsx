@@ -77,6 +77,7 @@ export function CaseDetailDrawer({
   if (!caseItem) return null
 
   const maxTouches = policy?.max_touches ?? 3
+  const isHoldout = caseItem.experiment_arm === 'HOLDOUT_CONTROL'
   const stateDescription = STATE_READINGS[caseItem.state] || caseItem.state
   const recoveredValue =
     caseItem.state === 'RECOVERED'
@@ -126,9 +127,7 @@ export function CaseDetailDrawer({
                   {caseItem.state.replaceAll('_', ' ')}
                 </Badge>
                 <Badge variant="outline">
-                  {caseItem.experiment_arm === 'HOLDOUT_CONTROL'
-                    ? 'Holdout'
-                    : 'Treatment'}
+                  {isHoldout ? 'Holdout' : 'Treatment'}
                 </Badge>
               </div>
               <p className="mt-1 text-sm text-ink-muted">
@@ -410,7 +409,25 @@ export function CaseDetailDrawer({
             </>
           )}
 
-          {activeTab === 'outreach' && (
+          {activeTab === 'outreach' && isHoldout && (
+            <section className="space-y-3">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="h-4 w-4 text-pending" />
+                <h3 className="text-sm font-semibold text-ink">
+                  Held out of outreach by design
+                </h3>
+              </div>
+              <p className="text-sm text-ink-muted">
+                This case is in the holdout control arm, so the agent
+                deliberately never contacts it. Whatever it recovers on its own
+                is the counterfactual that the treated cases are measured
+                against. An empty outreach history here is the control working,
+                not a failure.
+              </p>
+            </section>
+          )}
+
+          {activeTab === 'outreach' && !isHoldout && (
             <section className="space-y-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">

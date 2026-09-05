@@ -1,13 +1,5 @@
-"""Pure-ASGI middleware.
-
-Hand-rolled rather than using ``asgi-correlation-id`` for one specific reason:
-that library's default validator silently discards an incoming request ID that
-is not a UUID and mints a fresh one, which severs the trace to whatever upstream
-sent it. For an audit trail, an unfamiliar-but-present ID is more useful than a
-new one, so incoming IDs are preserved (sanitised, not replaced).
-
-Pure ASGI rather than ``BaseHTTPMiddleware`` because the latter runs the endpoint
-in a child task, which breaks ``contextvars`` propagation back to the caller.
+"""Pure-ASGI middleware, not BaseHTTPMiddleware, whose child task breaks
+contextvars propagation. Incoming request IDs are sanitised, never replaced.
 """
 
 import re

@@ -10,6 +10,7 @@ import {
 } from 'lucide-react'
 import type { RecoveryCase } from '@/lib/api'
 import { formatCustomerName } from '@/lib/format'
+import { SIMULATED_PAYMENT_LINK_PREFIX } from '@/lib/constants'
 import { RazorpaySymbol, WhatsAppIcon } from '@/components/ui/BrandIcons'
 
 interface WhatsAppPreviewProps {
@@ -31,6 +32,11 @@ export function WhatsAppPreview({ caseItem }: WhatsAppPreviewProps) {
   const amountPaise = caseItem.amount_paise
   const discountPaise = caseItem.discount_paise_granted
   const payablePaise = amountPaise - discountPaise
+  // Only the issued link; one derived from the case id resolves to nothing.
+  const paymentLinkUrl = caseItem.payment_link_url ?? null
+  const isSimulatedLink = (caseItem.payment_link_id ?? '').startsWith(
+    SIMULATED_PAYMENT_LINK_PREFIX,
+  )
   const customerName = formatCustomerName(caseItem.failure_event.customer_id)
 
   const isMandate =
@@ -213,10 +219,24 @@ export function WhatsAppPreview({ caseItem }: WhatsAppPreviewProps) {
                 </span>
               </div>
             )}
-            <div className="flex items-center gap-1 pt-1 font-mono text-[10px] text-accent">
-              <ExternalLink className="h-3 w-3" />
-              <span>https://rzp.io/i/{caseItem.case_id.slice(0, 8)}</span>
-            </div>
+            {paymentLinkUrl ? (
+              <div className="space-y-1 pt-1">
+                <div className="flex items-center gap-1 font-mono text-[10px] text-accent">
+                  <ExternalLink className="h-3 w-3" />
+                  <span className="break-all">{paymentLinkUrl}</span>
+                </div>
+                {isSimulatedLink && (
+                  <span className="font-mono text-[9px] text-ink-muted">
+                    Sandbox link - no live gateway call was made.
+                  </span>
+                )}
+              </div>
+            ) : (
+              <div className="flex items-center gap-1 pt-1 font-mono text-[10px] text-ink-muted">
+                <ExternalLink className="h-3 w-3" />
+                <span>No payment link issued for this case yet.</span>
+              </div>
+            )}
           </div>
 
           <div className="flex items-center justify-end gap-1 font-mono text-[9px] text-ink-muted">

@@ -1,12 +1,5 @@
-"""Structured logging.
-
-Uses structlog with ``contextvars`` so that a request ID bound once in middleware
-appears on every log line emitted during that request - including lines from
-uvicorn and third-party libraries, which are routed through the same formatter.
-
-That correlation is why structlog is here rather than a plain JSON formatter: the
-audit trail this service has to produce later needs every action traceable to the
-request that caused it.
+"""Structured logging. structlog over a plain JSON formatter because contextvars
+carry one request ID onto every line, including uvicorn's, for the audit trail.
 """
 
 import logging
@@ -59,9 +52,8 @@ def configure_logging(settings: Settings) -> None:
         cache_logger_on_first_use=True,
     )
 
-    # add_logger_name is applied only to this chain: it reads a stdlib LogRecord,
-    # which foreign records have and structlog's own WriteLogger does not. Putting
-    # it in the shared processors crashes every call with AttributeError.
+    # add_logger_name reads a stdlib LogRecord, which structlog's WriteLogger
+    # lacks; in the shared processors it raises AttributeError on every call.
     formatter = structlog.stdlib.ProcessorFormatter(
         foreign_pre_chain=[
             *shared_processors,
@@ -86,15 +78,8 @@ def configure_logging(settings: Settings) -> None:
 
 
 def get_logger(name: str | None = None) -> Any:
-    """Return a bound structlog logger.
-
-    The module name is bound as a ``logger`` field rather than relying on
-    ``add_logger_name``, which needs a stdlib ``LogRecord`` that structlog's own
-    loggers do not produce.
-
-    Returns ``Any`` because structlog's ``BindableLogger`` is a runtime protocol
-    whose concrete type depends on ``wrapper_class``; annotating it precisely
-    would over-constrain callers for no benefit.
+    """Return a bound structlog logger. The name is bound as a field because
+    add_logger_name needs a stdlib LogRecord structlog's loggers never produce.
     """
     logger = structlog.get_logger()
     return logger.bind(logger=name) if name else logger

@@ -36,8 +36,9 @@ import {
 } from '@/lib/navigation'
 import { CaseDetailDrawer } from '@/components/cases/CaseDetailDrawer'
 import { CommandPalette } from '@/components/command/CommandPalette'
+import { LoginGate } from '@/components/auth/LoginGate'
 
-export default function DashboardPage() {
+function Dashboard() {
   const [activeSection, setActiveSection] = useState<NavSection>('overview')
 
   // The section lives in the URL hash so a screen can be linked to and survives
@@ -374,5 +375,15 @@ export default function DashboardPage() {
         onSearchTerm={setPaletteSearch}
       />
     </div>
+  )
+}
+
+export default function DashboardPage() {
+  // The gate renders the dashboard only once the session is known good, so the
+  // initial fetch does not fire a wall of 401s behind a login form.
+  return (
+    <LoginGate>
+      <Dashboard />
+    </LoginGate>
   )
 }

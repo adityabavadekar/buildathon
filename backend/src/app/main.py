@@ -7,17 +7,19 @@ repository root to start this alongside the frontend.
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app import __version__
 from app.api.routes import (
     analytics,
+    auth,
     benchmark,
     cases,
     customers,
     experiments,
     health,
+    integrations,
     operator,
     pipeline,
     policies,
@@ -27,6 +29,7 @@ from app.api.routes import (
     workflows,
 )
 from app.api.routes import settings as settings_router
+from app.core.auth import require_operator
 from app.core.config import Settings, get_settings
 from app.core.db import run_migrations
 from app.core.logging import configure_logging, get_logger
@@ -87,20 +90,27 @@ def create_app() -> FastAPI:
     app.include_router(health.router)
     app.include_router(health.router, prefix="/api")
 
-    # Domain API routes
+    # Unauthenticated by necessity: the dashboard must ask whether a login is
+    # required before it has a session, and webhooks authenticate by HMAC.
+    app.include_router(auth.router, prefix="/api")
     app.include_router(webhooks.router, prefix="/api")
-    app.include_router(cases.router, prefix="/api")
-    app.include_router(customers.router, prefix="/api")
-    app.include_router(analytics.router, prefix="/api")
-    app.include_router(policies.router, prefix="/api")
-    app.include_router(rail_health.router, prefix="/api")
-    app.include_router(simulation.router, prefix="/api")
-    app.include_router(pipeline.router, prefix="/api")
-    app.include_router(operator.router, prefix="/api")
-    app.include_router(experiments.router, prefix="/api")
-    app.include_router(settings_router.router, prefix="/api")
-    app.include_router(workflows.router, prefix="/api")
-    app.include_router(benchmark.router, prefix="/api")
+
+    # Gated by default, so a route added later is protected without opting in.
+    # require_operator is a no-op when no operator password is configured.
+    guarded = [Depends(require_operator)]
+    app.include_router(cases.router, prefix="/api", dependencies=guarded)
+    app.include_router(customers.router, prefix="/api", dependencies=guarded)
+    app.include_router(analytics.router, prefix="/api", dependencies=guarded)
+    app.include_router(policies.router, prefix="/api", dependencies=guarded)
+    app.include_router(rail_health.router, prefix="/api", dependencies=guarded)
+    app.include_router(simulation.router, prefix="/api", dependencies=guarded)
+    app.include_router(pipeline.router, prefix="/api", dependencies=guarded)
+    app.include_router(operator.router, prefix="/api", dependencies=guarded)
+    app.include_router(experiments.router, prefix="/api", dependencies=guarded)
+    app.include_router(settings_router.router, prefix="/api", dependencies=guarded)
+    app.include_router(workflows.router, prefix="/api", dependencies=guarded)
+    app.include_router(benchmark.router, prefix="/api", dependencies=guarded)
+    app.include_router(integrations.router, prefix="/api", dependencies=guarded)
     return app
 
 

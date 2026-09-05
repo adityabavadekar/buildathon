@@ -2,6 +2,7 @@
 
 import json
 from datetime import UTC, datetime
+from typing import Any
 
 import httpx2
 import pytest
@@ -276,6 +277,89 @@ async def test_customer_notification_live_provider_contract_success(
         assert result.cost_incurred_paise == 50
         assert result.data["live_dispatch_call"] is True
         assert len(recorded_requests) == 1
+
+
+@pytest.mark.anyio
+async def test_notification_quotes_only_a_real_issued_payment_link(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The dunning text must carry the link the payment-link tool issued."""
+    settings = get_settings()
+    monkeypatch.setattr(
+        settings,
+        "notification_webhook_url",
+        "https://api.whatsapp.provider.com/v1/messages",
+    )
+
+    issued_url = "https://rzp.io/i/realLink42"
+    bodies: list[dict[str, Any]] = []
+
+    def mock_handler(request: httpx2.Request) -> httpx2.Response:
+        bodies.append(json.loads(request.content.decode("utf-8")))
+        return httpx2.Response(status_code=200, json={"id": "wam_link_1"})
+
+    transport = httpx2.MockTransport(mock_handler)
+    async with httpx2.AsyncClient(transport=transport) as mock_client:
+        tool = CustomerNotificationTool(client=mock_client)
+        case = _create_test_case(amount_paise=150000)
+        case.payment_link_id = "plink_live_abc123"
+        case.payment_link_url = issued_url
+        plan = InterventionPlan(
+            plan_id="plan_wa_link",
+            case_id=case.case_id,
+            intervention_type=InterventionType.CUSTOMER_NUDGE,
+            channel=OutreachChannel.WHATSAPP,
+            scheduled_at=datetime.now(UTC),
+            idempotency_key="idem_wa_link",
+            rationale="Nudge with issued link",
+        )
+
+        result = await tool.execute(case, plan)
+
+    assert result.success is True
+    assert issued_url in bodies[0]["message_text"]
+
+
+@pytest.mark.anyio
+async def test_notification_omits_link_when_none_was_issued(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """With no issued link, the message must not invent a URL from the case id."""
+    settings = get_settings()
+    monkeypatch.setattr(
+        settings,
+        "notification_webhook_url",
+        "https://api.whatsapp.provider.com/v1/messages",
+    )
+
+    bodies: list[dict[str, Any]] = []
+
+    def mock_handler(request: httpx2.Request) -> httpx2.Response:
+        bodies.append(json.loads(request.content.decode("utf-8")))
+        return httpx2.Response(status_code=200, json={"id": "wam_nolink_1"})
+
+    transport = httpx2.MockTransport(mock_handler)
+    async with httpx2.AsyncClient(transport=transport) as mock_client:
+        tool = CustomerNotificationTool(client=mock_client)
+        case = _create_test_case(amount_paise=150000)
+        assert case.payment_link_url is None
+        plan = InterventionPlan(
+            plan_id="plan_wa_nolink",
+            case_id=case.case_id,
+            intervention_type=InterventionType.CUSTOMER_NUDGE,
+            channel=OutreachChannel.WHATSAPP,
+            scheduled_at=datetime.now(UTC),
+            idempotency_key="idem_wa_nolink",
+            rationale="Nudge without a link",
+        )
+
+        result = await tool.execute(case, plan)
+
+    assert result.success is True
+    message_text = bodies[0]["message_text"]
+    assert "rzp.io" not in message_text
+    assert case.case_id[:8] not in message_text
+    assert "Reply STOP to opt out" in message_text
 
 
 @pytest.mark.anyio

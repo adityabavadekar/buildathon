@@ -1,7 +1,5 @@
-"""Analytics and recovery performance metrics endpoint.
-
-Provides real-time attribution, counterfactual A/B recovery metrics,
-multi-rail failure breakdown, daily/monthly time series, and EV-prioritized operator escalation queue.
+"""Recovery analytics: attribution, counterfactual metrics, rail breakdown, time
+series, and the EV-prioritised escalation queue.
 """
 
 from __future__ import annotations
@@ -231,6 +229,11 @@ class AnalyticsSummaryResponse(BaseModel):
     total_communication_cost_paise: int
     total_discounts_granted_paise: int
     return_on_recovery_spend: float
+
+    # Quoting recovery without the live/simulated split is unfalsifiable.
+    live_executions: int
+    simulated_executions: int
+    simulated_cost_paise: int
 
     health_score: int
     recovery_streak: int
@@ -607,6 +610,7 @@ async def get_analytics_summary() -> AnalyticsSummaryResponse:
     streak = min(24, treatment_rec)
     forecast_data = _compute_recovery_forecast(cases, lift)
     campaign_list = _compute_campaign_metrics(cases)
+    fidelity = repo.get_execution_fidelity()
 
     return AnalyticsSummaryResponse(
         total_cases=total_cases,
@@ -627,6 +631,9 @@ async def get_analytics_summary() -> AnalyticsSummaryResponse:
         total_gateway_fees_paise=total_gw_fees,
         total_communication_cost_paise=total_comm_cost,
         total_discounts_granted_paise=total_discounts,
+        live_executions=fidelity["live_executions"],
+        simulated_executions=fidelity["simulated_executions"],
+        simulated_cost_paise=fidelity["simulated_cost_paise"],
         return_on_recovery_spend=rors,
         health_score=health_score,
         recovery_streak=streak,

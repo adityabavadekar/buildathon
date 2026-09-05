@@ -592,6 +592,16 @@ export function OverviewView({
               in net recovery over natural recovery in uncontacted holdout
               cases.
             </p>
+            <p className="font-mono text-[10px] text-ink-muted">
+              {analytics.simulated_executions > 0 &&
+              analytics.live_executions > 0
+                ? `Mixed rails: ${analytics.live_executions.toLocaleString()} live and ${analytics.simulated_executions.toLocaleString()} simulated interventions, including ${formatINR(analytics.simulated_cost_paise)} of simulated cost.`
+                : analytics.simulated_executions > 0
+                  ? `Simulated rails: all ${analytics.simulated_executions.toLocaleString()} interventions ran against the sandbox, not a live gateway.`
+                  : analytics.live_executions > 0
+                    ? `Live rails: all ${analytics.live_executions.toLocaleString()} interventions reached the Razorpay gateway.`
+                    : 'No interventions executed yet.'}
+            </p>
           </div>
           <div className="flex items-center gap-4 border-t border-border pt-3 text-xs md:border-t-0 md:border-l md:pt-0 md:pl-6">
             <div>

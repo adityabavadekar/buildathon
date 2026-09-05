@@ -67,7 +67,7 @@ wrong is the failure mode that matters most in a payments tool.
 - **Every money-affecting action must be idempotent** and keyed, so a retry
   cannot double-charge or double-refund.
 - **Every money-affecting action must be audit-logged before it is attempted**,
-  with the decision inputs that led to it — not just the outcome.
+  with the decision inputs that led to it - not just the outcome.
 - **Recovery must be measured against a counterfactual**, not asserted. A batch
   needs a holdout arm, or "we recovered ₹X" means nothing.
 - Interventions are **bounded**: explicit caps, stopping rules, and an escalation
@@ -125,7 +125,7 @@ headers.append((REQUEST_ID_HEADER, request_id))
 - **Never call a provider SDK directly outside `backend/src/app/llm/client.py`.**
   That module is the single seam for model calls, cost accounting, and audit.
 - **Never read `os.environ` outside `core/config.py`.**
-- Never use `print()` — it won't appear in the structured audit trail.
+- Never use `print()` - it won't appear in the structured audit trail.
 - Never add a new FastAPI route assuming it is protected. **Routes are
   unauthenticated unless you add a dependency that authenticates them.**
 - Never pin a dependency to `latest` without checking compatibility. Two live
@@ -136,7 +136,7 @@ headers.append((REQUEST_ID_HEADER, request_id))
 - Never commit real merchant data, real payment IDs, or real customer records.
   Synthetic fixtures only.
 - NEVER use emojis, em-dashes (—), or non-standard special characters in technical responses, comments, or documentation.
-- Avoid subjective qualifiers (e.g., “high-impact”, “professional”, “optimized”, “refined”, “clean”, “solid”).
+- Avoid subjective qualifiers (e.g., "high-impact", "professional", "optimized", "refined", "clean", "solid").
 - Do not use markdown backticks in Git commit subject lines.
 
 ### 6. LOGGING
@@ -166,18 +166,18 @@ headers.append((REQUEST_ID_HEADER, request_id))
 
 ## Conventions
 
-**Backend** — `src/` layout, package `app`. `core/` is cross-cutting (config,
+**Backend** - `src/` layout, package `app`. `core/` is cross-cutting (config,
 logging, middleware). `llm/` is the only provider boundary. `detection/`,
 `intervention/`, and `audit/` are the product domains. `api/routes/` holds one
 module per resource, each exporting a `router`.
 
-**Frontend** — `lib/` for non-visual logic, `components/ui/` for primitives,
+**Frontend** - `lib/` for non-visual logic, `components/ui/` for primitives,
 `routes/` for pages. Import via the `@/` alias, not deep relative paths.
 
 **Design tokens** live in `frontend/src/index.css` under `@theme`. Tailwind v4 is
-CSS-first — there is no `tailwind.config.js`, and adding one would be wrong.
+CSS-first - there is no `tailwind.config.js`, and adding one would be wrong.
 Money figures use the `money` utility or `font-mono`; both enable `tnum`.
-Do not put `tabular-nums` on a `<table>` or `<tr>` — it compiles to a
+Do not put `tabular-nums` on a `<table>` or `<tr>` - it compiles to a
 `@property` with `inherits: false` and will not reach the cells.
 
 **Status colors** map to the recovery lifecycle and are semantic, not decorative:

@@ -12,11 +12,9 @@ _DEFAULT_POLICY: MerchantPolicy = MerchantPolicy()
 
 
 def get_active_policy() -> MerchantPolicy:
-    """Return the active policy, preferring the persisted store.
+    """Active policy, read fresh so the gate enforces the latest saved values.
 
-    Reads the durable store fresh on every call so the policy gate always
-    enforces the latest saved values, falling back to module defaults when no
-    store exists yet.
+    Falls back to module defaults when no store exists yet.
     """
     persisted = get_policy_store().load()
     return persisted if persisted is not None else _DEFAULT_POLICY.model_copy(deep=True)
@@ -29,11 +27,8 @@ def set_active_policy(policy: MerchantPolicy) -> MerchantPolicy:
 
 
 class PolicyGate:
-    """Evaluates recovery plans against deterministic policy invariants.
-
-    LLMs may propose recovery plans, but the PolicyGate is the hard invariant
-    boundary that prevents unauthorized discounts, excessive customer contacts,
-    and un-gated retries.
+    """The hard invariant boundary over LLM-proposed plans: it blocks unauthorized
+    discounts, excessive contacts, and un-gated retries.
     """
 
     def evaluate(

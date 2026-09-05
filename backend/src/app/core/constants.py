@@ -28,9 +28,7 @@ MIN_CONFIDENCE_THRESHOLD: Decimal = Decimal(
     "0.60"
 )  # Minimum AI confidence before escalation
 
-# Default model served on Groq and used for agentic recovery simulation. This is
-# the single canonical value; every consumer reads it from Settings, never from
-# its own literal.
+# Canonical value; every consumer reads it from Settings, never its own literal.
 DEFAULT_AGENTIC_MODEL: str = "meta-llama/llama-4-scout-17b-16e-instruct"
 
 DEFAULT_ANTHROPIC_MODEL: str = "claude-opus-5"
@@ -39,11 +37,24 @@ DEFAULT_ANTHROPIC_MODEL: str = "claude-opus-5"
 # single recovery case. Deliberately not a foreign key into cases.
 GLOBAL_AUDIT_CASE_ID: str = "SYSTEM_GLOBAL"
 
+# Razorpay API hosts. Four call sites previously built these independently.
+RAZORPAY_API_BASE: str = "https://api.razorpay.com"
+RAZORPAY_AUTH_BASE: str = "https://auth.razorpay.com"
+
+# OAuth access tokens live 90 days and refresh tokens 180; refresh this many days
+# before expiry so a recovery call never fails on a token we could have renewed.
+OAUTH_REFRESH_WINDOW_DAYS: int = 7
+OAUTH_REFRESH_TOKEN_TTL_DAYS: int = 180
+OAUTH_STATE_TTL_MINUTES: int = 15
+
 # Time Windows (Hours / Minutes)
 TRANSIENT_BANK_WINDOW_DELAY_HOURS: int = 4
 SALARY_CYCLE_RETRY_SPACING_HOURS: int = 48
 CHECKOUT_DROP_OFF_LINK_VALIDITY_MINUTES: int = 15
 MAX_DUNNING_LIFECYCLE_DAYS: int = 7
+
+# Marks a sandbox link, so consumers need not infer it from the environment.
+SIMULATED_PAYMENT_LINK_PREFIX: str = "plink_sim_"
 
 # Pagination and Batch limits
 DEFAULT_BATCH_PAGE_SIZE: int = 50

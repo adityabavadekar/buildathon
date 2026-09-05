@@ -1,8 +1,5 @@
-"""Single entry point for LLM calls, via litellm.
-
-Every model call in this service goes through here. Nothing else should import a
-provider SDK directly - that rule is what makes model choice, cost accounting,
-retries, and audit logging changeable in one place.
+"""The only seam for LLM calls. Nothing else imports a provider SDK, so model
+choice, cost accounting, retries, and audit stay changeable in one place.
 """
 
 from __future__ import annotations
@@ -33,11 +30,8 @@ DEFAULT_MAX_RETRIES = 2
 
 
 def default_model() -> str:
-    """Return the configured primary model, never a hardcoded provider id.
-
-    The store's model ids are set by configuration (settings.openrouter_model)
-    or the persisted settings file; a literal here would quickly rot into a
-    nonexistent id and produce silent fallback failures in telemetry.
+    """The configured primary model, never a literal: a hardcoded id would rot into
+    a nonexistent one and show up as silent fallback failures in telemetry.
     """
     return get_settings().openrouter_model
 

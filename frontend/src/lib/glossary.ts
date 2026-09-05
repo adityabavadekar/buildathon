@@ -1,7 +1,4 @@
-/**
- * Plain-English glossary and jargon map for the Recovery Agent UI.
- * Single source of truth for terms, financial metrics, and lifecycle states.
- */
+/** Single source of truth for UI terms, financial metrics, and lifecycle states. */
 
 export interface GlossaryDefinition {
   term: string

@@ -13,12 +13,8 @@ from app.intervention.orchestrator import RecoveryOrchestrator
 
 
 def _isolated_repo() -> CaseRepository:
-    """Return a CaseRepository backed by a fresh temp DB per test.
-
-    Using the shared default ``data/recovery_engine.db`` makes these tests
-    non-reproducible on re-runs: a fixed payment_id persists its terminal state
-    (e.g. RECOVERED) and is returned on the next run, breaking the state
-    assertion. A temp store starts empty every time.
+    """A CaseRepository on a fresh temp DB: the shared default persists a fixed
+    payment_id's terminal state, which breaks the assertion on re-run.
     """
     return CaseRepository(
         storage_path=Path(tempfile.mkdtemp(prefix="orch_test_")) / "test.db"
@@ -186,11 +182,8 @@ async def test_orchestrator_high_value_routes_to_escalated() -> None:
 
 @pytest.mark.anyio
 async def test_orchestrator_p2p_followup_reaches_legal_state() -> None:
-    """A P2P follow-up must not target a state unreachable from ANALYSIS_QUEUED.
-
-    Regression: the plan targeted P2P_PROMISED directly, which the state machine
-    rejects from ANALYSIS_QUEUED. The notification had already been sent by then,
-    so each worker retry re-messaged the same customer without ever advancing.
+    """A P2P follow-up must not target a state unreachable from ANALYSIS_QUEUED:
+    the notification had already gone out, so every retry re-messaged the customer.
     """
     repo = _isolated_repo()
     orchestrator = RecoveryOrchestrator(repository=repo)

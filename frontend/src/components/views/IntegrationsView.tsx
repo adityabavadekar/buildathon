@@ -11,6 +11,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { CopyButton } from '@/components/ui/CopyButton'
 import { CredentialImportPanel } from '@/components/settings/CredentialImportPanel'
+import { OAuthConnectPanel } from '@/components/settings/OAuthConnectPanel'
 import { WEBHOOK_INGRESS_PATH } from '@/lib/constants'
 import { Button } from '@/components/ui/button'
 import {
@@ -220,6 +221,8 @@ export function IntegrationsView({
           </div>
         </CardContent>
       </Card>
+
+      <OAuthConnectPanel onChanged={onRefresh} />
 
       <CredentialImportPanel onImported={onRefresh} />
 

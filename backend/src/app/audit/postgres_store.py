@@ -676,6 +676,42 @@ class RelationalCaseStore:
             cnt = conn.execute(text(query), params).scalar()
             return int(cnt or 0)
 
+    def get_execution_fidelity(self) -> dict[str, int]:
+        """Count executed interventions that hit a live gateway versus a simulation.
+
+        Read from the audit trail, not the current credential mode: only the row
+        written at execution time knows which rail an attempt used.
+        """
+        query = """
+            SELECT
+                COUNT(*) FILTER (
+                    WHERE decision_inputs -> 'execution_data' ->> 'live_gateway_call' = 'true'
+                       OR decision_inputs -> 'execution_data' ->> 'live_dispatch_call' = 'true'
+                ) AS live_count,
+                COUNT(*) FILTER (
+                    WHERE decision_inputs -> 'execution_data' ->> 'sandbox_simulated' = 'true'
+                ) AS simulated_count,
+                COALESCE(SUM(cost_incurred_paise) FILTER (
+                    WHERE decision_inputs -> 'execution_data' ->> 'sandbox_simulated' = 'true'
+                ), 0) AS simulated_cost_paise
+            FROM audit
+            WHERE event_name = 'intervention.executed';
+        """
+        with self._lock, get_db_connection() as conn:
+            row = conn.execute(text(query)).mappings().fetchone()
+
+        if not row:
+            return {
+                "live_executions": 0,
+                "simulated_executions": 0,
+                "simulated_cost_paise": 0,
+            }
+        return {
+            "live_executions": int(row["live_count"] or 0),
+            "simulated_executions": int(row["simulated_count"] or 0),
+            "simulated_cost_paise": int(row["simulated_cost_paise"] or 0),
+        }
+
     def get_audit_trail_for_case(self, case_id: str) -> list[AuditEntry]:
         """Fetch immutable audit entries for a case from PostgreSQL."""
         with self._lock, get_db_connection() as conn:
@@ -1536,12 +1572,8 @@ class RelationalCaseStore:
     def suggest_search_terms(
         self, prefix: str, *, limit: int = 8
     ) -> list[dict[str, Any]]:
-        """Return distinct identifier and attribute values matching a prefix.
-
-        Suggestions come from the stored cases themselves rather than a fixed
-        list, so they always reflect data the operator can actually find. The
-        prefix is bound as a parameter; the LIKE wildcards it contains are
-        escaped so a pasted id with an underscore does not match too broadly.
+        """Distinct values matching a prefix, drawn from stored cases so every
+        suggestion returns results. LIKE wildcards in the prefix are escaped.
         """
         cleaned = prefix.strip()
         if not cleaned:

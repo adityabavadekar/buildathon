@@ -1,8 +1,5 @@
-"""Command-line entry point for benchmark runs.
-
-Run via ``make benchmark`` or ``uv run python -m app.benchmark.cli``. Reports are
-opt-in over HTTP; this writes one by default, since generating a citable report
-is the reason to invoke it from the command line.
+"""Benchmark CLI, via ``make benchmark``. Unlike the HTTP route it writes a report
+by default, since producing a citable one is the reason to run it here.
 """
 
 from __future__ import annotations

@@ -11,6 +11,7 @@ from uuid import uuid4
 from fastapi import APIRouter, Header, HTTPException, Request, Response, status
 from pydantic import BaseModel, SecretStr
 
+from app.audit.global_log import record_global_audit
 from app.audit.models import AuditEntry, RecoveryCase, ScheduledJob
 from app.audit.repository import get_case_repository
 from app.core.config import get_settings
@@ -19,6 +20,7 @@ from app.core.credential_resolver import resolve_webhook_secret
 from app.core.enums import AuditActor, ExperimentArm, PaymentRail, RecoveryState
 from app.core.logging import get_logger
 from app.detection.models import RawFailureEvent
+from app.integrations.store import get_oauth_connection_store
 from app.intervention.orchestrator import get_orchestrator
 
 logger = get_logger(__name__)
@@ -143,7 +145,25 @@ async def handle_razorpay_webhook(  # noqa: PLR0911, PLR0912, PLR0915
 
     logger.info("webhook.received", event_type=event_type)
 
-    # 2. Handle Payment Captured (Immediate recovery resolution)
+    # A revoked app's tokens are already dead at Razorpay, so keeping the row
+    # would leave the engine authenticating with a credential that cannot work.
+    if event_type == "account.app.authorization_revoked":
+        removed = get_oauth_connection_store().clear()
+        if removed:
+            record_global_audit(
+                event_name="integrations.oauth_revoked_by_merchant",
+                actor=AuditActor.GATEWAY_WEBHOOK,
+                reason="Sub-merchant revoked the FORTX partner application.",
+                notes="OAuth connection cleared; reverted to API key pair.",
+            )
+        response.status_code = status.HTTP_200_OK
+        return WebhookResponse(
+            status="processed" if removed else "ignored",
+            event=event_type,
+            action_taken="OAUTH_DISCONNECTED" if removed else "NOOP",
+        )
+
+    # 3. Handle Payment Captured (Immediate recovery resolution)
     if event_type == "payment.captured":
         payment_entity = event_payload.get("payment", {}).get("entity", {})
         payment_id = payment_entity.get("id", "")
@@ -158,7 +178,7 @@ async def handle_razorpay_webhook(  # noqa: PLR0911, PLR0912, PLR0915
             action_taken="RECOVERED" if recovered_case else "NOOP",
         )
 
-    # 3. Handle Payment Failed (Fast 202 Non-Blocking Enqueue)
+    # 4. Handle Payment Failed (Fast 202 Non-Blocking Enqueue)
     if event_type == "payment.failed":
         payment_entity = event_payload.get("payment", {}).get("entity", {})
         payment_id = payment_entity.get("id", f"pay_webhook_{uuid4().hex[:8]}")

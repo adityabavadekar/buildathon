@@ -1,7 +1,5 @@
-"""Contextual failure classifier for mapping payment errors into recovery actions.
-
-Maps Razorpay gateway codes, sub-codes, and NPCI response codes into structured
-root-cause categories and bounded interventions based on domain rules.
+"""Maps Razorpay gateway codes, sub-codes, and NPCI responses into root-cause
+categories and bounded interventions by domain rule.
 """
 
 from decimal import Decimal

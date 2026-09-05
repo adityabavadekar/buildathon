@@ -57,11 +57,17 @@ class CustomerNotificationTool(BaseInterventionTool):
 
         # Compose clean, RBI-compliant dunning message template
         amount_fmt = f"{case.currency} {case.amount_paise / 100:,.2f}"
-        short_link = f"https://rzp.io/i/{case.case_id[:8]}"
+        # A link derived from the case id resolves to nothing; send none instead.
+        short_link = case.payment_link_url
+        call_to_action = (
+            f"Please complete it securely: {short_link}. "
+            if short_link
+            else "Please retry your payment from your original order. "
+        )
         message_text = (
             f"Dear Customer, your payment of {amount_fmt} could not be completed. "
             f"Reason: {plan.rationale}. "
-            f"Please complete it securely: {short_link}. "
+            f"{call_to_action}"
             "Reply STOP to opt out of payment alerts."
         )
 

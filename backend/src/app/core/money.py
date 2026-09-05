@@ -132,11 +132,7 @@ def calculate_net_recovered_value_paise(
     gateway_retry_cost_paise: int = GATEWAY_RETRY_COST_PAISE,
     outreach_cost_paise: int = OUTREACH_WHATSAPP_COST_PAISE,
 ) -> int:
-    """Calculate Net Recovered Value (NRV) in minor units (paise).
-
-    Formula:
-      NRV = Recovered_Amount - (Retries * Cost_Gateway + Outreach * Cost_Msg + Discounts)
-    """
+    """NRV in paise: recovered - (retries * gateway + outreach * msg + discounts)."""
     total_retry_cost = retry_count * gateway_retry_cost_paise
     total_outreach_cost = outreach_count * outreach_cost_paise
     total_cost = total_retry_cost + total_outreach_cost + discount_paise

@@ -4,6 +4,8 @@ const BACKEND_HOST = process.env.BACKEND_HOST ?? '127.0.0.1'
 const BACKEND_PORT = process.env.BACKEND_PORT ?? '8000'
 
 const nextConfig: NextConfig = {
+  // Lets the runtime image ship without node_modules or a package manager.
+  output: 'standalone',
   // eslint-disable-next-line @typescript-eslint/require-await
   async headers() {
     return [
@@ -41,7 +43,8 @@ const nextConfig: NextConfig = {
       },
     ]
   },
-  // Rewrites proxy backend requests during local development
+  // Baked into routes-manifest.json at build time, so BACKEND_HOST must be set
+  // for the build, not only for the running container.
   // eslint-disable-next-line @typescript-eslint/require-await
   async rewrites() {
     return [

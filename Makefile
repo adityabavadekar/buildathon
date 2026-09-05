@@ -1,5 +1,6 @@
 .PHONY: help install dev dev-backend dev-frontend test lint lint-backend lint-frontend \
-        format format-backend format-frontend build check clean
+        format format-backend format-frontend build check clean \
+        prod-build prod-up prod-down prod-logs prod-ps
 
 BACKEND  := backend
 FRONTEND := frontend
@@ -61,6 +62,21 @@ check-backend: lint-backend test ## Fast backend-only lint + tests
 check-frontend: lint-frontend ## Fast frontend-only lint + typecheck
 
 check: lint test build ## Everything CI runs
+
+prod-build: ## Build the production container images
+	docker compose build
+
+prod-up: ## Start the production stack (validates .env first)
+	./scripts/prod-up.sh
+
+prod-down: ## Stop the production stack, keeping the data volume
+	./scripts/prod-down.sh
+
+prod-logs: ## Follow logs from every production service
+	docker compose logs -f
+
+prod-ps: ## Show production service status and health
+	docker compose ps
 
 clean: ## Remove caches and build output
 	rm -rf $(BACKEND)/.pytest_cache $(BACKEND)/.mypy_cache $(BACKEND)/.ruff_cache

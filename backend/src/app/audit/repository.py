@@ -1,7 +1,5 @@
-"""Durable ACID relational case repository with indexing, transactions, and audit trails.
-
-Provides transactional lookups, state persistence, and append-only audit logging
-for revenue recovery cases backed by an ACID relational database.
+"""Relational case repository: transactional lookups, state persistence, and
+append-only audit logging.
 """
 
 from __future__ import annotations
@@ -248,6 +246,10 @@ class CaseRepository:
     def get_strategy_experiments_report(self) -> list[dict[str, Any]]:
         """Fetch recovery strategy experiments report measuring incremental value."""
         return self._store.get_strategy_experiments_report()
+
+    def get_execution_fidelity(self) -> dict[str, int]:
+        """Count executed interventions by whether they reached a live gateway."""
+        return self._store.get_execution_fidelity()
 
     def clear(self) -> None:
         """Clear repository contents (used for test teardown)."""

@@ -1,31 +1,6 @@
-"""Pure-Python supervised recovery models, advisory only.
+"""Pure-Python supervised recovery models, advisory only: the policy gate wins.
 
-The recovery model is an ensemble of two estimators trained on
-ExperimentArm.TREATMENT cases only and evaluated on
-ExperimentArm.HOLDOUT_CONTROL only (never train on holdout labels):
-
-- MODEL A: L2-regularized logistic regression (gradient descent with early
-  stopping over a validation fold) over engineered case features.
-- MODEL B: Gaussian Naive Bayes over the same feature vectors.
-
-The ensemble log-averages the two calibrated probabilities so a single weak
-estimator cannot dominate. MODEL C is an add-k smoothed intervention scorer,
-P(recovered | case, intervention), used to rank candidate channels.
-
-Beyond P(recovered) we also expose two derived commercial outputs that ARE
-computed here, not manufactured:
-
-- expected_recovery_value_paise = P(recovered) * net_recovered_value_paise
-  reframed to a normalised, comparably-scaled estimate.
-- expected_recovery_days: a regression estimate of days-to-recovery fit on the
-  observed elapsed time of already-recovered TREATMENT cases.
-
-Cross-validation (k-fold, stratified on the TREATMENT arm only) reports honest
-in-sample performance via cv_metrics; holdout_metrics always measures the
-treated control arm. Outputs are advisory scores; the deterministic policy gate
-always wins. Stdlib only - no sklearn/numpy/pandas.
-
-Money discipline: every amount stays integer paise internal to the model.
+Trained on TREATMENT cases and evaluated on HOLDOUT_CONTROL, never trained on it.
 """
 
 from __future__ import annotations
@@ -136,9 +111,8 @@ def _build_feature_spec(cases: Sequence[RecoveryCase]) -> FeatureSpec:
         try:
             strategy_set.add(InterventionType(case.strategy_tag))
         except ValueError:
-            # strategy_tag may hold a workflow strategy name (e.g.
-            # RETRY_THEN_REMINDER) that is not an InterventionType; those are
-            # not interventions and cannot be typed, so skip them.
+            # strategy_tag may hold a workflow name (RETRY_THEN_REMINDER) that is
+            # not an InterventionType, so it cannot be typed.
             continue
     interventions = tuple(sorted(strategy_set))
     return FeatureSpec(
@@ -246,12 +220,8 @@ def _logistic_fit_with_validation(  # noqa: PLR0917
     validation_vectors: Sequence[list[float]] | None = None,
     validation_labels: Sequence[int] | None = None,
 ) -> LogisticModel:
-    """Batch gradient descent with L2 weight decay and early stopping.
-
-    Early stopping uses the held-out validation fold (from the TREATMENT arm)
-    so the fit is selected on generalisation, not training loss. Continuous
-    features are standardised via an internal z-transform; counts are offset by
-    the per-feature empirical prior so unused one-hots never produce infinities.
+    """Batch gradient descent with L2 decay, stopped on a TREATMENT validation fold
+    so the fit is selected on generalisation rather than training loss.
     """
     rows = list(zip(vectors, labels, strict=True))
     dim = size
@@ -533,9 +503,8 @@ class TrainedModel:
 def _ensemble_prob(logistic_p: float, nb_p: float, recovery_rate: float) -> float:
     safe_l = max(logistic_p, _NB_MIN_CLIP)
     safe_n = max(nb_p, _NB_MIN_CLIP)
-    # Geometric mean of the two estimators in log-space, then blend toward the
-    # observed base recovery rate (logit) so a low-data ensemble stays honest
-    # instead of overconfidently diverging from the prior.
+    # Geometric mean in log-space, then blended toward the observed base rate so
+    # a low-data ensemble cannot diverge overconfidently from the prior.
     log_p = (math.log(safe_l) + math.log(safe_n)) / 2.0
     rate = max(min(recovery_rate, 0.99), 0.01)
     logit_offset = math.log(rate / (1.0 - rate))

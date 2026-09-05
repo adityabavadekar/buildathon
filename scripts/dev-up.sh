@@ -100,9 +100,8 @@ ok "Backend API running on http://${LAPTOP_IP}:${BACKEND_PORT}"
 ok "Frontend UI running on http://${LAPTOP_IP}:${FRONTEND_PORT}"
 ok "Base URL configured: http://${LAPTOP_IP}:${FRONTEND_PORT} -> http://${LAPTOP_IP}:${BACKEND_PORT}/api"
 
-# Start Recovery Worker daemon draining the durable queue. Without it, jobs
-# enqueued by the fleet sim stay QUEUED forever and the queue count grows
-# misleadingly even when the fleet is stopped.
+# Drains the durable queue. Without it, jobs stay QUEUED forever and the queue
+# count grows even with the fleet stopped.
 log "Launching recovery worker daemon..."
 (
   cd "${BACKEND_DIR}"

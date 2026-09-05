@@ -61,20 +61,14 @@ class RecoveryOrchestrator:
 
     @property
     def policy(self) -> MerchantPolicy:
-        """Return the live merchant policy, or the injected test override.
-
-        Read per access rather than snapshotted at construction: a persisted
-        policy change must take effect without a process restart, and arm
-        assignment depends on holdout_percentage.
+        """Live merchant policy, read per access so a persisted change applies
+        without a restart; arm assignment depends on holdout_percentage.
         """
         return self._policy_override or get_active_policy()
 
     def _assign_experiment_arm(self, payment_id: str) -> ExperimentArm:
-        """Assign treatment arm vs uncontacted holdout control arm using deterministic hash.
-
-        Hashes the id with any benchmark run suffix removed, so replaying the
-        same dataset puts each case in the same arm every run. Without this a
-        rerun reshuffles the arms and the measured lift is not comparable.
+        """Assign treatment or holdout by deterministic hash, ignoring any benchmark
+        run suffix, so a replay keeps each case in the same arm and lift compares.
         """
         digest = hashlib.sha256(
             stable_payment_key(payment_id).encode("utf-8")
@@ -311,9 +305,8 @@ class RecoveryOrchestrator:
         # 3. Check live operator autonomy mode
         active_plan = eval_result.modified_plan or plan
 
-        # LLM or classifier explicitly routed this case to a human: escalate it
-        # to the operator queue as the intervention itself, in every autonomy
-        # mode. Escalation never executes customer outreach.
+        # Routed to a human, so escalation is the intervention in every autonomy
+        # mode. It never executes customer outreach.
         if active_plan.intervention_type == InterventionType.MANUAL_ESCALATION:
             transition_case(
                 case,

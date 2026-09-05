@@ -1,8 +1,6 @@
-"""LLM Strategy Planner for contextual payment failure diagnosis and dunning strategy.
+"""LLM planner for failure diagnosis and dunning strategy.
 
-Uses litellm to formulate structured recovery recommendations with personalized
-messaging. Falls back to deterministic rule classification if providers are
-unavailable or confidence is low, while preserving full per-decision audit snapshots.
+Falls back to deterministic rules when a provider fails or confidence is low.
 """
 
 from __future__ import annotations
@@ -193,9 +191,8 @@ class RecoveryPlanner:
             return fallback_res, meta
 
         if not providers and is_agentic_sim:
-            # Offline agentic simulation with realistic telemetry accounting.
-            # The model identity must come from the configured single source; never
-            # fall back to a silently injected default. Instead, raise if it is empty.
+            # Model identity comes from the single configured source; raise rather
+            # than fall back to a silently injected default.
             agent_model = target_model or get_settings().agentic_model
             if not agent_model:
                 raise RuntimeError(

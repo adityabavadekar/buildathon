@@ -1,7 +1,5 @@
-"""Asynchronous recovery event sync consumer.
-
-Claims events from the durable event stream or database queue, diagnoses root cause,
-evaluates deterministic policy gates, and schedules due jobs.
+"""Claims queued events, diagnoses root cause, evaluates the policy gate, and
+schedules due jobs.
 """
 
 from __future__ import annotations

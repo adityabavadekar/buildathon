@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from app.audit.models import AuditEntry, ModelTelemetryEntry, RecoveryCase, ScheduledJob
-from app.audit.repository import CaseRepository
+from app.audit.repository import CaseRepository, get_case_repository
 from app.core.enums import AuditActor, ExperimentArm, RecoveryState
 from app.detection.models import RawFailureEvent
 
@@ -142,3 +142,46 @@ def test_repository_model_telemetry() -> None:
             case_id="case_tel",
         )
         repo.record_model_telemetry(entry)
+
+
+def test_execution_fidelity_separates_live_from_simulated_attempts() -> None:
+    """Live and simulated executions must be countable apart after the fact.
+
+    The credential mode at query time says nothing about which rail a past
+    attempt used.
+    """
+    repo = get_case_repository()
+
+    live_case = _make_case("case_live", "pay_live")
+    live_case.audit_trail.append(
+        AuditEntry(
+            case_id=live_case.case_id,
+            event_name="intervention.executed",
+            actor=AuditActor.SYSTEM,
+            cost_incurred_paise=250,
+            decision_inputs={"execution_data": {"live_gateway_call": True}},
+        )
+    )
+    repo.save(live_case)
+
+    sim_case = _make_case("case_sim", "pay_sim")
+    sim_case.audit_trail.append(
+        AuditEntry(
+            case_id=sim_case.case_id,
+            event_name="intervention.executed",
+            actor=AuditActor.SYSTEM,
+            cost_incurred_paise=50,
+            decision_inputs={
+                "execution_data": {
+                    "live_gateway_call": False,
+                    "sandbox_simulated": True,
+                }
+            },
+        )
+    )
+    repo.save(sim_case)
+
+    fidelity = repo.get_execution_fidelity()
+    assert fidelity["live_executions"] == 1
+    assert fidelity["simulated_executions"] == 1
+    assert fidelity["simulated_cost_paise"] == 50

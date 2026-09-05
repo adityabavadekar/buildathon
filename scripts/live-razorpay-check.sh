@@ -1,17 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Live Razorpay test-mode connectivity check.
-#
-# Probes every Razorpay API endpoint the revenue-recovery solution touches and
-# reports which calls succeed against the real test-mode API versus which are
-# blocked (quota exhausted, feature not enabled, or credentials absent).
-#
-# Why this exists: when a tool ends up "simulated", the cause is almost always
-# one of three things - a test-mode quota exhausted (payment links cap at 30),
-# a feature not enabled on the test account (subscriptions/emandates), or a
-# credential not configured. This script surfaces which of those is true so the
-# simulation/sandbox fallback path is understood rather than mistaken for a bug.
+# Reports which Razorpay calls work against test mode, so a "simulated" tool can
+# be traced to a quota, an unenabled feature, or a missing credential.
 
 log() {
   printf '[ INFO ] %s\n' "$*"

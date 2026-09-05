@@ -1,0 +1,107 @@
+name: fortx
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-fortx}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-fortx}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    # Not published: only the compose network needs it. Add a ports mapping
+    # deliberately if you want to attach psql from the host.
+    expose:
+      - "5432"
+
+  backend:
+    build:
+      context: ./backend
+    image: fortx-backend:latest
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      APP_ENV: production
+      APP_LOG_JSON: "true"
+      APP_LOG_LEVEL: ${APP_LOG_LEVEL:-INFO}
+      APP_CORS_ORIGINS: ${APP_CORS_ORIGINS:-["http://localhost:3000"]}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-fortx}
+      APP_OPERATOR_PASSWORD: ${APP_OPERATOR_PASSWORD:?set APP_OPERATOR_PASSWORD in .env}
+      # Without a fixed value every restart invalidates all sessions, and two
+      # backend replicas would each mint tokens the other rejects.
+      APP_SESSION_SECRET: ${APP_SESSION_SECRET:?set APP_SESSION_SECRET in .env}
+      APP_PUBLIC_BASE_URL: ${APP_PUBLIC_BASE_URL:-http://localhost:3000}
+      APP_RAZORPAY_KEY_ID: ${APP_RAZORPAY_KEY_ID:-}
+      APP_RAZORPAY_KEY_SECRET: ${APP_RAZORPAY_KEY_SECRET:-}
+      APP_RAZORPAY_WEBHOOK_SECRET: ${APP_RAZORPAY_WEBHOOK_SECRET:-}
+      APP_RAZORPAY_OAUTH_CLIENT_ID: ${APP_RAZORPAY_OAUTH_CLIENT_ID:-}
+      APP_RAZORPAY_OAUTH_CLIENT_SECRET: ${APP_RAZORPAY_OAUTH_CLIENT_SECRET:-}
+      APP_GROQ_API_KEY: ${APP_GROQ_API_KEY:-}
+      APP_OPENROUTER_API_KEY: ${APP_OPENROUTER_API_KEY:-}
+      APP_ANTHROPIC_API_KEY: ${APP_ANTHROPIC_API_KEY:-}
+      APP_NOTIFICATION_WEBHOOK_URL: ${APP_NOTIFICATION_WEBHOOK_URL:-}
+      APP_WHATSAPP_API_TOKEN: ${APP_WHATSAPP_API_TOKEN:-}
+    expose:
+      - "8000"
+
+  # Shares the backend image; without it, queued jobs stay QUEUED forever and the
+  # queue depth grows even with no fleet running.
+  worker:
+    build:
+      context: ./backend
+    image: fortx-backend:latest
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    environment:
+      APP_ENV: production
+      APP_LOG_JSON: "true"
+      APP_LOG_LEVEL: ${APP_LOG_LEVEL:-INFO}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-fortx}
+      APP_PUBLIC_BASE_URL: ${APP_PUBLIC_BASE_URL:-http://localhost:3000}
+      APP_RAZORPAY_KEY_ID: ${APP_RAZORPAY_KEY_ID:-}
+      APP_RAZORPAY_KEY_SECRET: ${APP_RAZORPAY_KEY_SECRET:-}
+      APP_GROQ_API_KEY: ${APP_GROQ_API_KEY:-}
+      APP_OPENROUTER_API_KEY: ${APP_OPENROUTER_API_KEY:-}
+      APP_ANTHROPIC_API_KEY: ${APP_ANTHROPIC_API_KEY:-}
+      APP_NOTIFICATION_WEBHOOK_URL: ${APP_NOTIFICATION_WEBHOOK_URL:-}
+      APP_WHATSAPP_API_TOKEN: ${APP_WHATSAPP_API_TOKEN:-}
+    command: ["python", "-m", "app.worker.main"]
+    # The worker exposes no port, so liveness is the polling process itself.
+    healthcheck:
+      test: ["CMD", "pgrep", "-f", "app.worker.main"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # Build-time, not runtime: next.config.ts bakes the rewrite target.
+        BACKEND_HOST: backend
+        BACKEND_PORT: "8000"
+    image: fortx-frontend:latest
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${FRONTEND_PUBLISH_PORT:-3000}:3000"
+
+volumes:
+  postgres-data:
