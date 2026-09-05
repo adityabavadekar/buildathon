@@ -36,7 +36,7 @@ export const GLOSSARY: Record<string, GlossaryDefinition> = {
     term: 'Recovery Rate',
     title: 'Cohort Recovery Rate (%)',
     definition:
-      'Percentage of at-risk cases that reached RECOVERED state. A case counts once, not per touch.',
+      'Percentage of at-risk cases that reached RECOVERED state. A case counts once, not per attempt.',
     whyItMatters:
       'Measures autonomous conversion effectiveness across failed checkout and mandate cohorts.',
   },
@@ -48,17 +48,17 @@ export const GLOSSARY: Record<string, GlossaryDefinition> = {
     whyItMatters:
       'Guarantees human oversight and prevents runaway automated interventions on sensitive accounts.',
   },
-  TOUCHES: {
-    term: 'Touches',
-    title: 'Recovery Attempts (Touches)',
+  ATTEMPTS: {
+    term: 'Attempts',
+    title: 'Recovery Attempts',
     definition:
       'Number of outbound actions (WhatsApp/SMS dunning, payment links, mandate retries) spent on this case.',
     whyItMatters:
       'Strictly bounded to prevent customer spam and unnecessary per-attempt gateway fees.',
   },
-  TOUCH_LIMIT: {
-    term: 'Touch Limit',
-    title: 'Deterministic Touch Cap',
+  ATTEMPT_LIMIT: {
+    term: 'Attempt Limit',
+    title: 'Deterministic Attempt Cap',
     definition:
       'Maximum allowable recovery attempts (default 3) per transaction before the engine must pause or escalate.',
     whyItMatters:
@@ -84,7 +84,7 @@ export const GLOSSARY: Record<string, GlossaryDefinition> = {
     term: 'Policy Gate',
     title: 'Deterministic Safety Gate',
     definition:
-      'Pre-execution rule layer checking touch caps, cooldown intervals, margin discount limits, and customer opt-outs.',
+      'Pre-execution rule layer checking attempt caps, cooldown intervals, margin discount limits, and customer opt-outs.',
     whyItMatters:
       'Guarantees the AI cannot violate financial margins or spam customers regardless of LLM output.',
   },
@@ -117,6 +117,6 @@ export const STATE_READINGS: Record<string, string> = {
   ESCALATED:
     'Paused by safety guardrail for human review; autonomous loop halted.',
   ABANDONED:
-    'Exhausted maximum allowed touches or expired without customer completion.',
+    'Exhausted maximum allowed attempts or expired without customer completion.',
   WRITTEN_OFF: 'Marked uncollectible after exhaustive dunning schedule.',
 }

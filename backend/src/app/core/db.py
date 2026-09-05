@@ -27,7 +27,6 @@ def get_db_engine() -> Engine:
         settings = get_settings()
         url = settings.database_url
 
-        # Ensure postgresql+psycopg:// scheme is used for SQLAlchemy with psycopg3
         if url.startswith("postgres://"):
             url = url.replace("postgres://", "postgresql+psycopg://", 1)
         elif url.startswith("postgresql://") and not url.startswith(
@@ -89,15 +88,49 @@ def run_migrations() -> None:
     """Bring the database schema up to head via Alembic.
 
     Invoked from application start-up and the test fixtures so a fresh database
-    is usable without a separate manual migration step.
+    is usable without a separate manual migration step. Checks the current
+    revision before calling Alembic's upgrade machinery: when already at head,
+    this skips loading command.upgrade's full config/logging setup entirely,
+    which otherwise re-parses every migration script on every call -- a real
+    cost when invoked per-test rather than once per process.
+
+    Wrapped in a session-level Postgres advisory lock: two callers racing on a
+    fresh database (e.g. concurrent test fixture setup) would otherwise both
+    see "not at head" and both run CREATE TABLE, one failing on a duplicate key.
     """
     from alembic.config import Config  # noqa: PLC0415
+    from alembic.script import ScriptDirectory  # noqa: PLC0415
 
-    from alembic import command  # noqa: PLC0415
-
-    # alembic.ini lives at the backend root, four parents up from this module.
     ini_path = Path(__file__).resolve().parents[3] / "alembic.ini"
     config = Config(str(ini_path))
     config.set_main_option("script_location", str(ini_path.parent / "alembic"))
-    command.upgrade(config, "head")
-    logger.info("db.migrations_applied")
+
+    script = ScriptDirectory.from_config(config)
+    head_revision = script.get_current_head()
+
+    # One shared key so every caller contends for the same advisory lock.
+    lock_key = 918_273_645
+
+    engine = get_db_engine()
+    with engine.connect() as conn:
+        conn.execute(text("SELECT pg_advisory_lock(:key)"), {"key": lock_key})
+        try:
+            has_version_table = conn.execute(
+                text("SELECT to_regclass('public.alembic_version') IS NOT NULL")
+            ).scalar()
+            current_revision = (
+                conn.execute(text("SELECT version_num FROM alembic_version")).scalar()
+                if has_version_table
+                else None
+            )
+
+            if current_revision == head_revision:
+                logger.info("db.migrations_already_current", revision=head_revision)
+                return
+
+            from alembic import command  # noqa: PLC0415
+
+            command.upgrade(config, "head")
+            logger.info("db.migrations_applied")
+        finally:
+            conn.execute(text("SELECT pg_advisory_unlock(:key)"), {"key": lock_key})

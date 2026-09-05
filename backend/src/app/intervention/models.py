@@ -5,9 +5,11 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 
 from app.core.constants import (
+    DEFAULT_ENACH_RETRY_BACKOFF_HOURS,
     DEFAULT_HOLDOUT_PERCENTAGE,
+    DEFAULT_MANDATE_RETRY_BACKOFF_HOURS,
     DEFAULT_MAX_DISCOUNT_BPS,
-    DEFAULT_MAX_DUNNING_TOUCHES,
+    DEFAULT_MAX_DUNNING_ATTEMPTS,
     DEFAULT_MIN_COOLDOWN_HOURS,
 )
 from app.core.enums import InterventionType, OutreachChannel, PolicyCheckResult
@@ -17,8 +19,18 @@ class MerchantPolicy(BaseModel):
     """Configurable safety invariants and guardrails for a merchant."""
 
     merchant_id: str = "default_merchant"
-    max_touches: int = Field(default=DEFAULT_MAX_DUNNING_TOUCHES, ge=1, le=10)
+    max_attempts: int = Field(default=DEFAULT_MAX_DUNNING_ATTEMPTS, ge=1, le=10)
     min_cooldown_hours: int = Field(default=DEFAULT_MIN_COOLDOWN_HOURS, ge=0)
+    # Mandate-retry spacing (UPI Autopay / eNACH), distinct from
+    # min_cooldown_hours which governs every other intervention type.
+    mandate_retry_backoff_hours: list[int] = Field(
+        default_factory=lambda: list(DEFAULT_MANDATE_RETRY_BACKOFF_HOURS),
+        min_length=1,
+    )
+    enach_retry_backoff_hours: list[int] = Field(
+        default_factory=lambda: list(DEFAULT_ENACH_RETRY_BACKOFF_HOURS),
+        min_length=1,
+    )
     max_discount_bps: int = Field(default=DEFAULT_MAX_DISCOUNT_BPS, ge=0, le=5000)
     holdout_percentage: int = Field(default=DEFAULT_HOLDOUT_PERCENTAGE, ge=0, le=50)
     allowed_channels: list[OutreachChannel] = Field(
@@ -30,6 +42,7 @@ class MerchantPolicy(BaseModel):
     )
     require_human_above_paise: int = Field(
         default=10_000_000,
+        ge=0,
         description="INR 1,00,000 threshold for mandatory operator review",
     )
 

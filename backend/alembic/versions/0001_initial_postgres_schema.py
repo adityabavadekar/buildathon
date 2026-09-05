@@ -86,6 +86,7 @@ def upgrade() -> None:
         sa.Column("dunning_message_hi", sa.Text(), nullable=True),
         sa.Column("due_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("next_action", sa.Text(), nullable=True),
+        sa.Column("escalation_reason", sa.Text(), nullable=True),
         sa.Column("version", sa.Integer(), nullable=False, server_default="1"),
         sa.Column("data_json", postgresql.JSONB(astext_type=sa.Text()), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
@@ -100,6 +101,7 @@ def upgrade() -> None:
     op.create_index("idx_cases_amount", "cases", ["amount_paise"])
     op.create_index("idx_cases_created", "cases", ["created_at"])
     op.create_index("idx_cases_occurred", "cases", ["occurred_at"])
+    op.create_index("idx_cases_escalation_reason", "cases", ["escalation_reason"])
     op.create_index("idx_cases_exp_tag", "cases", ["experiment_tag"])
     op.create_index("idx_cases_campaign", "cases", ["campaign_id"])
     op.create_index("idx_cases_user_ref", "cases", ["user_ref"])

@@ -1,6 +1,8 @@
 """Operator login and signed session cookies, stdlib-only for one shared password.
 
-No configured password disables the gate; GET /auth/session reports that honestly.
+The gate is on by default (a placeholder password, not an unset one) so a
+deployment that forgets to set APP_OPERATOR_PASSWORD is still authenticated,
+not wide open. GET /auth/session reports the enabled state honestly.
 """
 
 from __future__ import annotations
@@ -29,7 +31,9 @@ LOCKOUT_SECONDS = 300
 
 
 def auth_enabled() -> bool:
-    """True when an operator password is configured."""
+    """True unless the configured password is empty (tests disable the gate
+    this way; production always has a non-empty default).
+    """
     password = get_settings().operator_password
     return bool(password and password.get_secret_value().strip())
 

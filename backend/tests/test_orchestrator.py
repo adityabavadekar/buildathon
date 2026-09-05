@@ -3,13 +3,41 @@
 import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
+from unittest.mock import AsyncMock
 
+import httpx2
 import pytest
 
 from app.audit.repository import CaseRepository
-from app.core.enums import ExperimentArm, PaymentRail, RecoveryState
+from app.core.config import get_settings
+from app.core.enums import EscalationReason, ExperimentArm, PaymentRail, RecoveryState
 from app.detection.models import RawFailureEvent
 from app.intervention.orchestrator import RecoveryOrchestrator
+from app.intervention.tools.mandate_retry import MandateRetryTool
+from app.intervention.tools.payment_link import RazorpayPaymentLinkTool
+from app.intervention.tools.smart_collect import SmartCollectTool
+
+
+def _mock_mandate_retry_tool(charge_id: str) -> MandateRetryTool:
+    """A MandateRetryTool wired to a mock transport that always charges successfully."""
+
+    def handler(_request: httpx2.Request) -> httpx2.Response:
+        return httpx2.Response(status_code=200, json={"id": charge_id})
+
+    client = httpx2.AsyncClient(transport=httpx2.MockTransport(handler))
+    return MandateRetryTool(client=client)
+
+
+def _mock_payment_link_tool(link_id: str, short_url: str) -> RazorpayPaymentLinkTool:
+    """A RazorpayPaymentLinkTool wired to a mock transport that always succeeds."""
+
+    def handler(_request: httpx2.Request) -> httpx2.Response:
+        return httpx2.Response(
+            status_code=200, json={"id": link_id, "short_url": short_url}
+        )
+
+    client = httpx2.AsyncClient(transport=httpx2.MockTransport(handler))
+    return RazorpayPaymentLinkTool(client=client)
 
 
 def _isolated_repo() -> CaseRepository:
@@ -22,9 +50,18 @@ def _isolated_repo() -> CaseRepository:
 
 
 @pytest.mark.anyio
-async def test_orchestrator_transient_window_passive_retry() -> None:
+async def test_orchestrator_transient_window_passive_retry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = get_settings()
+    monkeypatch.setattr(settings, "razorpay_key_id", "rzp_test_orch_1")
+    monkeypatch.setattr(settings, "razorpay_key_secret", "orch_1_secret")
+
     repo = _isolated_repo()
-    orchestrator = RecoveryOrchestrator(repository=repo)
+    orchestrator = RecoveryOrchestrator(
+        repository=repo,
+        mandate_retry_tool=_mock_mandate_retry_tool("chg_orch_1"),
+    )
 
     event = RawFailureEvent(
         event_id="evt_orch_1",
@@ -43,14 +80,25 @@ async def test_orchestrator_transient_window_passive_retry() -> None:
     )
     assert case.state == RecoveryState.RETRY_SCHEDULED
     assert case.retry_count == 1
-    assert case.touches_count == 1
+    assert case.attempts_count == 1
     assert len(case.audit_trail) >= 2
 
 
 @pytest.mark.anyio
-async def test_orchestrator_checkout_dropoff_incentivized_link() -> None:
+async def test_orchestrator_checkout_dropoff_incentivized_link(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = get_settings()
+    monkeypatch.setattr(settings, "razorpay_key_id", "rzp_test_orch_2")
+    monkeypatch.setattr(settings, "razorpay_key_secret", "orch_2_secret")
+
     repo = _isolated_repo()
-    orchestrator = RecoveryOrchestrator(repository=repo)
+    orchestrator = RecoveryOrchestrator(
+        repository=repo,
+        payment_link_tool=_mock_payment_link_tool(
+            "plink_orch_2", "https://rzp.io/i/orch2"
+        ),
+    )
 
     event = RawFailureEvent(
         event_id="evt_orch_2",
@@ -69,7 +117,7 @@ async def test_orchestrator_checkout_dropoff_incentivized_link() -> None:
     )
     assert case.state == RecoveryState.OUTREACH_PENDING
     assert case.discount_paise_granted == 5000  # 5% discount (500 bps)
-    assert case.touches_count == 1
+    assert case.attempts_count == 1
 
 
 @pytest.mark.anyio
@@ -99,9 +147,18 @@ async def test_orchestrator_idempotency_returns_existing_case() -> None:
 
 
 @pytest.mark.anyio
-async def test_orchestrator_payment_captured_resolution() -> None:
+async def test_orchestrator_payment_captured_resolution(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = get_settings()
+    monkeypatch.setattr(settings, "razorpay_key_id", "rzp_test_orch_4")
+    monkeypatch.setattr(settings, "razorpay_key_secret", "orch_4_secret")
+
     repo = _isolated_repo()
-    orchestrator = RecoveryOrchestrator(repository=repo)
+    orchestrator = RecoveryOrchestrator(
+        repository=repo,
+        mandate_retry_tool=_mock_mandate_retry_tool("chg_orch_4"),
+    )
 
     event = RawFailureEvent(
         event_id="evt_orch_4",
@@ -149,7 +206,8 @@ async def test_orchestrator_unclassified_routes_to_escalated() -> None:
         event, experiment_arm_override=ExperimentArm.TREATMENT
     )
     assert case.state == RecoveryState.ESCALATED
-    assert case.touches_count == 0  # Escalation does not increment customer touches
+    assert case.escalation_reason == EscalationReason.HUMAN_JUDGMENT
+    assert case.attempts_count == 0  # Escalation does not increment customer attempts
     events = [e.event_name for e in case.audit_trail]
     assert "intervention.escalated" in events
 
@@ -175,7 +233,8 @@ async def test_orchestrator_high_value_routes_to_escalated() -> None:
         event, experiment_arm_override=ExperimentArm.TREATMENT
     )
     assert case.state == RecoveryState.ESCALATED
-    assert case.touches_count == 0
+    assert case.escalation_reason == EscalationReason.HUMAN_JUDGMENT
+    assert case.attempts_count == 0
     events = [e.event_name for e in case.audit_trail]
     assert "intervention.escalated" in events
 
@@ -208,6 +267,117 @@ async def test_orchestrator_p2p_followup_reaches_legal_state() -> None:
     stored = repo.get_by_id(case.case_id)
     assert stored is not None
     assert stored.outreach_count == 1
+
+
+@pytest.mark.anyio
+async def test_orchestrator_b2b_invoice_chaser_routes_to_smart_collect(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """B2B_INVOICE_CHASER must dispatch to smart_collect_tool, not payment_link_tool,
+    so the case ends up with a virtual_account_id for webhook reconciliation.
+    """
+    settings = get_settings()
+    monkeypatch.setattr(settings, "razorpay_key_id", "rzp_test_orch_b2b_key")
+    monkeypatch.setattr(settings, "razorpay_key_secret", "orch_b2b_secret")
+
+    def mock_handler(_request: httpx2.Request) -> httpx2.Response:
+        return httpx2.Response(
+            status_code=200,
+            json={
+                "id": "va_orch_b2b_1",
+                "receivers": [
+                    {
+                        "entity": "bank_account",
+                        "account_number": "2223330099990001",
+                        "ifsc": "RZPB0000009",
+                    },
+                    {"entity": "vpa", "address": "orchb2b@rzp"},
+                ],
+            },
+        )
+
+    transport = httpx2.MockTransport(mock_handler)
+    mock_client = httpx2.AsyncClient(transport=transport)
+
+    repo = _isolated_repo()
+    orchestrator = RecoveryOrchestrator(
+        repository=repo, smart_collect_tool=SmartCollectTool(client=mock_client)
+    )
+
+    orchestrator.payment_link_tool.execute = AsyncMock(  # type: ignore[method-assign]
+        wraps=orchestrator.payment_link_tool.execute
+    )
+    orchestrator.smart_collect_tool.execute = AsyncMock(  # type: ignore[method-assign]
+        wraps=orchestrator.smart_collect_tool.execute
+    )
+
+    # Below the require_human_above_paise threshold so the plan reaches execution.
+    event = RawFailureEvent(
+        event_id="evt_orch_b2b_1",
+        payment_id="pay_orch_b2b_1",
+        customer_id="cust_orch_b2b_1",
+        amount_paise=500000,
+        payment_rail=PaymentRail.B2B_INVOICE,
+        error_code="OVERDUE_RECEIVABLE",
+        error_reason="invoice_past_due",
+        occurred_at=datetime.now(UTC),
+    )
+
+    try:
+        case = await orchestrator.process_failure_event(
+            event, experiment_arm_override=ExperimentArm.TREATMENT
+        )
+    finally:
+        await mock_client.aclose()
+
+    assert case.state == RecoveryState.IN_DUNNING
+    assert case.virtual_account_id == "va_orch_b2b_1"
+    orchestrator.smart_collect_tool.execute.assert_awaited_once()
+    orchestrator.payment_link_tool.execute.assert_not_awaited()
+
+
+@pytest.mark.anyio
+async def test_orchestrator_escalates_when_gateway_credentials_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A tool that cannot reach Razorpay must escalate the case with an audited
+    reason, never fabricate a successful virtual account.
+    """
+
+    async def _no_auth() -> None:
+        return None
+
+    monkeypatch.setattr(
+        "app.intervention.tools.smart_collect.resolve_razorpay_auth", _no_auth
+    )
+
+    repo = _isolated_repo()
+    orchestrator = RecoveryOrchestrator(repository=repo)
+
+    event = RawFailureEvent(
+        event_id="evt_orch_b2b_nocreds",
+        payment_id="pay_orch_b2b_nocreds",
+        customer_id="cust_orch_b2b_nocreds",
+        amount_paise=500000,
+        payment_rail=PaymentRail.B2B_INVOICE,
+        error_code="OVERDUE_RECEIVABLE",
+        error_reason="invoice_past_due",
+        occurred_at=datetime.now(UTC),
+    )
+
+    case = await orchestrator.process_failure_event(
+        event, experiment_arm_override=ExperimentArm.TREATMENT
+    )
+
+    assert case.state == RecoveryState.ESCALATED
+    assert case.escalation_reason == EscalationReason.SYSTEM_ERROR
+    assert case.virtual_account_id is None
+    escalation_entries = [
+        e for e in case.audit_trail if e.event_name == "intervention.execution_failed"
+    ]
+    assert len(escalation_entries) == 1
+    assert escalation_entries[0].notes is not None
+    assert "credentials not configured" in escalation_entries[0].notes
 
 
 @pytest.mark.anyio

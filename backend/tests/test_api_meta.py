@@ -7,7 +7,7 @@ def test_get_policies_api(client: TestClient) -> None:
     res = client.get("/api/policies")
     assert res.status_code == 200
     data = res.json()
-    assert data["max_touches"] == 3
+    assert data["max_attempts"] == 3
     assert data["min_cooldown_hours"] == 24
     assert data["max_discount_bps"] == 1000
     assert len(data["rules"]) >= 4
@@ -51,6 +51,31 @@ def test_llm_config_api(client: TestClient) -> None:
     assert put_res.status_code == 200
     updated_data = put_res.json()
     assert updated_data["timeout_seconds"] == 35
+
+
+def test_mandatory_rule_provider_cannot_be_disabled(client: TestClient) -> None:
+    """The deterministic taxonomy classifier always runs regardless of its
+    enabled flag (llm/client.py excludes it from active_providers by name),
+    so persisting it as disabled would show a false affordance in Settings.
+    """
+    res = client.get("/api/settings/llm-config")
+    providers = res.json()["providers"]
+    for provider in providers:
+        if provider["name"] == "deterministic_rules":
+            provider["enabled"] = False
+
+    put_res = client.put(
+        "/api/settings/llm-config",
+        json={"providers": providers, "timeout_seconds": 30, "temperature": 0.2},
+    )
+    assert put_res.status_code == 200
+    saved_providers = put_res.json()["providers"]
+    mandatory = next(p for p in saved_providers if p["name"] == "deterministic_rules")
+    assert mandatory["enabled"] is True
+
+    reread = client.get("/api/settings/llm-config").json()["providers"]
+    mandatory_reread = next(p for p in reread if p["name"] == "deterministic_rules")
+    assert mandatory_reread["enabled"] is True
 
 
 def test_llm_report_api(client: TestClient) -> None:

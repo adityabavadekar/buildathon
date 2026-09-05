@@ -333,7 +333,7 @@ export function EscalationsQueuePanel({
                   <TableHead className="text-right">
                     Expected Yield (EV)
                   </TableHead>
-                  <TableHead className="text-center">Touches</TableHead>
+                  <TableHead className="text-center">Attempts</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -433,9 +433,9 @@ export function EscalationsQueuePanel({
                           </span>
                         </TableCell>
 
-                        {/* Touches */}
+                        {/* Attempts */}
                         <TableCell className="text-center text-xs text-ink-muted">
-                          {item.touches_count}
+                          {item.attempts_count}
                         </TableCell>
 
                         {/* Actions */}
@@ -448,7 +448,7 @@ export function EscalationsQueuePanel({
                               e.stopPropagation()
                               void handleQuickApprove(item)
                             }}
-                            className="gap-1.5 bg-accent text-xs text-white hover:bg-accent/90"
+                            className="h-auto gap-1.5 bg-accent py-2 text-xs text-white hover:bg-accent/90"
                           >
                             {isApproving ? (
                               <RefreshCw className="h-3.5 w-3.5 animate-spin" />
@@ -462,7 +462,7 @@ export function EscalationsQueuePanel({
                                 ? 'Executing...'
                                 : isSuccess
                                   ? 'Approved!'
-                                  : 'Approve Action'}
+                                  : 'Approve'}
                             </span>
                           </Button>
                         </TableCell>

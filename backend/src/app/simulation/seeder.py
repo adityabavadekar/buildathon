@@ -5,19 +5,16 @@ simulating outcomes against a 10% unassisted holdout arm.
 from __future__ import annotations
 
 import secrets
-from datetime import UTC, datetime, timedelta
 from typing import Any
-from uuid import uuid4
 
 from app.audit.repository import get_case_repository
 from app.core.enums import (
-    ExperimentArm,
     FailureCategory,
     PaymentRail,
-    RecoveryState,
 )
-from app.detection.models import RawFailureEvent
-from app.intervention.orchestrator import get_recovery_orchestrator
+from app.core.logging import get_logger
+
+logger = get_logger(__name__)
 
 HOLDOUT_NATURAL_RECOVERY_RATE = 0.12
 TRANSIENT_RECOVERY_RATE = 0.72
@@ -184,92 +181,6 @@ CUSTOMER_NAMES: list[tuple[str, str, str]] = [
 def _pseudo_random_float() -> float:
     """Generate uniform random float in [0, 1) using secrets."""
     return secrets.randbelow(10000) / 10000.0
-
-
-async def seed_simulation_batch(
-    count: int = 50,
-    simulate_resolutions: bool = True,
-    experiment_tag: str | None = None,
-    model_override: str | None = None,
-) -> dict[str, Any]:
-    """Generate N realistic failure events and simulate recovery outcomes."""
-    orchestrator = get_recovery_orchestrator()
-    seeded_cases: list[str] = []
-    recovered_count = 0
-    now = datetime.now(UTC)
-
-    for i in range(count):
-        template = secrets.choice(FAILURE_TEMPLATES)
-        cust = secrets.choice(CUSTOMER_NAMES)
-        amount = secrets.choice(template["amounts"])
-
-        # Stagger occurrence times over past 48 hours (10 to 2880 mins)
-        minutes_ago = 10 + secrets.randbelow(2870)
-        occurred_at = now - timedelta(minutes=minutes_ago)
-
-        # Distribute 50% agentic cases and 50% deterministic cases
-        is_agentic = (i % 2 == 0) if model_override is None else True
-        case_tag = experiment_tag or (
-            "agentic_recovery" if is_agentic else "deterministic_rules"
-        )
-        case_model = model_override or (
-            "groq/openai/gpt-oss-120b" if is_agentic else None
-        )
-
-        event = RawFailureEvent(
-            event_id=f"evt_sim_{uuid4().hex[:12]}",
-            payment_id=f"pay_sim_{uuid4().hex[:14]}",
-            customer_id=cust[0],
-            amount_paise=amount,
-            currency="INR",
-            payment_rail=template["rail"],
-            error_code=template["error_code"],
-            error_description=template["error_reason"],
-            error_reason=template["error_reason"],
-            npci_response_code=template["error_code"]
-            if "AP" in template["error_code"] or template["error_code"] == "XT"
-            else None,
-            occurred_at=occurred_at,
-            campaign_id=secrets.choice(CAMPAIGN_TAGS),
-            contact_email=cust[2],
-            contact_phone=cust[1],
-            experiment_tag=case_tag,
-            model_override=case_model,
-            metadata={"source": "simulation", "is_agentic": is_agentic},
-        )
-
-        case = await orchestrator.process_failure(event)
-        seeded_cases.append(case.case_id)
-
-        # Simulate natural or intervention-assisted resolution
-        if simulate_resolutions:
-            rand_val = _pseudo_random_float()
-            if case.experiment_arm == ExperimentArm.HOLDOUT_CONTROL:
-                should_recover = rand_val < HOLDOUT_NATURAL_RECOVERY_RATE
-            elif template["category"] == FailureCategory.TRANSIENT_BANK_WINDOW:
-                should_recover = rand_val < TRANSIENT_RECOVERY_RATE
-            elif template["category"] == FailureCategory.CHECKOUT_DROP_OFF:
-                should_recover = rand_val < CHECKOUT_DROP_OFF_RECOVERY_RATE
-            elif template["category"] == FailureCategory.LIQUIDITY_CONSTRAINT:
-                should_recover = rand_val < LIQUIDITY_RECOVERY_RATE
-            else:
-                should_recover = rand_val < DEFAULT_RECOVERY_RATE
-
-            if should_recover and case.state != RecoveryState.ESCALATED:
-                capture_id = f"pay_cap_{uuid4().hex[:12]}"
-                rec_amount = case.amount_paise
-                orchestrator.process_payment_captured(
-                    payment_id=case.failure_event.payment_id,
-                    amount_paise=rec_amount,
-                    gateway_capture_id=capture_id,
-                )
-                recovered_count += 1
-
-    return {
-        "seeded_count": len(seeded_cases),
-        "recovered_count": recovered_count,
-        "case_ids": seeded_cases[:10],
-    }
 
 
 def reset_simulation_data() -> dict[str, str]:

@@ -25,7 +25,7 @@ class PolicyResponse(BaseModel):
     """Response containing active merchant policy parameters and rules."""
 
     merchant_id: str
-    max_touches: int
+    max_attempts: int
     min_cooldown_hours: int
     max_discount_bps: int
     holdout_percentage: int
@@ -40,10 +40,10 @@ async def get_active_policies() -> PolicyResponse:
     _ACTIVE_POLICY = get_active_policy()
     rules = [
         PolicyRuleDetail(
-            id="max_touches",
-            name="Maximum Touch Limit",
+            id="max_attempts",
+            name="Maximum Attempt Limit",
             description="Strict limit on total intervention attempts (retries + messages) per failed transaction.",
-            value=f"{_ACTIVE_POLICY.max_touches} touches max",
+            value=f"{_ACTIVE_POLICY.max_attempts} attempts max",
             enforced=True,
         ),
         PolicyRuleDetail(
@@ -78,7 +78,7 @@ async def get_active_policies() -> PolicyResponse:
 
     return PolicyResponse(
         merchant_id=_ACTIVE_POLICY.merchant_id,
-        max_touches=_ACTIVE_POLICY.max_touches,
+        max_attempts=_ACTIVE_POLICY.max_attempts,
         min_cooldown_hours=_ACTIVE_POLICY.min_cooldown_hours,
         max_discount_bps=_ACTIVE_POLICY.max_discount_bps,
         holdout_percentage=_ACTIVE_POLICY.holdout_percentage,

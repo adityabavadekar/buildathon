@@ -12,10 +12,17 @@ from app.audit.models import AuditEntry, RecoveryCase, ScheduledJob
 from app.audit.repository import CaseRepository, get_case_repository
 from app.audit.state_machine import transition_case
 from app.core.config import get_settings
-from app.core.constants import MIN_CONFIDENCE_THRESHOLD
+from app.core.constants import (
+    MIN_CONFIDENCE_THRESHOLD,
+    P2P_DEFAULT_FOLLOWUP_HOURS,
+    VOICE_CALL_MIN_AMOUNT_PAISE,
+    VOICE_CALL_MIN_PRIOR_OUTREACH_ATTEMPTS,
+)
 from app.core.enums import (
     AuditActor,
+    EscalationReason,
     ExperimentArm,
+    FailureCategory,
     InterventionType,
     OutreachChannel,
     PolicyCheckResult,
@@ -24,11 +31,19 @@ from app.core.enums import (
 from app.core.identifiers import stable_payment_key
 from app.core.logging import get_logger
 from app.core.operator import OperatorMode, get_operator_mode
+from app.intervention.mandate_backoff import (
+    compute_mandate_backoff_hours,
+    is_mandate_retry,
+)
 from app.intervention.models import InterventionPlan, MerchantPolicy
 from app.intervention.policy_gate import PolicyGate, get_active_policy
+from app.intervention.tools.base import RazorpayGatewayError, ToolExecutionResult
 from app.intervention.tools.mandate_retry import MandateRetryTool
 from app.intervention.tools.notification import CustomerNotificationTool
 from app.intervention.tools.payment_link import RazorpayPaymentLinkTool
+from app.intervention.tools.smart_collect import SmartCollectTool
+from app.intervention.tools.voice_call import VoiceCallTool
+from app.intervention.tools.whatsapp_business import WhatsAppBusinessTool
 from app.llm.planner import RecoveryPlanner
 
 if TYPE_CHECKING:
@@ -49,6 +64,9 @@ class RecoveryOrchestrator:
         payment_link_tool: RazorpayPaymentLinkTool | None = None,
         mandate_retry_tool: MandateRetryTool | None = None,
         notification_tool: CustomerNotificationTool | None = None,
+        smart_collect_tool: SmartCollectTool | None = None,
+        voice_call_tool: VoiceCallTool | None = None,
+        whatsapp_business_tool: WhatsAppBusinessTool | None = None,
         policy: MerchantPolicy | None = None,
     ) -> None:
         self.repository = repository or get_case_repository()
@@ -58,6 +76,9 @@ class RecoveryOrchestrator:
         self.payment_link_tool = payment_link_tool or RazorpayPaymentLinkTool()
         self.mandate_retry_tool = mandate_retry_tool or MandateRetryTool()
         self.notification_tool = notification_tool or CustomerNotificationTool()
+        self.smart_collect_tool = smart_collect_tool or SmartCollectTool()
+        self.voice_call_tool = voice_call_tool or VoiceCallTool()
+        self.whatsapp_business_tool = whatsapp_business_tool or WhatsAppBusinessTool()
 
     @property
     def policy(self) -> MerchantPolicy:
@@ -66,7 +87,7 @@ class RecoveryOrchestrator:
         """
         return self._policy_override or get_active_policy()
 
-    def _assign_experiment_arm(self, payment_id: str) -> ExperimentArm:
+    def assign_experiment_arm(self, payment_id: str) -> ExperimentArm:
         """Assign treatment or holdout by deterministic hash, ignoring any benchmark
         run suffix, so a replay keeps each case in the same arm and lift compares.
         """
@@ -95,7 +116,7 @@ class RecoveryOrchestrator:
             if existing_case
             else (
                 experiment_arm_override
-                or self._assign_experiment_arm(failure_event.payment_id)
+                or self.assign_experiment_arm(failure_event.payment_id)
             )
         )
 
@@ -184,13 +205,42 @@ class RecoveryOrchestrator:
             ):
                 channel = OutreachChannel.EMAIL
 
+        # Voice is expensive and intrusive, so it is never a first contact.
+        # It escalates only a liquidity-constrained, high-value case that has
+        # already ignored at least one text-based nudge -- a customer who
+        # reads WhatsApp/SMS/email would have already converted from those.
+        # outreach_count alone is insufficient: it counts attempts, not
+        # confirmed dispatches (touch caps must count a failed send as a
+        # touch), so a case whose only "prior outreach" itself failed to send
+        # has not actually been ignored yet and must not escalate to a call.
+        if (
+            diagnosis.recommended_intervention == InterventionType.CUSTOMER_NUDGE
+            and diagnosis.category == FailureCategory.LIQUIDITY_CONSTRAINT
+            and case.amount_paise >= VOICE_CALL_MIN_AMOUNT_PAISE
+            and case.outreach_count >= VOICE_CALL_MIN_PRIOR_OUTREACH_ATTEMPTS
+            and OutreachChannel.VOICE_CALL in self.policy.allowed_channels
+            and self._has_delivered_prior_outreach(case)
+        ):
+            channel = OutreachChannel.VOICE_CALL
+
         # Simulated traffic compresses the wait so the queue visibly drains;
         # real events keep the true bank-cutoff and salary-cycle spacing.
         delay_hours = float(diagnosis.recommended_delay_hours)
+        # A repeat mandate retry uses the rail-specific backoff schedule instead
+        # of the classifier's first-attempt delay.
+        if (
+            is_mandate_retry(diagnosis.recommended_intervention)
+            and case.retry_count > 0
+        ):
+            delay_hours = float(
+                compute_mandate_backoff_hours(
+                    self.policy, failure_event.payment_rail, case.retry_count + 1
+                )
+            )
         if failure_event.metadata.get("source") in {"fleet", "simulation"}:
             delay_hours = delay_hours / get_settings().fleet_time_compression
         scheduled_at = datetime.now(UTC) + timedelta(hours=delay_hours)
-        idempotency_key = f"idem_{case.case_id}_{case.touches_count + 1}"
+        idempotency_key = f"idem_{case.case_id}_{case.attempts_count + 1}"
         is_human_required = bool(
             diagnosis.requires_human_approval
             or (
@@ -283,6 +333,7 @@ class RecoveryOrchestrator:
                     actor=AuditActor.POLICY_GATE,
                     reason=eval_result.reason,
                     event_name="intervention.escalated",
+                    escalation_reason=EscalationReason.HUMAN_JUDGMENT,
                     decision_inputs={
                         "plan": plan.model_dump(mode="json"),
                         "confidence": str(diagnosis.confidence),
@@ -314,6 +365,7 @@ class RecoveryOrchestrator:
                 actor=AuditActor.SYSTEM,
                 reason=f"Escalated to human operations for review: {plan.rationale}",
                 event_name="intervention.escalated",
+                escalation_reason=EscalationReason.HUMAN_JUDGMENT,
                 decision_inputs={
                     "plan": active_plan.model_dump(mode="json"),
                     "confidence": str(diagnosis.confidence),
@@ -350,6 +402,7 @@ class RecoveryOrchestrator:
                 actor=AuditActor.POLICY_GATE,
                 reason=f"Intervention {active_plan.intervention_type.value} paused for human operator approval under HUMAN_IN_THE_LOOP mode",
                 event_name="intervention.pending_human_approval",
+                escalation_reason=EscalationReason.HUMAN_JUDGMENT,
                 decision_inputs={
                     "operator_mode": operator_mode.value,
                     "plan": active_plan.model_dump(mode="json"),
@@ -365,7 +418,86 @@ class RecoveryOrchestrator:
 
     process_failure = process_failure_event
 
-    async def _execute_plan(self, case: RecoveryCase, plan: InterventionPlan) -> None:
+    @staticmethod
+    def _has_delivered_prior_outreach(case: RecoveryCase) -> bool:
+        """True if a CUSTOMER_NUDGE or P2P_FOLLOWUP dispatch has actually
+        succeeded for this case, not merely been attempted.
+        """
+        for entry in case.audit_trail:
+            if entry.event_name != "intervention.executed":
+                continue
+            plan_data = entry.decision_inputs.get("plan")
+            if isinstance(plan_data, dict) and plan_data.get("intervention_type") in (
+                InterventionType.CUSTOMER_NUDGE.value,
+                InterventionType.P2P_FOLLOWUP.value,
+            ):
+                return True
+        return False
+
+    async def _dispatch_text_outreach(
+        self, case: RecoveryCase, plan: InterventionPlan
+    ) -> ToolExecutionResult:
+        """Send WhatsApp through the real Meta Cloud API when configured,
+        otherwise the generic notification webhook. Every other channel
+        (SMS, email) always uses the generic webhook -- only WhatsApp has a
+        real provider integration today.
+        """
+        if (
+            plan.channel == OutreachChannel.WHATSAPP
+            and self.whatsapp_business_tool.is_configured()
+        ):
+            try:
+                return await self.whatsapp_business_tool.execute(case, plan)
+            except ValueError as exc:
+                logger.warning(
+                    "outreach.whatsapp_business_fallback",
+                    case_id=case.case_id,
+                    error=str(exc),
+                )
+                case.audit_trail.append(
+                    AuditEntry(
+                        case_id=case.case_id,
+                        event_name="outreach.whatsapp_business_unavailable",
+                        actor=AuditActor.SYSTEM,
+                        from_state=case.state,
+                        to_state=case.state,
+                        decision_inputs={"error": str(exc)},
+                        notes="WhatsApp Business Cloud API unavailable; "
+                        "falling back to the generic notification webhook.",
+                    )
+                )
+        return await self.notification_tool.execute(case, plan)
+
+    def _escalate_on_gateway_failure(
+        self, case: RecoveryCase, plan: InterventionPlan, exc: RazorpayGatewayError
+    ) -> None:
+        """Turn a clean tool failure into an audited escalation instead of a crash.
+
+        The audit entry records the plan and error before the state changes, so
+        the trail shows what was attempted even though nothing was charged or sent.
+        """
+        logger.warning(
+            "intervention.execution_failed",
+            case_id=case.case_id,
+            intervention_type=plan.intervention_type.value,
+            error=str(exc),
+        )
+        transition_case(
+            case,
+            to_state=RecoveryState.ESCALATED,
+            actor=AuditActor.SYSTEM,
+            reason=f"Could not complete the recovery action: {exc}",
+            event_name="intervention.execution_failed",
+            escalation_reason=EscalationReason.SYSTEM_ERROR,
+            decision_inputs={
+                "plan": plan.model_dump(mode="json"),
+                "error": str(exc),
+            },
+        )
+
+    async def _execute_plan(  # noqa: PLR0911, PLR0912, PLR0915
+        self, case: RecoveryCase, plan: InterventionPlan
+    ) -> None:
         """Execute or schedule chosen intervention tool."""
         if plan.intervention_type == InterventionType.MANUAL_ESCALATION:
             transition_case(
@@ -374,6 +506,7 @@ class RecoveryOrchestrator:
                 actor=AuditActor.SYSTEM,
                 reason=f"Escalated to human operations for review: {plan.rationale}",
                 event_name="intervention.escalated",
+                escalation_reason=EscalationReason.HUMAN_JUDGMENT,
                 decision_inputs={"plan": plan.model_dump(mode="json")},
             )
             return
@@ -389,8 +522,8 @@ class RecoveryOrchestrator:
             )
             return
 
-        case.touches_count += 1
-        case.last_touch_at = datetime.now(UTC)
+        case.attempts_count += 1
+        case.last_attempt_at = datetime.now(UTC)
         if plan.discount_paise > 0:
             case.discount_paise_granted = plan.discount_paise
 
@@ -399,32 +532,108 @@ class RecoveryOrchestrator:
             InterventionType.SMART_RETRY,
         ):
             case.retry_count += 1
-            exec_res = await self.mandate_retry_tool.execute(case, plan)
+            try:
+                exec_res = await self.mandate_retry_tool.execute(case, plan)
+            except RazorpayGatewayError as exc:
+                self._escalate_on_gateway_failure(case, plan, exc)
+                return
             target_state = RecoveryState.RETRY_SCHEDULED
         elif plan.intervention_type in (
             InterventionType.SMART_PAYMENT_LINK,
             InterventionType.INCENTIVIZED_LINK,
+        ):
+            try:
+                exec_res = await self.payment_link_tool.execute(case, plan)
+            except RazorpayGatewayError as exc:
+                self._escalate_on_gateway_failure(case, plan, exc)
+                return
+            target_state = RecoveryState.OUTREACH_PENDING
+        elif plan.intervention_type in (
             InterventionType.B2B_INVOICE_CHASER,
             InterventionType.SMART_COLLECT,
         ):
-            exec_res = await self.payment_link_tool.execute(case, plan)
-            target_state = (
-                RecoveryState.IN_DUNNING
-                if plan.intervention_type
-                in (
-                    InterventionType.B2B_INVOICE_CHASER,
-                    InterventionType.SMART_COLLECT,
-                )
-                else RecoveryState.OUTREACH_PENDING
-            )
+            try:
+                exec_res = await self.smart_collect_tool.execute(case, plan)
+            except RazorpayGatewayError as exc:
+                self._escalate_on_gateway_failure(case, plan, exc)
+                return
+            target_state = RecoveryState.IN_DUNNING
         elif plan.intervention_type == InterventionType.CUSTOMER_NUDGE:
             case.outreach_count += 1
-            exec_res = await self.notification_tool.execute(case, plan)
+            if plan.channel == OutreachChannel.VOICE_CALL:
+                case.audit_trail.append(
+                    AuditEntry(
+                        case_id=case.case_id,
+                        event_name="outreach.voice_call_placed",
+                        actor=AuditActor.SYSTEM,
+                        from_state=case.state,
+                        to_state=case.state,
+                        decision_inputs={"plan": plan.model_dump(mode="json")},
+                        notes="Placing outbound Hinglish voice recovery call before attempt.",
+                    )
+                )
+                try:
+                    exec_res = await self.voice_call_tool.execute(case, plan)
+                except ValueError as exc:
+                    # No Twilio credentials, or no phone number on file: fall
+                    # back to text outreach rather than losing the contact.
+                    logger.warning(
+                        "outreach.voice_call_fallback",
+                        case_id=case.case_id,
+                        error=str(exc),
+                    )
+                    case.audit_trail.append(
+                        AuditEntry(
+                            case_id=case.case_id,
+                            event_name="outreach.voice_call_unavailable",
+                            actor=AuditActor.SYSTEM,
+                            from_state=case.state,
+                            to_state=case.state,
+                            decision_inputs={"error": str(exc)},
+                            notes="Voice call channel unavailable; falling back to WhatsApp.",
+                        )
+                    )
+                    plan = plan.model_copy(update={"channel": OutreachChannel.WHATSAPP})
+                    exec_res = await self._dispatch_text_outreach(case, plan)
+                else:
+                    if not exec_res.success:
+                        # Twilio was actually dialed and failed to connect or
+                        # complete (bad number, carrier rejection, timeout).
+                        # This is the case a phone call is reserved for: high
+                        # value, already ignored a text nudge -- losing contact
+                        # here rather than retrying by text would strand the
+                        # highest-stakes cases with no further attempt at all.
+                        logger.warning(
+                            "outreach.voice_call_fallback",
+                            case_id=case.case_id,
+                            action_taken=exec_res.action_taken,
+                        )
+                        case.audit_trail.append(
+                            AuditEntry(
+                                case_id=case.case_id,
+                                event_name="outreach.voice_call_failed",
+                                actor=AuditActor.SYSTEM,
+                                from_state=case.state,
+                                to_state=case.state,
+                                decision_inputs={
+                                    "action_taken": exec_res.action_taken,
+                                    "error": exec_res.error_message,
+                                },
+                                notes="Voice call attempted but failed to connect; "
+                                "falling back to WhatsApp.",
+                            )
+                        )
+                        plan = plan.model_copy(
+                            update={"channel": OutreachChannel.WHATSAPP}
+                        )
+                        exec_res = await self._dispatch_text_outreach(case, plan)
+            else:
+                exec_res = await self._dispatch_text_outreach(case, plan)
             target_state = RecoveryState.IN_DUNNING
         elif plan.intervention_type == InterventionType.P2P_FOLLOWUP:
             case.outreach_count += 1
-            exec_res = await self.notification_tool.execute(case, plan)
-            target_state = RecoveryState.OUTREACH_PENDING
+            exec_res = await self._dispatch_text_outreach(case, plan)
+            target_state = RecoveryState.P2P_WAITING
         else:
             return
 
@@ -461,6 +670,23 @@ class RecoveryOrchestrator:
         )
         self.repository.schedule_job(job)
 
+        # Outreach carries the promise; the follow-up window starts from when it
+        # was actually sent, not from the original diagnosis time.
+        if plan.intervention_type == InterventionType.P2P_FOLLOWUP:
+            promised_date = datetime.now(UTC) + timedelta(
+                hours=P2P_DEFAULT_FOLLOWUP_HOURS
+            )
+            case.promised_payment_date = promised_date
+            self.repository.schedule_job(
+                ScheduledJob(
+                    case_id=case.case_id,
+                    job_type="P2P_FOLLOWUP_CHECK",
+                    due_at=promised_date,
+                    idempotency_key=f"idem_p2pcheck_{case.case_id}_{case.p2p_reminder_count}",
+                    payload={"plan_id": plan.plan_id},
+                )
+            )
+
         transition_case(
             case,
             to_state=target_state,
@@ -471,6 +697,9 @@ class RecoveryOrchestrator:
             decision_inputs={
                 "plan": plan.model_dump(mode="json"),
                 "execution_data": exec_res.data,
+                "promised_payment_date": case.promised_payment_date.isoformat()
+                if case.promised_payment_date
+                else None,
             },
         )
 
@@ -512,7 +741,7 @@ class RecoveryOrchestrator:
             scheduled_at=datetime.now(UTC) + timedelta(minutes=5),
             discount_bps=override_discount_bps or 0,
             discount_paise=discount_paise,
-            idempotency_key=f"idem_apprv_{case.case_id}_{case.touches_count}",
+            idempotency_key=f"idem_apprv_{case.case_id}_{case.attempts_count}",
             rationale=f"Operator approved recovery with notes: {notes}",
         )
 
@@ -527,14 +756,23 @@ class RecoveryOrchestrator:
         payment_id: str,
         amount_paise: int,
         gateway_capture_id: str = "webhook_capture",
+        extra_decision_inputs: dict[str, object] | None = None,
     ) -> RecoveryCase | None:
-        """Resolve case when Razorpay payment.captured webhook is received."""
+        """Resolve case when Razorpay payment.captured (or order.paid, which carries
+        the same payment entity) webhook is received.
+
+        extra_decision_inputs lets a caller attach event-specific signal (e.g.
+        order.paid's attempts count) to the same audit entry without duplicating
+        the idempotency check below.
+        """
         case = self.repository.get_by_payment_id(payment_id)
         if not case:
             return None
 
-        # Razorpay redelivers webhooks, so a second payment.captured for the same
-        # payment must be a no-op rather than an illegal terminal transition.
+        # Razorpay redelivers webhooks, and payment.captured / order.paid can both
+        # fire for the same successful payment, so a second capture-equivalent
+        # event for the same payment must be a no-op rather than an illegal
+        # terminal transition.
         if case.state == RecoveryState.RECOVERED:
             logger.info(
                 "payment.capture_ignored_duplicate",
@@ -546,17 +784,20 @@ class RecoveryOrchestrator:
 
         case.recovered_amount_paise = amount_paise
         case.recompute_nrv()
+        decision_inputs: dict[str, object] = {
+            "captured_payment_id": payment_id,
+            "amount_paise": amount_paise,
+            "gateway_capture_id": gateway_capture_id,
+        }
+        if extra_decision_inputs:
+            decision_inputs.update(extra_decision_inputs)
         transition_case(
             case,
             to_state=RecoveryState.RECOVERED,
             actor=AuditActor.GATEWAY_WEBHOOK,
             reason=f"Payment captured ({case.currency} {amount_paise / 100:,.2f}) via {gateway_capture_id}.",
             event_name="payment.recovered",
-            decision_inputs={
-                "captured_payment_id": payment_id,
-                "amount_paise": amount_paise,
-                "gateway_capture_id": gateway_capture_id,
-            },
+            decision_inputs=decision_inputs,
         )
         self.repository.save(case)
         return case

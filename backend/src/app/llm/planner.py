@@ -27,6 +27,11 @@ from app.core.logging import get_logger
 from app.detection.classifier import FailureClassifier
 from app.detection.models import DiagnosisResult, RawFailureEvent
 from app.llm.client import complete, configured_providers, sanitize_llm_error_message
+from app.llm.diagnosis_cache import (
+    DiagnosisCacheEntry,
+    diagnosis_cache_key,
+    get_diagnosis_cache,
+)
 from app.llm.settings_store import get_llm_settings_store
 
 logger = get_logger(__name__)
@@ -52,7 +57,7 @@ Analyze the payment failure and output a single, compact JSON object matching th
 Schema:
 {
   "category": "TRANSIENT_BANK_WINDOW" | "LIQUIDITY_CONSTRAINT" | "STRUCTURAL_MANDATE_FAILURE" | "CHECKOUT_DROP_OFF" | "B2B_RECEIVABLES_OVERDUE" | "PROMISE_TO_PAY_DELAY" | "SYSTEMIC_GATEWAY_FAILURE" | "UNCLASSIFIED",
-  "confidence": 0.95,
+  "confidence": <your actual confidence in this category, 0.0-1.0>,
   "intervention_type": "PASSIVE_RETRY" | "SMART_RETRY" | "SMART_PAYMENT_LINK" | "CUSTOMER_NUDGE" | "INCENTIVIZED_LINK" | "B2B_INVOICE_CHASER" | "SMART_COLLECT" | "P2P_FOLLOWUP" | "MANUAL_ESCALATION" | "NO_ACTION",
   "delay_hours": 0,
   "discount_bps": 0,
@@ -61,6 +66,12 @@ Schema:
   "dunning_message_en": "Concise, professional English message",
   "dunning_message_hi": "Concise, professional Hinglish message"
 }
+
+Confidence rules:
+- confidence is your own calibrated estimate, not a fixed or example value. Two failures with different error codes, evidence clarity, or amounts must get different confidence scores.
+- Use 0.85-0.98 only when the error code/reason maps unambiguously to one category in the taxonomy below.
+- Use 0.60-0.84 when the signal is suggestive but the error code is generic, ambiguous, or could plausibly fit more than one category.
+- Use below 0.60 when you are guessing from incomplete or contradictory signals; this routes to manual escalation, so use it honestly rather than inflating confidence to avoid escalation.
 
 Tone rules for BOTH dunning_message_en and dunning_message_hi:
 - Write like a professional, trusted financial institution, never casual or chatty.
@@ -119,6 +130,172 @@ class RecoveryPlanner:
     def __init__(self, fallback_classifier: FailureClassifier | None = None) -> None:
         self.fallback_classifier = fallback_classifier or FailureClassifier()
 
+    def _diagnosis_cache_hit(
+        self,
+        event: RawFailureEvent,
+        cached: DiagnosisCacheEntry,
+        *,
+        experiment_tag: str | None,
+        case_id: str | None,
+        config_snapshot: dict[str, Any],
+    ) -> tuple[DiagnosisResult, dict[str, Any]]:
+        """Adapt a cached (diagnosis, metadata) pair for reuse by a new event.
+
+        Strips message text since the cache key bands amounts, so a hit's
+        exact amount may differ from the cached message's amount.
+        """
+        cached_diagnosis, cached_meta = cached
+        cached_diagnosis = cached_diagnosis.model_copy(
+            update={
+                "dunning_message_en": None,
+                "dunning_message_hi": None,
+                "signals_evaluated": {
+                    **cached_diagnosis.signals_evaluated,
+                    "dunning_message_en": None,
+                    "dunning_message_hi": None,
+                    "cache_hit": True,
+                },
+            }
+        )
+        cache_hit_meta = {
+            **cached_meta,
+            "cache_hit": True,
+            "cost_usd": 0.0,
+            "latency_ms": 0.0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cached_at_model": cached_meta.get("model"),
+            "cached_at_provider": cached_meta.get("provider"),
+            "experiment_tag": experiment_tag,
+        }
+        logger.info(
+            "llm.planner.cache_hit",
+            error_code=event.error_code,
+            payment_rail=event.payment_rail.value,
+            cached_model=cached_meta.get("model"),
+        )
+        get_case_repository().record_model_telemetry(
+            ModelTelemetryEntry(
+                model=cast("str", cached_meta.get("model", "unknown")),
+                provider=cast("str", cached_meta.get("provider", "unknown")),
+                version=cached_meta.get("version"),
+                input_tokens=0,
+                output_tokens=0,
+                cost_usd=0.0,
+                latency_ms=0.0,
+                success=True,
+                used_fallback=False,
+                fallback_reason=None,
+                experiment_tag=experiment_tag,
+                case_id=case_id,
+                # No cache-hit column exists without a schema migration.
+                config_snapshot={**config_snapshot, "cache_hit": True},
+            )
+        )
+        return cached_diagnosis, cache_hit_meta
+
+    def _deterministic_result(
+        self,
+        event: RawFailureEvent,
+        *,
+        experiment_tag: str | None,
+        case_id: str | None,
+        config_snapshot: dict[str, Any],
+    ) -> tuple[DiagnosisResult, dict[str, Any]]:
+        """Offline / no-provider path: rule engine only, zero cost, never cached.
+
+        Already effectively free, so caching it would add complexity for no
+        savings -- the cache exists to avoid repeat LLM spend, not to avoid
+        repeat calls to a rule engine that costs nothing.
+        """
+        fallback_res = self.fallback_classifier.classify(event)
+        meta = {
+            "model": "deterministic-rules-v1",
+            "provider": "deterministic",
+            "version": "1.0",
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cost_usd": 0.0,
+            "latency_ms": 0.5,
+            "call_id": None,
+            "used_fallback": True,
+            "fallback_reason": "Deterministic rule engine",
+            "experiment_tag": experiment_tag,
+            "config_snapshot": config_snapshot,
+        }
+        get_case_repository().record_model_telemetry(
+            ModelTelemetryEntry(
+                model="deterministic-rules-v1",
+                provider="deterministic",
+                version="1.0",
+                input_tokens=0,
+                output_tokens=0,
+                cost_usd=0.0,
+                latency_ms=0.5,
+                success=True,
+                used_fallback=True,
+                fallback_reason="Deterministic rule engine",
+                experiment_tag=experiment_tag,
+                case_id=case_id,
+                config_snapshot=config_snapshot,
+            )
+        )
+        return fallback_res, meta
+
+    def _agentic_sim_result(
+        self,
+        event: RawFailureEvent,
+        *,
+        target_model: str | None,
+        experiment_tag: str | None,
+        case_id: str | None,
+        config_snapshot: dict[str, Any],
+    ) -> tuple[DiagnosisResult, dict[str, Any]]:
+        """Simulated agentic-fleet path: fabricated cost/latency, rule-engine result."""
+        agent_model = target_model or get_settings().agentic_model
+        if not agent_model:
+            raise RuntimeError(
+                "Agentic simulation requires a configured model: set "
+                "APP_AGENTIC_MODEL (or pass a model override) before running "
+                "the agentic fleet."
+            )
+        prov_name = (
+            "groq" if "groq" in agent_model or "llama" in agent_model else "openrouter"
+        )
+        fallback_res = self.fallback_classifier.classify(event)
+        meta = {
+            "model": agent_model,
+            "provider": prov_name,
+            "version": "1.0",
+            "input_tokens": 480,
+            "output_tokens": 195,
+            "cost_usd": 0.00015,
+            "latency_ms": 780.0,
+            "call_id": f"call_sim_{event.payment_id[:8]}",
+            "used_fallback": False,
+            "fallback_reason": None,
+            "experiment_tag": experiment_tag,
+            "config_snapshot": config_snapshot,
+        }
+        get_case_repository().record_model_telemetry(
+            ModelTelemetryEntry(
+                model=agent_model,
+                provider=prov_name,
+                version="1.0",
+                input_tokens=480,
+                output_tokens=195,
+                cost_usd=0.00015,
+                latency_ms=780.0,
+                success=True,
+                used_fallback=False,
+                fallback_reason=None,
+                experiment_tag=experiment_tag,
+                case_id=case_id,
+                config_snapshot=config_snapshot,
+            )
+        )
+        return fallback_res, meta
+
     async def plan_recovery(
         self,
         event: RawFailureEvent,
@@ -156,88 +333,21 @@ class RecoveryPlanner:
         if (not providers and not target_model and not is_agentic_sim) or any(
             k in str(event.metadata) for k in ("test_offline",)
         ):
-            fallback_res = self.fallback_classifier.classify(event)
-            meta = {
-                "model": "deterministic-rules-v1",
-                "provider": "deterministic",
-                "version": "1.0",
-                "input_tokens": 0,
-                "output_tokens": 0,
-                "cost_usd": 0.0,
-                "latency_ms": 0.5,
-                "call_id": None,
-                "used_fallback": True,
-                "fallback_reason": "Deterministic rule engine",
-                "experiment_tag": experiment_tag,
-                "config_snapshot": config_snapshot,
-            }
-            repo.record_model_telemetry(
-                ModelTelemetryEntry(
-                    model="deterministic-rules-v1",
-                    provider="deterministic",
-                    version="1.0",
-                    input_tokens=0,
-                    output_tokens=0,
-                    cost_usd=0.0,
-                    latency_ms=0.5,
-                    success=True,
-                    used_fallback=True,
-                    fallback_reason="Deterministic rule engine",
-                    experiment_tag=experiment_tag,
-                    case_id=case_id,
-                    config_snapshot=config_snapshot,
-                )
+            return self._deterministic_result(
+                event,
+                experiment_tag=experiment_tag,
+                case_id=case_id,
+                config_snapshot=config_snapshot,
             )
-            return fallback_res, meta
 
         if not providers and is_agentic_sim:
-            # Model identity comes from the single configured source; raise rather
-            # than fall back to a silently injected default.
-            agent_model = target_model or get_settings().agentic_model
-            if not agent_model:
-                raise RuntimeError(
-                    "Agentic simulation requires a configured model: set "
-                    "APP_AGENTIC_MODEL (or pass a model override) before running "
-                    "the agentic fleet."
-                )
-            prov_name = (
-                "groq"
-                if "groq" in agent_model or "llama" in agent_model
-                else "openrouter"
+            return self._agentic_sim_result(
+                event,
+                target_model=target_model,
+                experiment_tag=experiment_tag,
+                case_id=case_id,
+                config_snapshot=config_snapshot,
             )
-            fallback_res = self.fallback_classifier.classify(event)
-            meta = {
-                "model": agent_model,
-                "provider": prov_name,
-                "version": "1.0",
-                "input_tokens": 480,
-                "output_tokens": 195,
-                "cost_usd": 0.00015,
-                "latency_ms": 780.0,
-                "call_id": f"call_sim_{event.payment_id[:8]}",
-                "used_fallback": False,
-                "fallback_reason": None,
-                "experiment_tag": experiment_tag,
-                "config_snapshot": config_snapshot,
-            }
-            repo.record_model_telemetry(
-                ModelTelemetryEntry(
-                    model=agent_model,
-                    provider=prov_name,
-                    version="1.0",
-                    input_tokens=480,
-                    output_tokens=195,
-                    cost_usd=0.00015,
-                    latency_ms=780.0,
-                    success=True,
-                    used_fallback=False,
-                    fallback_reason=None,
-                    experiment_tag=experiment_tag,
-                    case_id=case_id,
-                    config_snapshot=config_snapshot,
-                )
-            )
-            return fallback_res, meta
 
         prompt_payload = {
             "payment_id": event.payment_id,
@@ -263,6 +373,20 @@ class RecoveryPlanner:
 
         fallback_reason: str = "Unknown"
         error_trace: str | None = None
+
+        settings = get_settings()
+        cache = get_diagnosis_cache()
+        cache_key = diagnosis_cache_key(event)
+        if settings.llm_diagnosis_cache_enabled:
+            cached = cache.get(cache_key)
+            if cached is not None:
+                return self._diagnosis_cache_hit(
+                    event,
+                    cached,
+                    experiment_tag=experiment_tag,
+                    case_id=case_id,
+                    config_snapshot=config_snapshot,
+                )
 
         try:
             kwargs: dict[str, Any] = {
@@ -318,6 +442,18 @@ class RecoveryPlanner:
                         else None,
                     },
                 )
+                if settings.llm_diagnosis_cache_enabled:
+                    # Strip this event's payment_id out before caching.
+                    cacheable_meta = {
+                        k: v
+                        for k, v in llm_metadata.items()
+                        if k not in ("request_prompt", "response_content")
+                    }
+                    cache.put(
+                        cache_key,
+                        (diagnosis, cacheable_meta),
+                        ttl_seconds=settings.llm_diagnosis_cache_ttl_seconds,
+                    )
                 return diagnosis, llm_metadata
 
             fallback_reason = (

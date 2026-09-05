@@ -9,7 +9,11 @@ from fastapi import Depends
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from app.core.constants import DEFAULT_AGENTIC_MODEL, DEFAULT_ANTHROPIC_MODEL
+from app.core.constants import (
+    DEFAULT_AGENTIC_MODEL,
+    DEFAULT_ANTHROPIC_MODEL,
+    DEFAULT_OPERATOR_PASSWORD,
+)
 
 
 class Settings(BaseSettings):
@@ -77,6 +81,21 @@ class Settings(BaseSettings):
         description="Model used for agentic recovery simulation and served as the "
         "Groq default. Single source of truth; consumers must not hardcode it.",
     )
+    llm_diagnosis_cache_enabled: bool = Field(
+        default=True,
+        validation_alias="APP_LLM_DIAGNOSIS_CACHE_ENABLED",
+        description="Reuse a cached diagnosis for structurally identical failure "
+        "signatures (error_code, rail, amount band) instead of a fresh LLM call. "
+        "Set false to force every event through a live call or the deterministic "
+        "fallback.",
+    )
+    llm_diagnosis_cache_ttl_seconds: int = Field(
+        default=1800,
+        ge=1,
+        validation_alias="APP_LLM_DIAGNOSIS_CACHE_TTL_SECONDS",
+        description="How long a cached diagnosis stays reusable before it expires "
+        "and the next matching event triggers a fresh LLM call.",
+    )
 
     # Razorpay Gateway & Webhook Credentials
     razorpay_key_id: str | None = Field(
@@ -105,7 +124,7 @@ class Settings(BaseSettings):
     razorpay_oauth_client_secret: SecretStr | None = Field(
         default=None, validation_alias="RAZORPAY_OAUTH_CLIENT_SECRET"
     )
-    razorpay_oauth_mode: str = Field(
+    razorpay_oauth_mode: Literal["test", "live"] = Field(
         default="test",
         validation_alias="RAZORPAY_OAUTH_MODE",
         description="test or live. Production partner clients are restricted to "
@@ -120,10 +139,12 @@ class Settings(BaseSettings):
         "OAuth callback.",
     )
 
-    # Operator authentication. Unset password disables the gate entirely, which is
-    # what keeps local development and the test suite working.
-    operator_password: SecretStr | None = Field(
-        default=None, validation_alias="APP_OPERATOR_PASSWORD"
+    # Operator authentication. Defaults to a known placeholder password so the
+    # gate is always on; set APP_OPERATOR_PASSWORD to override it before going
+    # live. Tests disable the gate explicitly via a conftest fixture.
+    operator_password: SecretStr = Field(
+        default=SecretStr(DEFAULT_OPERATOR_PASSWORD),
+        validation_alias="APP_OPERATOR_PASSWORD",
     )
     session_secret: SecretStr | None = Field(
         default=None,
@@ -135,12 +156,57 @@ class Settings(BaseSettings):
         default=12, ge=1, le=720, validation_alias="APP_SESSION_TTL_HOURS"
     )
 
-    # Customer Outreach & Notification Webhook
+    # Customer Outreach & Notification Webhook (SMS/email fallback relay)
     notification_webhook_url: str | None = Field(
         default=None, validation_alias="NOTIFICATION_WEBHOOK_URL"
     )
+
+    # Meta WhatsApp Business Cloud API: real outbound template messages. All
+    # three must be set or the WhatsApp channel falls back to the generic
+    # notification webhook rather than faking a delivered message.
+    whatsapp_phone_number_id: str | None = Field(
+        default=None, validation_alias="WHATSAPP_PHONE_NUMBER_ID"
+    )
     whatsapp_api_token: SecretStr | None = Field(
         default=None, validation_alias="WHATSAPP_API_TOKEN"
+    )
+    whatsapp_template_name: str | None = Field(
+        default=None,
+        validation_alias="WHATSAPP_TEMPLATE_NAME",
+        description="Name of the Meta-approved message template used for "
+        "dunning outreach. Free-form text only works inside an active "
+        "customer-initiated 24h session, so recovery outreach needs a "
+        "template to reach a customer outside that window.",
+    )
+
+    # Twilio Voice: outbound Hinglish recovery calls. All three must be set or
+    # the voice channel fails closed rather than faking a call.
+    twilio_account_sid: str | None = Field(
+        default=None, validation_alias="TWILIO_ACCOUNT_SID"
+    )
+    twilio_auth_token: SecretStr | None = Field(
+        default=None, validation_alias="TWILIO_AUTH_TOKEN"
+    )
+    twilio_from_number: str | None = Field(
+        default=None, validation_alias="TWILIO_FROM_NUMBER"
+    )
+
+    # Sarvam AI TTS (Bulbul): pre-generates the voice call's Hinglish audio
+    # before Twilio dials, rather than Twilio's own <Say> synthesizing it
+    # live. <Say> forces one language per utterance and cannot code-switch;
+    # Bulbul is built for Indic languages and explicitly supports code-mixed
+    # Hindi/English text. A pre-generated file also removes the TTS provider
+    # from the live call path entirely -- generation can fail before the
+    # phone ever rings, instead of mid-call. Falls back to Twilio <Say> when
+    # unset.
+    sarvam_api_key: SecretStr | None = Field(
+        default=None, validation_alias="SARVAM_API_KEY"
+    )
+    sarvam_tts_speaker: str = Field(
+        default="shubh",
+        validation_alias="SARVAM_TTS_SPEAKER",
+        description="Bulbul v3 speaker id (lowercase), e.g. shubh, anushka. "
+        "See Sarvam's Voices reference for the full list.",
     )
 
     # PostgreSQL ACID persistence datasource
@@ -151,21 +217,25 @@ class Settings(BaseSettings):
     )
     postgres_pool_size: int = Field(
         default=10,
+        ge=1,
         validation_alias="POSTGRES_POOL_SIZE",
         description="Maximum persistent connections in the engine pool.",
     )
     postgres_max_overflow: int = Field(
         default=20,
+        ge=0,
         validation_alias="POSTGRES_MAX_OVERFLOW",
         description="Maximum temporary connections beyond pool_size.",
     )
     postgres_pool_timeout_seconds: float = Field(
         default=30.0,
+        gt=0,
         validation_alias="POSTGRES_POOL_TIMEOUT_SECONDS",
         description="Seconds to wait before raising a pool timeout error.",
     )
     postgres_statement_timeout_ms: int = Field(
         default=30000,
+        gt=0,
         validation_alias="POSTGRES_STATEMENT_TIMEOUT_MS",
         description="Statement execution timeout in milliseconds.",
     )

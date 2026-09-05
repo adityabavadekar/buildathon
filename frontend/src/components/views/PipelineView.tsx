@@ -31,6 +31,7 @@ import {
   type PipelineOverviewResponse,
   type PipelineTimeseriesPoint,
   type ScheduledJobItem,
+  type SystemStatusResponse,
 } from '@/lib/api'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -52,7 +53,14 @@ import {
 } from '@/components/ui/table'
 import { SkeletonCard, SkeletonRow } from '@/components/ui/skeleton'
 
-export function PipelineView() {
+interface PipelineViewProps {
+  status: SystemStatusResponse | null
+}
+
+export function PipelineView({ status }: PipelineViewProps) {
+  // Fleet/manual-ingest controls generate synthetic data; unsafe outside a dev environment.
+  const simulationDisabled = status?.environment === 'production'
+
   const [overview, setOverview] = useState<PipelineOverviewResponse | null>(
     null,
   )
@@ -238,121 +246,121 @@ export function PipelineView() {
           </div>
         </CardHeader>
         <CardContent className="space-y-4 p-5 pt-0">
-          <div className="flex flex-wrap items-center justify-between gap-4 border-t border-border/60 pt-2">
-            <div className="flex flex-wrap items-center gap-4 font-mono text-xs">
-              <div className="flex items-center gap-2">
-                <span className="text-ink-muted">Rate:</span>
-                <input
-                  type="range"
-                  min="5"
-                  max="120"
-                  step="5"
-                  value={fleetRate}
-                  onChange={(e) => {
-                    setFleetRate(Number(e.target.value))
-                  }}
-                  disabled={fleet?.is_running}
-                  className="w-28 cursor-pointer accent-accent"
-                />
-                <span className="w-14 font-bold text-ink">
-                  {fleetRate.toString()} / min
-                </span>
+          {simulationDisabled ? (
+            <p className="border-t border-border/60 pt-3 text-sm text-ink-muted">
+              Fleet controls are disabled in production. This panel only
+              generates synthetic test data and is available in dev
+              environments.
+            </p>
+          ) : (
+            <div className="flex flex-wrap items-center justify-between gap-4 border-t border-border/60 pt-2">
+              <div className="flex flex-wrap items-center gap-4 font-mono text-xs">
+                <div className="flex items-center gap-2">
+                  <span className="text-ink-muted">Rate:</span>
+                  <input
+                    type="range"
+                    min="5"
+                    max="500"
+                    step="5"
+                    value={fleetRate}
+                    onChange={(e) => {
+                      setFleetRate(Number(e.target.value))
+                    }}
+                    disabled={fleet?.is_running}
+                    className="w-28 cursor-pointer accent-accent"
+                  />
+                  <span className="w-14 font-bold text-ink">
+                    {fleetRate.toString()} / min
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="use_llm"
+                    checked={fleetUseLlm}
+                    onChange={(e) => {
+                      setFleetUseLlm(e.target.checked)
+                    }}
+                    disabled={fleet?.is_running}
+                    className="accent-accent"
+                  />
+                  <label htmlFor="use_llm" className="cursor-pointer text-ink">
+                    Enable LLM Reasoning
+                  </label>
+                </div>
               </div>
 
+              {/* Action Buttons */}
               <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="use_llm"
-                  checked={fleetUseLlm}
-                  onChange={(e) => {
-                    setFleetUseLlm(e.target.checked)
-                  }}
-                  disabled={fleet?.is_running}
-                  className="accent-accent"
-                />
-                <label htmlFor="use_llm" className="cursor-pointer text-ink">
-                  Enable LLM Reasoning
-                </label>
-              </div>
-            </div>
-
-            {/* Action Buttons */}
-            <div className="flex items-center gap-2">
-              {!fleet?.is_running ? (
-                <Button
-                  size="sm"
-                  onClick={() => {
-                    void handleStartFleet()
-                  }}
-                  disabled={fleetLoading}
-                  className="flex items-center gap-1.5 font-mono text-xs"
-                >
-                  <Play className="h-3.5 w-3.5" />
-                  Start Fleet
-                </Button>
-              ) : (
-                <>
-                  {fleet.is_paused ? (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => {
-                        void handleResumeFleet()
-                      }}
-                      disabled={fleetLoading}
-                      className="flex items-center gap-1.5 font-mono text-xs"
-                    >
-                      <Play className="h-3.5 w-3.5" />
-                      Resume
-                    </Button>
-                  ) : (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => {
-                        void handlePauseFleet()
-                      }}
-                      disabled={fleetLoading}
-                      className="flex items-center gap-1.5 font-mono text-xs"
-                    >
-                      <Pause className="h-3.5 w-3.5" />
-                      Pause
-                    </Button>
-                  )}
+                {!fleet?.is_running ? (
                   <Button
                     size="sm"
-                    variant="danger"
                     onClick={() => {
-                      void handleStopFleet()
+                      void handleStartFleet()
                     }}
                     disabled={fleetLoading}
                     className="flex items-center gap-1.5 font-mono text-xs"
                   >
-                    <Square className="h-3.5 w-3.5" />
-                    Stop
+                    <Play className="h-3.5 w-3.5" />
+                    Start Fleet
                   </Button>
-                </>
-              )}
+                ) : (
+                  <>
+                    {fleet.is_paused ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          void handleResumeFleet()
+                        }}
+                        disabled={fleetLoading}
+                        className="flex items-center gap-1.5 font-mono text-xs"
+                      >
+                        <Play className="h-3.5 w-3.5" />
+                        Resume
+                      </Button>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          void handlePauseFleet()
+                        }}
+                        disabled={fleetLoading}
+                        className="flex items-center gap-1.5 font-mono text-xs"
+                      >
+                        <Pause className="h-3.5 w-3.5" />
+                        Pause
+                      </Button>
+                    )}
+                    <Button
+                      size="sm"
+                      variant="danger"
+                      onClick={() => {
+                        void handleStopFleet()
+                      }}
+                      disabled={fleetLoading}
+                      className="flex items-center gap-1.5 font-mono text-xs"
+                    >
+                      <Square className="h-3.5 w-3.5" />
+                      Stop
+                    </Button>
+                  </>
+                )}
+              </div>
             </div>
-          </div>
+          )}
         </CardContent>
       </Card>
 
-      {/* 5 Observable Queue State Cards */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+      {/* 4 Observable Queue State Cards */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <StatCard
           title="Queued Inbox"
           value={(overview?.counts.QUEUED ?? 0).toString()}
           subtitle={`${(overview?.counts.QUEUED_DUE_NOW ?? 0).toString()} due now, ${(overview?.counts.QUEUED_FUTURE ?? 0).toString()} scheduled later`}
           icon={<Layers className="h-4 w-4 text-accent" />}
-          variant="default"
-        />
-
-        <StatCard
-          title="Processing"
-          value={(overview?.counts.PROCESSING ?? 0).toString()}
-          subtitle="Active in worker pipeline"
-          icon={<RefreshCw className="h-4 w-4 animate-spin text-accent" />}
           variant="default"
         />
 
@@ -525,60 +533,68 @@ export function PipelineView() {
           </CardDescription>
         </CardHeader>
         <CardContent className="p-5">
-          <div className="flex flex-wrap items-center gap-3 font-mono text-xs">
-            <div className="flex items-center gap-2">
-              <span className="text-ink-muted">Amount (Paise):</span>
-              <input
-                type="number"
-                value={manualAmount}
-                onChange={(e) => {
-                  setManualAmount(Number(e.target.value))
-                }}
-                className="w-28 rounded-control border border-border bg-surface px-2.5 py-1 text-xs text-ink"
-              />
-            </div>
+          {simulationDisabled ? (
+            <p className="text-sm text-ink-muted">
+              Manual test-event ingestion is disabled in production. This tool
+              only creates synthetic test data and is available in dev
+              environments.
+            </p>
+          ) : (
+            <div className="flex flex-wrap items-center gap-3 font-mono text-xs">
+              <div className="flex items-center gap-2">
+                <span className="text-ink-muted">Amount (Paise):</span>
+                <input
+                  type="number"
+                  value={manualAmount}
+                  onChange={(e) => {
+                    setManualAmount(Number(e.target.value))
+                  }}
+                  className="w-28 rounded-control border border-border bg-surface px-2.5 py-1 text-xs text-ink"
+                />
+              </div>
 
-            <div className="flex items-center gap-2">
-              <span className="text-ink-muted">Rail:</span>
-              <select
-                value={manualRail}
-                onChange={(e) => {
-                  setManualRail(e.target.value)
+              <div className="flex items-center gap-2">
+                <span className="text-ink-muted">Rail:</span>
+                <select
+                  value={manualRail}
+                  onChange={(e) => {
+                    setManualRail(e.target.value)
+                  }}
+                  className="rounded-control border border-border bg-surface px-2.5 py-1 text-xs text-ink"
+                >
+                  <option value="UPI">UPI</option>
+                  <option value="CARD">CARD</option>
+                  <option value="ENACH">eNACH / Mandate</option>
+                  <option value="NETBANKING">NetBanking</option>
+                  <option value="B2B_INVOICE">B2B Invoice</option>
+                </select>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="text-ink-muted">Error Code:</span>
+                <input
+                  type="text"
+                  value={manualErrorCode}
+                  onChange={(e) => {
+                    setManualErrorCode(e.target.value)
+                  }}
+                  className="w-24 rounded-control border border-border bg-surface px-2.5 py-1 text-xs text-ink"
+                />
+              </div>
+
+              <Button
+                size="sm"
+                onClick={() => {
+                  void handleManualIngest()
                 }}
-                className="rounded-control border border-border bg-surface px-2.5 py-1 text-xs text-ink"
+                disabled={ingesting}
+                className="ml-auto flex items-center gap-1.5 font-mono text-xs"
               >
-                <option value="UPI">UPI</option>
-                <option value="CARD">CARD</option>
-                <option value="ENACH">eNACH / Mandate</option>
-                <option value="NETBANKING">NetBanking</option>
-                <option value="B2B_INVOICE">B2B Invoice</option>
-              </select>
+                <Send className="h-3.5 w-3.5" />
+                {ingesting ? 'Enqueueing...' : 'Enqueue 202 Event'}
+              </Button>
             </div>
-
-            <div className="flex items-center gap-2">
-              <span className="text-ink-muted">Error Code:</span>
-              <input
-                type="text"
-                value={manualErrorCode}
-                onChange={(e) => {
-                  setManualErrorCode(e.target.value)
-                }}
-                className="w-24 rounded-control border border-border bg-surface px-2.5 py-1 text-xs text-ink"
-              />
-            </div>
-
-            <Button
-              size="sm"
-              onClick={() => {
-                void handleManualIngest()
-              }}
-              disabled={ingesting}
-              className="ml-auto flex items-center gap-1.5 font-mono text-xs"
-            >
-              <Send className="h-3.5 w-3.5" />
-              {ingesting ? 'Enqueueing...' : 'Enqueue 202 Event'}
-            </Button>
-          </div>
+          )}
         </CardContent>
       </Card>
 

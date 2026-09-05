@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from app.audit.repository import get_case_repository
 from app.core.config import get_settings
@@ -15,28 +15,12 @@ from app.core.enums import RecoveryState
 from app.core.operator import OperatorMode, get_operator_mode
 from app.intervention.orchestrator import get_recovery_orchestrator
 from app.llm.client import configured_providers
-from app.simulation.seeder import reset_simulation_data, seed_simulation_batch
+from app.llm.settings_store import MANDATORY_PROVIDER_NAME, get_llm_settings_store
+from app.simulation.seeder import reset_simulation_data
 
 router = APIRouter(prefix="/simulation", tags=["simulation"])
 
 _PROCESS_START_TIME = time.time()
-
-
-class SeedRequest(BaseModel):
-    """Request payload for seeding synthetic failure batches."""
-
-    count: int = Field(default=50, ge=1, le=500)
-    simulate_resolutions: bool = Field(default=True)
-    experiment_tag: str | None = None
-    model_override: str | None = None
-
-
-class SeedResponse(BaseModel):
-    """Result of batch seeding."""
-
-    seeded_count: int
-    recovered_count: int
-    case_ids: list[str]
 
 
 class ResolveCaseRequest(BaseModel):
@@ -44,6 +28,21 @@ class ResolveCaseRequest(BaseModel):
 
     case_id: str
     amount_paise: int | None = None
+
+
+class LLMEngineStatus(BaseModel):
+    """LLM reasoning engine status. active_model is None, not a placeholder
+    string, when no real provider is configured -- deterministic_fallback_active
+    is the field the UI must branch on for that case.
+    """
+
+    configured_providers: list[str]
+    active_provider: str | None
+    active_model: str | None
+    deterministic_fallback_active: bool
+    circuit_breaker: str
+    operator_mode: str | None = None
+    offline_fallback_operational: bool
 
 
 class SystemStatusResponse(BaseModel):
@@ -56,25 +55,9 @@ class SystemStatusResponse(BaseModel):
     active_recovery_queue: int
     escalated_queue_count: int
     gateway_integration: dict[str, Any]
-    llm_engine: dict[str, Any]
+    llm_engine: LLMEngineStatus
     policy_enforcement: dict[str, Any]
     timestamp: datetime
-
-
-@router.post("/seed", response_model=SeedResponse, summary="Seed Simulation Batch")
-async def seed_batch(req: SeedRequest) -> SeedResponse:
-    """Generate realistic transaction failure cohort across rails and simulate recoveries."""
-    result = await seed_simulation_batch(
-        count=req.count,
-        simulate_resolutions=req.simulate_resolutions,
-        experiment_tag=req.experiment_tag,
-        model_override=req.model_override,
-    )
-    return SeedResponse(
-        seeded_count=result["seeded_count"],
-        recovered_count=result["recovered_count"],
-        case_ids=result["case_ids"],
-    )
 
 
 @router.post("/reset", summary="Reset Simulation Data")
@@ -143,6 +126,18 @@ async def get_system_status() -> SystemStatusResponse:
     orchestrator = get_recovery_orchestrator()
     policy = orchestrator.policy
 
+    store_state = get_llm_settings_store().get_state()
+    # deterministic_rules is a fallback state, not a model: excluded here so an
+    # unconfigured LLM resolves to None instead of its placeholder model name.
+    active_provider_obj = next(
+        (
+            p
+            for p in sorted(store_state.providers, key=lambda x: x.priority)
+            if p.enabled and p.has_api_key and p.name != MANDATORY_PROVIDER_NAME
+        ),
+        None,
+    )
+
     return SystemStatusResponse(
         system_status="OPERATIONAL"
         if operator_mode != OperatorMode.MONITORING_ONLY
@@ -162,23 +157,25 @@ async def get_system_status() -> SystemStatusResponse:
             "webhook_endpoint": "/api/webhooks/razorpay",
             "supported_rails": ["UPI", "MANDATES", "CARDS", "NETBANKING", "INVOICES"],
         },
-        llm_engine={
-            "configured_providers": providers,
-            "active_model": settings.openrouter_model
-            if "openrouter" in providers
-            else "deterministic_rules",
-            "circuit_breaker": "ACTIVE"
+        llm_engine=LLMEngineStatus(
+            configured_providers=providers,
+            active_provider=active_provider_obj.name if active_provider_obj else None,
+            active_model=active_provider_obj.active_model
+            if active_provider_obj
+            else None,
+            deterministic_fallback_active=active_provider_obj is None,
+            circuit_breaker="ACTIVE"
             if operator_mode == OperatorMode.MONITORING_ONLY
             else "INACTIVE",
-            "operator_mode": operator_mode.value,
-            "offline_fallback_operational": True,
-        },
+            operator_mode=operator_mode.value,
+            offline_fallback_operational=True,
+        ),
         policy_enforcement={
             "guardrail_status": "ACTIVE",
-            "max_touches_cap": policy.max_touches,
+            "max_attempts_cap": policy.max_attempts,
             "cooldown_hours": policy.min_cooldown_hours,
             "discount_cap_bps": policy.max_discount_bps,
-            "holdout_ratio_pct": int(policy.holdout_percentage * 100),
+            "holdout_ratio_pct": policy.holdout_percentage,
         },
         timestamp=datetime.now(UTC),
     )

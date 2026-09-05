@@ -45,6 +45,14 @@ DEFAULT_MODELS: dict[str, list[str]] = {
     ],
 }
 
+# The rule-based classifier is the mandatory fallback the whole system rests
+# on when no real LLM provider is configured or available -- client.py
+# excludes it from active_providers by this exact name regardless of its
+# enabled flag, so it always runs. enabled must therefore never persist as
+# False for this provider, or the Settings UI would show a compliance-facing
+# control as "Disabled" while the classifier it names keeps running unchanged.
+MANDATORY_PROVIDER_NAME = "deterministic_rules"
+
 
 class ProviderSetting(BaseModel):
     """Configuration for a single LLM provider in the fallback chain."""
@@ -77,7 +85,21 @@ class LLMSettingsStore:
         primary_active_model = (
             settings.openrouter_model or DEFAULT_MODELS["openrouter"][0]
         )
-        anthropic_available = [primary_active_model, *DEFAULT_MODELS["anthropic"]]
+        openrouter_active_stripped = primary_active_model.removeprefix("openrouter/")
+        # The .env-configured model may not be one of the curated defaults --
+        # an active_model absent from available_models renders as unselected
+        # in the operator UI even though the backend state is correct.
+        openrouter_available = (
+            [openrouter_active_stripped, *DEFAULT_MODELS["openrouter"]]
+            if openrouter_active_stripped not in DEFAULT_MODELS["openrouter"]
+            else DEFAULT_MODELS["openrouter"]
+        )
+        anthropic_configured = f"anthropic/{settings.anthropic_model}"
+        anthropic_available = (
+            [anthropic_configured, *DEFAULT_MODELS["anthropic"]]
+            if anthropic_configured not in DEFAULT_MODELS["anthropic"]
+            else DEFAULT_MODELS["anthropic"]
+        )
         has_openrouter = bool(
             settings.openrouter_api_key
             and settings.openrouter_api_key.get_secret_value().strip()
@@ -98,16 +120,16 @@ class LLMSettingsStore:
             providers=[
                 ProviderSetting(
                     name="openrouter",
-                    label="OpenRouter (Primary Frontier & Open-Weights Router)",
+                    label="OpenRouter",
                     enabled=True,
                     priority=1,
-                    active_model=primary_active_model.removeprefix("openrouter/"),
-                    available_models=DEFAULT_MODELS["openrouter"],
+                    active_model=openrouter_active_stripped,
+                    available_models=openrouter_available,
                     has_api_key=has_openrouter,
                 ),
                 ProviderSetting(
                     name="groq",
-                    label="Groq (Ultra-Low Latency Inference)",
+                    label="Groq",
                     enabled=True,
                     priority=2,
                     active_model=settings.agentic_model,
@@ -116,7 +138,7 @@ class LLMSettingsStore:
                 ),
                 ProviderSetting(
                     name="anthropic",
-                    label="Anthropic Claude Direct API",
+                    label="Anthropic",
                     enabled=True,
                     priority=3,
                     active_model=f"anthropic/{settings.anthropic_model}",
@@ -125,7 +147,7 @@ class LLMSettingsStore:
                 ),
                 ProviderSetting(
                     name="openai",
-                    label="OpenAI Direct API",
+                    label="OpenAI",
                     enabled=True,
                     priority=4,
                     active_model="openai/gpt-4o",
@@ -133,8 +155,8 @@ class LLMSettingsStore:
                     has_api_key=has_openai,
                 ),
                 ProviderSetting(
-                    name="deterministic_rules",
-                    label="Deterministic Taxonomy Rule Fallback (Offline)",
+                    name=MANDATORY_PROVIDER_NAME,
+                    label="Deterministic Taxonomy Rule Fallback",
                     enabled=True,
                     priority=5,
                     active_model="NPCI & Razorpay Rule Classifier",
@@ -178,18 +200,20 @@ class LLMSettingsStore:
                     ),
                     "deterministic_rules": True,
                 }
+                # A row persisted before an operator's active_model change (or
+                # from an older server build) must not clobber that choice on
+                # every restart -- only ensure it stays selectable, never force
+                # it. See docs/DECISIONS.md 2026-08-31 for the outage this
+                # class of bug already caused once via a stale persisted model.
+                default_by_name = {p.name: p for p in default.providers}
                 for p in state.providers:
                     if p.name in key_map:
                         p.has_api_key = key_map[p.name]
-                    if p.name == "openrouter" and settings.openrouter_model:
-                        clean_env_model = settings.openrouter_model.removeprefix(
-                            "openrouter/"
-                        )
-                        if clean_env_model not in p.available_models:
-                            p.available_models.insert(0, clean_env_model)
-                        if settings.openrouter_model not in p.available_models:
-                            p.available_models.insert(0, settings.openrouter_model)
-                        p.active_model = clean_env_model
+                    if p.active_model not in p.available_models:
+                        p.available_models.insert(0, p.active_model)
+                    fallback = default_by_name.get(p.name)
+                    if fallback and fallback.active_model not in p.available_models:
+                        p.available_models.insert(0, fallback.active_model)
                 existing_names = {provider.name for provider in state.providers}
                 for provider in default.providers:
                     if provider.name not in existing_names:
@@ -209,7 +233,17 @@ class LLMSettingsStore:
         return self._state
 
     def update_state(self, new_state: LLMSettingsState) -> LLMSettingsState:
-        """Update provider settings and persist to PostgreSQL."""
+        """Update provider settings and persist to PostgreSQL.
+
+        The mandatory rule-classifier provider is forced back to enabled
+        regardless of what the caller sent -- it always runs (see
+        MANDATORY_PROVIDER_NAME), so persisting it as disabled would let an
+        operator believe they turned off something they cannot turn off.
+        """
+        for provider in new_state.providers:
+            if provider.name == MANDATORY_PROVIDER_NAME:
+                provider.enabled = True
+
         self._state = new_state
         now = datetime.now(UTC)
         try:

@@ -12,6 +12,7 @@ from app.core.config import get_settings
 from app.core.enums import InterventionType, OutreachChannel
 from app.detection.models import RawFailureEvent
 from app.intervention.models import InterventionPlan
+from app.intervention.tools.base import RazorpayGatewayError
 from app.intervention.tools.mandate_retry import MandateRetryTool
 from app.intervention.tools.notification import CustomerNotificationTool
 from app.intervention.tools.payment_link import RazorpayPaymentLinkTool
@@ -35,7 +36,18 @@ def _create_test_case(amount_paise: int = 250000) -> RecoveryCase:
 
 
 @pytest.mark.anyio
-async def test_razorpay_payment_link_sandbox_execution() -> None:
+async def test_razorpay_payment_link_no_credentials_raises(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Without Razorpay credentials, the tool must fail cleanly, never fabricate a link."""
+
+    async def _no_auth() -> None:
+        return None
+
+    monkeypatch.setattr(
+        "app.intervention.tools.payment_link.resolve_razorpay_auth", _no_auth
+    )
+
     tool = RazorpayPaymentLinkTool()
     case = _create_test_case(amount_paise=100000)  # INR 1,000
     plan = InterventionPlan(
@@ -49,12 +61,8 @@ async def test_razorpay_payment_link_sandbox_execution() -> None:
         rationale="Send 5% discount link",
     )
 
-    result = await tool.execute(case, plan)
-    assert result.success is True
-    assert "PAYMENT_LINK_CREATED" in result.action_taken
-    assert result.cost_incurred_paise == 0
-    assert result.data["amount_paise"] == 95000  # 100000 - 5000
-    assert "https://rzp.io/i/" in result.data["short_url"]
+    with pytest.raises(RazorpayGatewayError, match="credentials not configured"):
+        await tool.execute(case, plan)
 
 
 @pytest.mark.anyio
@@ -111,7 +119,7 @@ async def test_razorpay_payment_link_live_http_contract_success(
 
 
 @pytest.mark.anyio
-async def test_razorpay_payment_link_gateway_error_returns_failure(
+async def test_razorpay_payment_link_gateway_error_raises(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Verify that when gateway returns an error, the tool fails loudly without fabricating success."""
@@ -143,10 +151,8 @@ async def test_razorpay_payment_link_gateway_error_returns_failure(
             rationale="Gateway error test",
         )
 
-        result = await tool.execute(case, plan)
-        assert result.success is False
-        assert result.action_taken == "PAYMENT_LINK_GATEWAY_ERROR"
-        assert result.external_id is None
+        with pytest.raises(RazorpayGatewayError, match="BAD_REQUEST_ERROR"):
+            await tool.execute(case, plan)
 
 
 @pytest.mark.anyio
@@ -195,7 +201,35 @@ async def test_mandate_retry_live_http_contract_success(
 
 
 @pytest.mark.anyio
-async def test_mandate_retry_gateway_error_returns_failure(
+async def test_mandate_retry_no_credentials_raises(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Without Razorpay credentials, the tool must fail cleanly, never fabricate a charge."""
+
+    async def _no_auth() -> None:
+        return None
+
+    monkeypatch.setattr(
+        "app.intervention.tools.mandate_retry.resolve_razorpay_auth", _no_auth
+    )
+
+    tool = MandateRetryTool()
+    case = _create_test_case(amount_paise=500000)
+    plan = InterventionPlan(
+        plan_id="plan_mr_nocreds",
+        case_id=case.case_id,
+        intervention_type=InterventionType.SMART_RETRY,
+        scheduled_at=datetime.now(UTC),
+        idempotency_key="idem_mr_nocreds",
+        rationale="Missing credentials test",
+    )
+
+    with pytest.raises(RazorpayGatewayError, match="credentials not configured"):
+        await tool.execute(case, plan)
+
+
+@pytest.mark.anyio
+async def test_mandate_retry_gateway_error_raises(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Verify mandate retry fails honestly when Subscriptions API rejects."""
@@ -227,9 +261,8 @@ async def test_mandate_retry_gateway_error_returns_failure(
             rationale="Mandate error test",
         )
 
-        result = await tool.execute(case, plan)
-        assert result.success is False
-        assert result.action_taken == "MANDATE_RETRY_GATEWAY_ERROR"
+        with pytest.raises(RazorpayGatewayError, match="BAD_REQUEST_ERROR"):
+            await tool.execute(case, plan)
 
 
 @pytest.mark.anyio

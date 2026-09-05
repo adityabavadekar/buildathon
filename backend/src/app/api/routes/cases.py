@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field
 from app.audit.models import AuditEntry, RecoveryCase
 from app.audit.repository import get_case_repository
 from app.audit.state_machine import transition_case
-from app.core.enums import AuditActor, ExperimentArm, RecoveryState
+from app.core.enums import AuditActor, EscalationReason, ExperimentArm, RecoveryState
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
@@ -74,11 +74,12 @@ async def list_cases(  # noqa: PLR0917
     created_before: Annotated[datetime | None, Query()] = None,
     occurred_after: Annotated[datetime | None, Query()] = None,
     occurred_before: Annotated[datetime | None, Query()] = None,
-    touches_min: Annotated[int | None, Query(ge=0)] = None,
-    touches_max: Annotated[int | None, Query(ge=0)] = None,
+    attempts_min: Annotated[int | None, Query(ge=0)] = None,
+    attempts_max: Annotated[int | None, Query(ge=0)] = None,
     recovered: Annotated[bool | None, Query()] = None,
     opted_out: Annotated[bool | None, Query()] = None,
     has_escalation: Annotated[bool | None, Query()] = None,
+    escalation_reason: Annotated[EscalationReason | None, Query()] = None,
     customer_id: Annotated[str | None, Query()] = None,
     payment_id: Annotated[str | None, Query()] = None,
     invoice_id: Annotated[str | None, Query()] = None,
@@ -98,7 +99,7 @@ async def list_cases(  # noqa: PLR0917
     """Retrieve paginated recovery cases with server-side filters, sorting, and parameterized search."""
     repo = get_case_repository()
 
-    # Parse comma-separated lists
+    # Query params accept either a single value or a comma-separated list.
     parsed_states = (
         [s.strip() for s in states.split(",") if s.strip()]
         if states
@@ -134,11 +135,12 @@ async def list_cases(  # noqa: PLR0917
         created_before=created_before,
         occurred_after=occurred_after,
         occurred_before=occurred_before,
-        touches_min=touches_min,
-        touches_max=touches_max,
+        attempts_min=attempts_min,
+        attempts_max=attempts_max,
         recovered=recovered,
         opted_out=opted_out,
         has_escalation=has_escalation,
+        escalation_reason=escalation_reason.value if escalation_reason else None,
         customer_id=customer_id,
         payment_id=payment_id,
         invoice_id=invoice_id,
@@ -166,11 +168,12 @@ async def list_cases(  # noqa: PLR0917
         created_before=created_before,
         occurred_after=occurred_after,
         occurred_before=occurred_before,
-        touches_min=touches_min,
-        touches_max=touches_max,
+        attempts_min=attempts_min,
+        attempts_max=attempts_max,
         recovered=recovered,
         opted_out=opted_out,
         has_escalation=has_escalation,
+        escalation_reason=escalation_reason.value if escalation_reason else None,
         customer_id=customer_id,
         payment_id=payment_id,
         invoice_id=invoice_id,
@@ -234,7 +237,9 @@ async def get_case(case_id: str) -> RecoveryCase:
     response_model=list[AuditEntry],
     summary="Get System Audit Trail",
 )
-async def get_global_audit(limit: int = 200) -> list[AuditEntry]:
+async def get_global_audit(
+    limit: Annotated[int, Query(ge=1, le=500)] = 200,
+) -> list[AuditEntry]:
     """System-wide audit rows that belong to no single case.
 
     Declared before /{case_id}/audit, or the path parameter would swallow it.
@@ -278,7 +283,7 @@ async def approve_case(case_id: str, action: CaseActionRequest) -> RecoveryCase:
             detail=f"Only cases in ESCALATED state can be approved (current state: {case.state.value})",
         )
 
-    # Approve and transition case back to active dunning
+    # Approve the escalation and return to active dunning.
     transition_case(
         case,
         to_state=RecoveryState.IN_DUNNING,

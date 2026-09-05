@@ -206,7 +206,7 @@ async def test_holdout_is_never_contacted_or_charged() -> None:
     """The counterfactual is void if the control arm receives any outreach."""
     run = await run_benchmark(size=400, seed=20260902, use_llm=False)
 
-    assert run.holdout.touches == 0
+    assert run.holdout.attempts == 0
     assert run.holdout.cost_paise == 0
     assert run.holdout.escalated_count == 0
 

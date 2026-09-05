@@ -90,6 +90,16 @@ class PolicyCheckResult(str, Enum):
     HOLDOUT_CONTROL = "HOLDOUT_CONTROL"
 
 
+class EscalationReason(str, Enum):
+    """Why an ESCALATED case is escalated. Extend with new members (e.g.
+    COMPLIANCE_REVIEW, FRAUD_REVIEW) as new escalation paths are added --
+    never infer this from audit_trail content or ordering.
+    """
+
+    HUMAN_JUDGMENT = "HUMAN_JUDGMENT"
+    SYSTEM_ERROR = "SYSTEM_ERROR"
+
+
 class ExperimentArm(str, Enum):
     """A/B experiment assignment for counterfactual recovery measurement."""
 

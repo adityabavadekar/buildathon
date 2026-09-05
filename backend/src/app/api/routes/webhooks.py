@@ -14,10 +14,17 @@ from pydantic import BaseModel, SecretStr
 from app.audit.global_log import record_global_audit
 from app.audit.models import AuditEntry, RecoveryCase, ScheduledJob
 from app.audit.repository import get_case_repository
+from app.audit.state_machine import InvalidStateTransitionError, transition_case
 from app.core.config import get_settings
 from app.core.constants import DEFAULT_CURRENCY
 from app.core.credential_resolver import resolve_webhook_secret
-from app.core.enums import AuditActor, ExperimentArm, PaymentRail, RecoveryState
+from app.core.enums import (
+    AuditActor,
+    EscalationReason,
+    JobStatus,
+    PaymentRail,
+    RecoveryState,
+)
 from app.core.logging import get_logger
 from app.detection.models import RawFailureEvent
 from app.integrations.store import get_oauth_connection_store
@@ -73,6 +80,7 @@ def _extract_payment_identity(payment_entity: dict[str, Any]) -> dict[str, str |
         or _identity_value(payment_entity, "invoice_id"),
         "contact_email": _identity_value(payment_entity, "email"),
         "contact_phone": _identity_value(payment_entity, "contact"),
+        "experiment_tag": _identity_value(notes_data, "experiment_tag"),
     }
 
 
@@ -83,6 +91,148 @@ class WebhookResponse(BaseModel):
     event: str
     case_id: str | None = None
     action_taken: str | None = None
+
+
+def _extract_refund_payment_id(event_payload: dict[str, Any]) -> str:
+    """Resolve the originating payment ID from a refund webhook payload.
+
+    Razorpay's refund payload nests both a `payment` entity and a `refund`
+    entity; the refund entity carries `payment_id` directly, which is the
+    field documented at razorpay.com/docs/webhooks/refunds.md.
+    """
+    payment_entity = event_payload.get("payment", {}).get("entity", {})
+    refund_entity = event_payload.get("refund", {}).get("entity", {})
+    return str(payment_entity.get("id") or refund_entity.get("payment_id") or "")
+
+
+def _extract_dispute_payment_id(event_payload: dict[str, Any]) -> str:
+    """Resolve the originating payment ID from a dispute webhook payload."""
+    payment_entity = event_payload.get("payment", {}).get("entity", {})
+    dispute_entity = event_payload.get("dispute", {}).get("entity", {})
+    return str(payment_entity.get("id") or dispute_entity.get("payment_id") or "")
+
+
+def _already_logged_by_id(
+    case: RecoveryCase, event_name: str, id_key: str, id_value: str | None
+) -> bool:
+    """Idempotency guard: has this exact refund/dispute id already produced this audit event."""
+    if not id_value:
+        return False
+    return any(
+        entry.event_name == event_name and entry.decision_inputs.get(id_key) == id_value
+        for entry in case.audit_trail
+    )
+
+
+def _log_informational(
+    case: RecoveryCase,
+    *,
+    event_name: str,
+    notes: str,
+    decision_inputs: dict[str, Any],
+) -> None:
+    """Append an audit entry that does not change case state or amounts."""
+    now = datetime.now(UTC)
+    case.audit_trail.append(
+        AuditEntry(
+            case_id=case.case_id,
+            from_state=case.state,
+            to_state=case.state,
+            actor=AuditActor.GATEWAY_WEBHOOK,
+            event_name=event_name,
+            notes=notes,
+            decision_inputs=decision_inputs,
+            timestamp=now,
+        )
+    )
+
+
+def _reduce_recovered_amount(
+    case: RecoveryCase,
+    *,
+    reduction_paise: int,
+    event_name: str,
+    notes: str,
+    decision_inputs: dict[str, Any],
+) -> None:
+    """Reduce recovered_amount_paise for a refund or lost dispute, clamped at 0.
+
+    RECOVERED is a terminal state with no legal exit in VALID_TRANSITIONS, so a
+    full refund cannot transition the case out of RECOVERED. The audit trail
+    and the adjusted recovered_amount_paise / net_recovered_value_paise are the
+    only record that the case is no longer truly recovered.
+    """
+    now = datetime.now(UTC)
+    original_amount = case.recovered_amount_paise
+    clamped_reduction = min(reduction_paise, original_amount)
+    anomalous = reduction_paise > original_amount
+    case.recovered_amount_paise = max(0, original_amount - reduction_paise)
+    case.recompute_nrv()
+    case.updated_at = now
+
+    fully_reversed = case.recovered_amount_paise == 0
+    case.audit_trail.append(
+        AuditEntry(
+            case_id=case.case_id,
+            from_state=case.state,
+            to_state=case.state,
+            actor=AuditActor.GATEWAY_WEBHOOK,
+            event_name=event_name,
+            notes=notes,
+            decision_inputs={
+                **decision_inputs,
+                "reduction_paise": reduction_paise,
+                "clamped_reduction_paise": clamped_reduction,
+                "recovered_amount_before_paise": original_amount,
+                "recovered_amount_after_paise": case.recovered_amount_paise,
+                "net_recovered_value_after_paise": case.net_recovered_value_paise,
+                "fully_reversed": fully_reversed,
+                "amount_anomaly": anomalous,
+            },
+            timestamp=now,
+        )
+    )
+    if anomalous:
+        logger.warning(
+            "webhook.refund_or_dispute_amount_exceeds_recorded",
+            case_id=case.case_id,
+            reduction_paise=reduction_paise,
+            recovered_amount_before_paise=original_amount,
+        )
+
+
+def _escalate_case(
+    case: RecoveryCase, *, event_name: str, reason: str, decision_inputs: dict[str, Any]
+) -> None:
+    """Escalate a case for human review, tolerating states with no legal path to ESCALATED."""
+    if case.state == RecoveryState.ESCALATED:
+        _log_informational(
+            case,
+            event_name=event_name,
+            notes=reason,
+            decision_inputs=decision_inputs,
+        )
+        return
+    try:
+        transition_case(
+            case,
+            RecoveryState.ESCALATED,
+            AuditActor.GATEWAY_WEBHOOK,
+            reason,
+            event_name=event_name,
+            escalation_reason=EscalationReason.HUMAN_JUDGMENT,
+            decision_inputs=decision_inputs,
+        )
+    except InvalidStateTransitionError:
+        # Terminal states (RECOVERED, ABANDONED, WRITTEN_OFF) have no legal
+        # exit to ESCALATED. Keep the state as-is; the audit entry still
+        # flags the dispute for human attention.
+        _log_informational(
+            case,
+            event_name=event_name,
+            notes=reason,
+            decision_inputs=decision_inputs,
+        )
 
 
 def _verify_webhook_signature(
@@ -178,12 +328,36 @@ async def handle_razorpay_webhook(  # noqa: PLR0911, PLR0912, PLR0915
             action_taken="RECOVERED" if recovered_case else "NOOP",
         )
 
+    # 3b. Handle Order Paid (same success signal as payment.captured, but the
+    # payload carries both payment and order entities together).
+    if event_type == "order.paid":
+        payment_entity = event_payload.get("payment", {}).get("entity", {})
+        order_entity = event_payload.get("order", {}).get("entity", {})
+        payment_id = payment_entity.get("id", "")
+        amount = payment_entity.get("amount", 0)
+        attempts = order_entity.get("attempts")
+
+        recovered_case = _orchestrator.process_payment_captured(
+            payment_id,
+            amount,
+            gateway_capture_id="order_paid_webhook",
+            extra_decision_inputs={"order_attempts": attempts}
+            if attempts is not None
+            else None,
+        )
+        response.status_code = status.HTTP_200_OK
+        return WebhookResponse(
+            status="processed" if recovered_case else "ignored",
+            event=event_type,
+            case_id=recovered_case.case_id if recovered_case else None,
+            action_taken="RECOVERED" if recovered_case else "NOOP",
+        )
+
     # 4. Handle Payment Failed (Fast 202 Non-Blocking Enqueue)
     if event_type == "payment.failed":
         payment_entity = event_payload.get("payment", {}).get("entity", {})
         payment_id = payment_entity.get("id", f"pay_webhook_{uuid4().hex[:8]}")
 
-        # Deduplication check at inbox
         existing_case = repo.get_by_payment_id(payment_id)
         if existing_case:
             response.status_code = status.HTTP_202_ACCEPTED
@@ -226,11 +400,13 @@ async def handle_razorpay_webhook(  # noqa: PLR0911, PLR0912, PLR0915
         method = str(payment_entity.get("method", "unknown")).upper()
         rail_map = {
             "UPI": PaymentRail.UPI,
+            "UPI_AUTOPAY": PaymentRail.UPI_AUTOPAY,
             "CARD": PaymentRail.CARD,
             "NETBANKING": PaymentRail.NETBANKING,
             "ENACH": PaymentRail.ENACH,
             "EMANDATE": PaymentRail.ENACH,
             "NACH": PaymentRail.ENACH,
+            "B2B_INVOICE": PaymentRail.B2B_INVOICE,
         }
         rail = rail_map.get(method, PaymentRail.UNKNOWN)
         identity = _extract_payment_identity(payment_entity)
@@ -259,6 +435,7 @@ async def handle_razorpay_webhook(  # noqa: PLR0911, PLR0912, PLR0915
             reference_id=identity["reference_id"],
             contact_email=identity["contact_email"],
             contact_phone=identity["contact_phone"],
+            experiment_tag=identity["experiment_tag"],
             metadata=payment_entity,
         )
 
@@ -268,7 +445,7 @@ async def handle_razorpay_webhook(  # noqa: PLR0911, PLR0912, PLR0915
             case_id=case_id,
             merchant_id="merchant_live_buildathon",
             state=RecoveryState.ANALYSIS_QUEUED,
-            experiment_arm=ExperimentArm.TREATMENT,
+            experiment_arm=_orchestrator.assign_experiment_arm(payment_id),
             amount_paise=event.amount_paise,
             currency=event.currency,
             failure_event=event,
@@ -304,9 +481,12 @@ async def handle_razorpay_webhook(  # noqa: PLR0911, PLR0912, PLR0915
             case_id=case_id,
             job_type="INGESTION_DIAGNOSIS",
             due_at=now,
-            status="QUEUED",
+            status=JobStatus.QUEUED,
             idempotency_key=f"ingest_{payment_id}",
-            payload={"event_id": event.event_id, "payment_id": payment_id},
+            payload={
+                "event_id": event.event_id,
+                "payment_id": payment_id,
+            },
             created_at=now,
             updated_at=now,
         )
@@ -359,7 +539,7 @@ async def handle_razorpay_webhook(  # noqa: PLR0911, PLR0912, PLR0915
             case_id=case_id,
             merchant_id="merchant_live_buildathon",
             state=RecoveryState.ANALYSIS_QUEUED,
-            experiment_arm=ExperimentArm.TREATMENT,
+            experiment_arm=_orchestrator.assign_experiment_arm(payment_id),
             amount_paise=event.amount_paise,
             currency=event.currency,
             failure_event=event,
@@ -390,9 +570,12 @@ async def handle_razorpay_webhook(  # noqa: PLR0911, PLR0912, PLR0915
             case_id=case_id,
             job_type="INGESTION_DIAGNOSIS",
             due_at=now,
-            status="QUEUED",
+            status=JobStatus.QUEUED,
             idempotency_key=f"ingest_{payment_id}",
-            payload={"event_id": event.event_id, "payment_id": payment_id},
+            payload={
+                "event_id": event.event_id,
+                "payment_id": payment_id,
+            },
             created_at=now,
             updated_at=now,
         )
@@ -406,6 +589,157 @@ async def handle_razorpay_webhook(  # noqa: PLR0911, PLR0912, PLR0915
             action_taken="QUEUED",
         )
 
+    # 4b. Handle Subscription Charged (Recovery: a previously-halted mandate
+    # billed successfully again). Only a subscription with an existing case
+    # from the halted path is in scope -- a routine renewal charge has no
+    # case and is correctly ignored below.
+    if event_type == "subscription.charged":
+        sub_entity = event_payload.get("subscription", {}).get("entity", {})
+        charge_payment_entity = event_payload.get("payment", {}).get("entity", {})
+        sub_id = sub_entity.get("id", "")
+
+        matching_case = None
+        if sub_id:
+            all_cases = repo.list_cases(limit=100)
+            matching_case = next(
+                (c for c in all_cases if c.failure_event.subscription_id == sub_id),
+                None,
+            )
+
+        if matching_case:
+            amount_charged = charge_payment_entity.get(
+                "amount", matching_case.amount_paise
+            )
+            recovered_case = _orchestrator.process_payment_captured(
+                matching_case.failure_event.payment_id,
+                amount_charged,
+                gateway_capture_id=charge_payment_entity.get("id", "webhook_capture"),
+            )
+            response.status_code = status.HTTP_200_OK
+            return WebhookResponse(
+                status="processed" if recovered_case else "ignored",
+                event=event_type,
+                case_id=recovered_case.case_id if recovered_case else None,
+                action_taken="RECOVERED" if recovered_case else "NOOP",
+            )
+
+        response.status_code = status.HTTP_200_OK
+        return WebhookResponse(status="ignored", event=event_type, action_taken="NOOP")
+
+    # 4c. Handle Subscription Cancelled (mandate terminated: further retry or
+    # outreach on an open case is pointless, so escalate for manual review
+    # rather than continuing automated recovery on a dead mandate).
+    if event_type == "subscription.cancelled":
+        sub_entity = event_payload.get("subscription", {}).get("entity", {})
+        sub_id = sub_entity.get("id", "")
+
+        matching_case = None
+        if sub_id:
+            all_cases = repo.list_cases(limit=100)
+            matching_case = next(
+                (c for c in all_cases if c.failure_event.subscription_id == sub_id),
+                None,
+            )
+
+        if matching_case and matching_case.state.is_active:
+            transition_case(
+                matching_case,
+                to_state=RecoveryState.ESCALATED,
+                actor=AuditActor.GATEWAY_WEBHOOK,
+                reason=(
+                    f"Subscription {sub_id} mandate cancelled at gateway; "
+                    "automated retry and outreach are no longer viable. "
+                    "Escalated for manual review."
+                ),
+                event_name="subscription.cancelled",
+                escalation_reason=EscalationReason.HUMAN_JUDGMENT,
+                decision_inputs={"subscription_id": sub_id},
+            )
+            repo.save(matching_case)
+            response.status_code = status.HTTP_200_OK
+            return WebhookResponse(
+                status="processed",
+                event=event_type,
+                case_id=matching_case.case_id,
+                action_taken="ESCALATED",
+            )
+
+        if matching_case:
+            response.status_code = status.HTTP_200_OK
+            return WebhookResponse(
+                status="processed",
+                event=event_type,
+                case_id=matching_case.case_id,
+                action_taken="NOOP",
+            )
+
+        response.status_code = status.HTTP_200_OK
+        return WebhookResponse(status="ignored", event=event_type, action_taken="NOOP")
+
+    # 4d. Handle Subscription Completed (informational: full billing cycle
+    # finished successfully). Never forces a state change -- only logs, and
+    # no-ops entirely if the case is already terminal.
+    if event_type == "subscription.completed":
+        sub_entity = event_payload.get("subscription", {}).get("entity", {})
+        sub_id = sub_entity.get("id", "")
+
+        matching_case = None
+        if sub_id:
+            all_cases = repo.list_cases(limit=100)
+            matching_case = next(
+                (c for c in all_cases if c.failure_event.subscription_id == sub_id),
+                None,
+            )
+
+        if matching_case:
+            if matching_case.state.is_terminal:
+                response.status_code = status.HTTP_200_OK
+                return WebhookResponse(
+                    status="processed",
+                    event=event_type,
+                    case_id=matching_case.case_id,
+                    action_taken="NOOP",
+                )
+
+            already_logged = any(
+                entry.event_name == "subscription.completed"
+                and entry.decision_inputs.get("subscription_id") == sub_id
+                for entry in matching_case.audit_trail
+            )
+            if already_logged:
+                response.status_code = status.HTTP_200_OK
+                return WebhookResponse(
+                    status="processed",
+                    event=event_type,
+                    case_id=matching_case.case_id,
+                    action_taken="ALREADY_RECORDED",
+                )
+
+            now = datetime.now(UTC)
+            matching_case.audit_trail.append(
+                AuditEntry(
+                    case_id=matching_case.case_id,
+                    from_state=matching_case.state,
+                    to_state=matching_case.state,
+                    actor=AuditActor.GATEWAY_WEBHOOK,
+                    event_name="subscription.completed",
+                    notes=f"Subscription {sub_id} completed its full billing cycle.",
+                    decision_inputs={"subscription_id": sub_id},
+                    timestamp=now,
+                )
+            )
+            repo.save(matching_case)
+            response.status_code = status.HTTP_200_OK
+            return WebhookResponse(
+                status="processed",
+                event=event_type,
+                case_id=matching_case.case_id,
+                action_taken="COMPLETION_LOGGED",
+            )
+
+        response.status_code = status.HTTP_200_OK
+        return WebhookResponse(status="ignored", event=event_type, action_taken="NOOP")
+
     # 5. Handle Smart Collect Virtual Account Credited (Direct Bank Settlement Reconciliation)
     if event_type == "virtual_account.credited":
         payment_entity = event_payload.get("payment", {}).get("entity", {})
@@ -414,11 +748,10 @@ async def handle_razorpay_webhook(  # noqa: PLR0911, PLR0912, PLR0915
         notes = payment_entity.get("notes", {}) or va_entity.get("notes", {})
         case_id = notes.get("case_id")
 
-        matching_case: RecoveryCase | None = None
+        matching_case = None
         if case_id:
             matching_case = repo.get_by_id(case_id)
         if not matching_case and va_id:
-            # Fallback search by virtual_account_id
             all_cases = repo.list_cases(limit=100)
             matching_case = next(
                 (c for c in all_cases if c.virtual_account_id == va_id), None
@@ -516,6 +849,24 @@ async def handle_razorpay_webhook(  # noqa: PLR0911, PLR0912, PLR0915
                 )
 
             if event_type == "payment_link.partially_paid":
+                partial_payment_entity = event_payload.get("payment", {}).get(
+                    "entity", {}
+                )
+                partial_payment_id = partial_payment_entity.get("id")
+                already_recorded = partial_payment_id is not None and any(
+                    entry.decision_inputs.get("partial_payment_id")
+                    == partial_payment_id
+                    for entry in matching_case.audit_trail
+                )
+                if already_recorded:
+                    response.status_code = status.HTTP_200_OK
+                    return WebhookResponse(
+                        status="processed",
+                        event=event_type,
+                        case_id=matching_case.case_id,
+                        action_taken="ALREADY_RECORDED",
+                    )
+
                 amount_paid = link_entity.get("amount_paid", 0)
                 matching_case.recovered_amount_paise += amount_paid
                 matching_case.recompute_nrv()
@@ -530,6 +881,7 @@ async def handle_razorpay_webhook(  # noqa: PLR0911, PLR0912, PLR0915
                         decision_inputs={
                             "payment_link_id": link_id,
                             "amount_paise": amount_paid,
+                            "partial_payment_id": partial_payment_id,
                         },
                         timestamp=now,
                     )
@@ -544,6 +896,20 @@ async def handle_razorpay_webhook(  # noqa: PLR0911, PLR0912, PLR0915
                 )
 
             if event_type == "payment_link.expired":
+                already_logged = any(
+                    entry.event_name == "payment_link.expired"
+                    and entry.decision_inputs.get("payment_link_id") == link_id
+                    for entry in matching_case.audit_trail
+                )
+                if already_logged:
+                    response.status_code = status.HTTP_200_OK
+                    return WebhookResponse(
+                        status="processed",
+                        event=event_type,
+                        case_id=matching_case.case_id,
+                        action_taken="ALREADY_RECORDED",
+                    )
+
                 matching_case.audit_trail.append(
                     AuditEntry(
                         case_id=matching_case.case_id,
@@ -564,6 +930,413 @@ async def handle_razorpay_webhook(  # noqa: PLR0911, PLR0912, PLR0915
                     case_id=matching_case.case_id,
                     action_taken="EXPIRY_LOGGED",
                 )
+
+    # 7. Handle Invoice Paid / Partially Paid / Expired (B2B receivables chaser)
+    if event_type in (
+        "invoice.paid",
+        "invoice.partially_paid",
+        "invoice.expired",
+    ):
+        invoice_entity = event_payload.get("invoice", {}).get("entity", {})
+        invoice_id = invoice_entity.get("id", "")
+        notes = invoice_entity.get("notes", {})
+        case_id = notes.get("case_id")
+
+        matching_case = repo.get_by_id(case_id) if case_id else None
+        if not matching_case and invoice_id:
+            all_cases = repo.list_cases(limit=100)
+            matching_case = next(
+                (
+                    c
+                    for c in all_cases
+                    if (
+                        getattr(c, "invoice_id", None)
+                        or getattr(c.failure_event, "invoice_id", None)
+                    )
+                    == invoice_id
+                ),
+                None,
+            )
+
+        if matching_case:
+            now = datetime.now(UTC)
+            if event_type == "invoice.paid":
+                amount_paid = invoice_entity.get(
+                    "amount_paid", matching_case.amount_paise
+                )
+                if matching_case.state != RecoveryState.RECOVERED:
+                    matching_case.state = RecoveryState.RECOVERED
+                    matching_case.recovered_amount_paise = amount_paid
+                    matching_case.recompute_nrv()
+                    matching_case.audit_trail.append(
+                        AuditEntry(
+                            case_id=matching_case.case_id,
+                            from_state=RecoveryState.OUTREACH_PENDING,
+                            to_state=RecoveryState.RECOVERED,
+                            actor=AuditActor.GATEWAY_WEBHOOK,
+                            event_name="invoice.paid_reconciled",
+                            notes=f"Reconciled invoice {invoice_id} payment of {amount_paid} paise",
+                            decision_inputs={
+                                "invoice_id": invoice_id,
+                                "amount_paise": amount_paid,
+                            },
+                            timestamp=now,
+                        )
+                    )
+                    repo.save(matching_case)
+                response.status_code = status.HTTP_200_OK
+                return WebhookResponse(
+                    status="processed",
+                    event=event_type,
+                    case_id=matching_case.case_id,
+                    action_taken="RECOVERED",
+                )
+
+            if event_type == "invoice.partially_paid":
+                partial_payment_entity = event_payload.get("payment", {}).get(
+                    "entity", {}
+                )
+                partial_payment_id = partial_payment_entity.get("id")
+                already_recorded = partial_payment_id is not None and any(
+                    entry.decision_inputs.get("partial_payment_id")
+                    == partial_payment_id
+                    for entry in matching_case.audit_trail
+                )
+                if already_recorded:
+                    response.status_code = status.HTTP_200_OK
+                    return WebhookResponse(
+                        status="processed",
+                        event=event_type,
+                        case_id=matching_case.case_id,
+                        action_taken="ALREADY_RECORDED",
+                    )
+
+                amount_paid = invoice_entity.get("amount_paid", 0)
+                matching_case.recovered_amount_paise += amount_paid
+                matching_case.recompute_nrv()
+                matching_case.audit_trail.append(
+                    AuditEntry(
+                        case_id=matching_case.case_id,
+                        from_state=matching_case.state,
+                        to_state=matching_case.state,
+                        actor=AuditActor.GATEWAY_WEBHOOK,
+                        event_name="invoice.partially_paid",
+                        notes=f"Recorded partial payment of {amount_paid} paise on invoice {invoice_id}",
+                        decision_inputs={
+                            "invoice_id": invoice_id,
+                            "amount_paise": amount_paid,
+                            "partial_payment_id": partial_payment_id,
+                        },
+                        timestamp=now,
+                    )
+                )
+                repo.save(matching_case)
+                response.status_code = status.HTTP_200_OK
+                return WebhookResponse(
+                    status="processed",
+                    event=event_type,
+                    case_id=matching_case.case_id,
+                    action_taken="PARTIAL_PAYMENT_RECORDED",
+                )
+
+            if event_type == "invoice.expired":
+                already_logged = any(
+                    entry.event_name == "invoice.expired"
+                    and entry.decision_inputs.get("invoice_id") == invoice_id
+                    for entry in matching_case.audit_trail
+                )
+                if already_logged:
+                    response.status_code = status.HTTP_200_OK
+                    return WebhookResponse(
+                        status="processed",
+                        event=event_type,
+                        case_id=matching_case.case_id,
+                        action_taken="ALREADY_RECORDED",
+                    )
+
+                matching_case.audit_trail.append(
+                    AuditEntry(
+                        case_id=matching_case.case_id,
+                        from_state=matching_case.state,
+                        to_state=matching_case.state,
+                        actor=AuditActor.GATEWAY_WEBHOOK,
+                        event_name="invoice.expired",
+                        notes=f"Invoice {invoice_id} expired without full settlement",
+                        decision_inputs={"invoice_id": invoice_id},
+                        timestamp=now,
+                    )
+                )
+                repo.save(matching_case)
+                response.status_code = status.HTTP_200_OK
+                return WebhookResponse(
+                    status="processed",
+                    event=event_type,
+                    case_id=matching_case.case_id,
+                    action_taken="EXPIRY_LOGGED",
+                )
+
+    # 7. Handle Refund events. A refund always references the original payment,
+    # never a case directly, so the lookup is by payment_id (same pattern as
+    # payment.captured above).
+    if event_type in (
+        "refund.created",
+        "refund.processed",
+        "refund.failed",
+        "refund.speed_changed",
+    ):
+        payment_id = _extract_refund_payment_id(event_payload)
+        refund_entity = event_payload.get("refund", {}).get("entity", {})
+        refund_id = refund_entity.get("id", "")
+        refund_amount = refund_entity.get("amount", 0)
+        refund_speed = refund_entity.get("speed_processed") or refund_entity.get(
+            "speed_requested"
+        )
+
+        matching_case = repo.get_by_payment_id(payment_id) if payment_id else None
+        if not matching_case:
+            record_global_audit(
+                event_name=event_type,
+                actor=AuditActor.GATEWAY_WEBHOOK,
+                reason=f"Refund event {event_type} for refund {refund_id} has no matching case for payment {payment_id}",
+                decision_inputs={
+                    "payment_id": payment_id,
+                    "refund_id": refund_id,
+                    "amount_paise": refund_amount,
+                },
+            )
+            response.status_code = status.HTTP_200_OK
+            return WebhookResponse(
+                status="processed", event=event_type, action_taken="NO_MATCHING_CASE"
+            )
+
+        if event_type == "refund.processed":
+            if _already_logged_by_id(
+                matching_case, "refund.processed", "refund_id", refund_id
+            ):
+                response.status_code = status.HTTP_200_OK
+                return WebhookResponse(
+                    status="processed",
+                    event=event_type,
+                    case_id=matching_case.case_id,
+                    action_taken="ALREADY_RECORDED",
+                )
+
+            _reduce_recovered_amount(
+                matching_case,
+                reduction_paise=refund_amount,
+                event_name="refund.processed",
+                notes=f"Refund {refund_id} of {refund_amount} paise processed on payment {payment_id}; recovered amount adjusted.",
+                decision_inputs={
+                    "payment_id": payment_id,
+                    "refund_id": refund_id,
+                },
+            )
+            repo.save(matching_case)
+            response.status_code = status.HTTP_200_OK
+            return WebhookResponse(
+                status="processed",
+                event=event_type,
+                case_id=matching_case.case_id,
+                action_taken="RECOVERED_AMOUNT_ADJUSTED",
+            )
+
+        if event_type == "refund.failed":
+            if _already_logged_by_id(
+                matching_case, "refund.failed", "refund_id", refund_id
+            ):
+                response.status_code = status.HTTP_200_OK
+                return WebhookResponse(
+                    status="processed",
+                    event=event_type,
+                    case_id=matching_case.case_id,
+                    action_taken="ALREADY_RECORDED",
+                )
+
+            _log_informational(
+                matching_case,
+                event_name="refund.failed",
+                notes=f"Refund {refund_id} of {refund_amount} paise failed on payment {payment_id}; no funds moved.",
+                decision_inputs={
+                    "payment_id": payment_id,
+                    "refund_id": refund_id,
+                    "amount_paise": refund_amount,
+                },
+            )
+            repo.save(matching_case)
+            response.status_code = status.HTTP_200_OK
+            return WebhookResponse(
+                status="processed",
+                event=event_type,
+                case_id=matching_case.case_id,
+                action_taken="REFUND_FAILURE_LOGGED",
+            )
+
+        # refund.created, refund.speed_changed: informational only.
+        if _already_logged_by_id(matching_case, event_type, "refund_id", refund_id):
+            response.status_code = status.HTTP_200_OK
+            return WebhookResponse(
+                status="processed",
+                event=event_type,
+                case_id=matching_case.case_id,
+                action_taken="ALREADY_RECORDED",
+            )
+
+        _log_informational(
+            matching_case,
+            event_name=event_type,
+            notes=f"Refund {refund_id} on payment {payment_id}: {event_type}"
+            + (f" (speed={refund_speed})" if refund_speed else ""),
+            decision_inputs={
+                "payment_id": payment_id,
+                "refund_id": refund_id,
+                "amount_paise": refund_amount,
+                "speed": refund_speed,
+            },
+        )
+        repo.save(matching_case)
+        response.status_code = status.HTTP_200_OK
+        return WebhookResponse(
+            status="processed",
+            event=event_type,
+            case_id=matching_case.case_id,
+            action_taken="LOGGED",
+        )
+
+    # 8. Handle Dispute events. Disputes reference the disputed payment, and a
+    # dispute can arrive regardless of whether a case exists or what state it
+    # is in.
+    if event_type in (
+        "payment.dispute.created",
+        "payment.dispute.won",
+        "payment.dispute.lost",
+        "payment.dispute.closed",
+        "payment.dispute.under_review",
+        "payment.dispute.action_required",
+    ):
+        payment_id = _extract_dispute_payment_id(event_payload)
+        dispute_entity = event_payload.get("dispute", {}).get("entity", {})
+        dispute_id = dispute_entity.get("id", "")
+        dispute_amount = dispute_entity.get("amount", 0)
+        dispute_reason = dispute_entity.get("reason_code") or dispute_entity.get(
+            "reason"
+        )
+
+        matching_case = repo.get_by_payment_id(payment_id) if payment_id else None
+        if not matching_case:
+            record_global_audit(
+                event_name=event_type,
+                actor=AuditActor.GATEWAY_WEBHOOK,
+                reason=f"Dispute event {event_type} for dispute {dispute_id} has no matching case for payment {payment_id}",
+                decision_inputs={
+                    "payment_id": payment_id,
+                    "dispute_id": dispute_id,
+                    "amount_paise": dispute_amount,
+                    "reason": dispute_reason,
+                },
+            )
+            response.status_code = status.HTTP_200_OK
+            return WebhookResponse(
+                status="processed", event=event_type, action_taken="NO_MATCHING_CASE"
+            )
+
+        if _already_logged_by_id(matching_case, event_type, "dispute_id", dispute_id):
+            response.status_code = status.HTTP_200_OK
+            return WebhookResponse(
+                status="processed",
+                event=event_type,
+                case_id=matching_case.case_id,
+                action_taken="ALREADY_RECORDED",
+            )
+
+        if event_type in (
+            "payment.dispute.created",
+            "payment.dispute.under_review",
+            "payment.dispute.action_required",
+        ):
+            _escalate_case(
+                matching_case,
+                event_name=event_type,
+                reason=(
+                    f"Dispute {dispute_id} ({event_type}) of {dispute_amount} paise "
+                    f"on payment {payment_id}"
+                    + (f", reason: {dispute_reason}" if dispute_reason else "")
+                    + "; escalated for human review."
+                ),
+                decision_inputs={
+                    "payment_id": payment_id,
+                    "dispute_id": dispute_id,
+                    "amount_paise": dispute_amount,
+                    "reason": dispute_reason,
+                },
+            )
+            repo.save(matching_case)
+            response.status_code = status.HTTP_200_OK
+            return WebhookResponse(
+                status="processed",
+                event=event_type,
+                case_id=matching_case.case_id,
+                action_taken="ESCALATED",
+            )
+
+        if event_type == "payment.dispute.won":
+            _log_informational(
+                matching_case,
+                event_name=event_type,
+                notes=f"Dispute {dispute_id} of {dispute_amount} paise on payment {payment_id} resolved in merchant's favor; recovered amount unchanged.",
+                decision_inputs={
+                    "payment_id": payment_id,
+                    "dispute_id": dispute_id,
+                    "amount_paise": dispute_amount,
+                },
+            )
+            repo.save(matching_case)
+            response.status_code = status.HTTP_200_OK
+            return WebhookResponse(
+                status="processed",
+                event=event_type,
+                case_id=matching_case.case_id,
+                action_taken="DISPUTE_WON_LOGGED",
+            )
+
+        if event_type == "payment.dispute.lost":
+            _reduce_recovered_amount(
+                matching_case,
+                reduction_paise=dispute_amount,
+                event_name="payment.dispute.lost",
+                notes=f"Dispute {dispute_id} of {dispute_amount} paise on payment {payment_id} lost; recovered amount adjusted.",
+                decision_inputs={
+                    "payment_id": payment_id,
+                    "dispute_id": dispute_id,
+                },
+            )
+            repo.save(matching_case)
+            response.status_code = status.HTTP_200_OK
+            return WebhookResponse(
+                status="processed",
+                event=event_type,
+                case_id=matching_case.case_id,
+                action_taken="RECOVERED_AMOUNT_ADJUSTED",
+            )
+
+        # payment.dispute.closed: informational only.
+        _log_informational(
+            matching_case,
+            event_name=event_type,
+            notes=f"Dispute {dispute_id} on payment {payment_id} closed.",
+            decision_inputs={
+                "payment_id": payment_id,
+                "dispute_id": dispute_id,
+                "amount_paise": dispute_amount,
+            },
+        )
+        repo.save(matching_case)
+        response.status_code = status.HTTP_200_OK
+        return WebhookResponse(
+            status="processed",
+            event=event_type,
+            case_id=matching_case.case_id,
+            action_taken="LOGGED",
+        )
 
     response.status_code = status.HTTP_200_OK
     return WebhookResponse(

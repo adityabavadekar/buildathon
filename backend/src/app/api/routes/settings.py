@@ -24,6 +24,7 @@ from app.core.logging import get_logger
 from app.integrations.razorpay_oauth import active_connection
 from app.llm.client import configured_providers
 from app.llm.settings_store import (
+    MANDATORY_PROVIDER_NAME,
     LLMSettingsState,
     ProviderSetting,
     get_llm_settings_store,
@@ -46,8 +47,8 @@ class SystemSettingsResponse(BaseModel):
     razorpay_account_name: str | None
     razorpay_account_type: str | None
     razorpay_account_status: str | None
-    primary_llm_provider: str
-    active_llm_model: str
+    primary_llm_provider: str | None
+    active_llm_model: str | None
     configured_llm_providers: list[str]
     deterministic_fallback_active: bool
 
@@ -156,23 +157,19 @@ async def get_system_settings(request: Request) -> SystemSettingsResponse:
     state = store.get_state()
     providers = configured_providers()
 
+    # deterministic_rules is a fallback state, not a model: excluded here so an
+    # unconfigured LLM resolves to None instead of its placeholder model name.
     active_provider_obj = next(
         (
             p
             for p in sorted(state.providers, key=lambda x: x.priority)
-            if p.enabled and p.has_api_key
+            if p.enabled and p.has_api_key and p.name != MANDATORY_PROVIDER_NAME
         ),
-        state.providers[-1] if state.providers else None,
+        None,
     )
 
-    primary_provider = (
-        active_provider_obj.name if active_provider_obj else "deterministic_rules"
-    )
-    active_model = (
-        active_provider_obj.active_model
-        if active_provider_obj
-        else "NPCI & Razorpay Rule Classifier"
-    )
+    primary_provider = active_provider_obj.name if active_provider_obj else None
+    active_model = active_provider_obj.active_model if active_provider_obj else None
 
     base_url = str(request.base_url).rstrip("/")
     webhook_url = f"{base_url}/api/webhooks/razorpay"

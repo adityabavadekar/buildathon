@@ -138,7 +138,7 @@ async def test_crash_recovery_reclaim_processing_jobs() -> None:
             case_id="case_crash_1",
             job_type="INGESTION_DIAGNOSIS",
             due_at=now - timedelta(seconds=120),
-            status=JobStatus.PROCESSING.value,
+            status=JobStatus.PROCESSING,
             idempotency_key="idem_crash_1",
             updated_at=now - timedelta(seconds=120),
         )

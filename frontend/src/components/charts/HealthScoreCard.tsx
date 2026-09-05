@@ -1,7 +1,7 @@
 'use client'
 
 import React from 'react'
-import { Award, ShieldCheck, Zap } from 'lucide-react'
+import { Award, ShieldCheck } from 'lucide-react'
 import {
   Card,
   CardContent,
@@ -12,11 +12,13 @@ import {
 
 interface HealthScoreCardProps {
   healthScore: number
+  healthScoreAvailable: boolean
   returnOnSpend: number
 }
 
 export function HealthScoreCard({
   healthScore,
+  healthScoreAvailable,
   returnOnSpend,
 }: HealthScoreCardProps) {
   return (
@@ -30,7 +32,9 @@ export function HealthScoreCard({
             </CardTitle>
           </div>
           <span className="shrink-0 rounded-control bg-recovered px-3 py-1 text-sm font-bold text-white shadow-xs">
-            {healthScore.toString()} / 100 Score
+            {healthScoreAvailable
+              ? `${healthScore.toString()} / 100 Score`
+              : 'No data yet'}
           </span>
         </div>
         <CardDescription className="mt-1 text-xs leading-normal text-ink-muted">
@@ -39,28 +43,11 @@ export function HealthScoreCard({
       </CardHeader>
 
       <CardContent className="space-y-3.5 p-5 pt-0">
-        {/* Health Meter Box */}
-        <div className="rounded-control border border-border bg-surface p-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="rounded-xs bg-accent/15 p-1.5 text-accent">
-                <Zap className="h-4 w-4" />
-              </div>
-              <span className="text-xs font-semibold text-ink">
-                Health Meter
-              </span>
-            </div>
-            <span className="text-2xl font-bold text-recovered">
-              {healthScore.toString()}%
-            </span>
-          </div>
-          <div className="mt-2.5 h-2.5 w-full overflow-hidden rounded-full bg-surface-sunken">
-            <div
-              className="h-full bg-recovered transition-all duration-500"
-              style={{ width: `${healthScore.toString()}%` }}
-            />
-          </div>
-        </div>
+        {!healthScoreAvailable && (
+          <p className="text-xs leading-tight text-ink-muted">
+            No treatment cases have resolved yet.
+          </p>
+        )}
 
         {/* Return on Spend Box */}
         <div className="rounded-control border border-border bg-surface p-4">

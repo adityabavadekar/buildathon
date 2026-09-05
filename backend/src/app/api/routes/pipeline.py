@@ -11,12 +11,18 @@ from uuid import uuid4
 
 from fastapi import APIRouter, Query, Response, status
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from app.audit.models import AuditEntry, RecoveryCase, ScheduledJob
 from app.audit.repository import get_case_repository
-from app.core.constants import DEFAULT_CURRENCY
-from app.core.enums import AuditActor, ExperimentArm, PaymentRail, RecoveryState
+from app.core.constants import DEFAULT_CURRENCY, MAX_FLEET_EVENTS_PER_MINUTE
+from app.core.enums import (
+    AuditActor,
+    ExperimentArm,
+    JobStatus,
+    PaymentRail,
+    RecoveryState,
+)
 from app.core.logging import get_logger
 from app.detection.models import RawFailureEvent
 from app.simulation.fleet import FleetSimulator
@@ -31,7 +37,7 @@ class SingleEventIngestRequest(BaseModel):
     payment_id: str = Field(default_factory=lambda: f"pay_demo_{uuid4().hex[:8]}")
     customer_id: str = "cust_demo_manual"
     amount_paise: int = Field(default=49900, gt=0)
-    currency: str = DEFAULT_CURRENCY
+    currency: str = Field(default=DEFAULT_CURRENCY, pattern=r"^[A-Z]{3}$")
     payment_rail: PaymentRail = PaymentRail.UPI
     error_code: str = "U30"
     error_description: str = "PSP bank timeout during collect request"
@@ -44,12 +50,19 @@ class SingleEventIngestRequest(BaseModel):
 class FleetStartRequest(BaseModel):
     """Configuration payload for continuous fleet simulation."""
 
-    events_per_minute: int = Field(default=20, ge=1, le=300)
-    rails: list[str] | None = None
+    events_per_minute: int = Field(default=20, ge=1, le=MAX_FLEET_EVENTS_PER_MINUTE)
+    rails: list[PaymentRail] | None = None
     min_amount_paise: int = Field(default=10000, ge=100)
     max_amount_paise: int = Field(default=50000000, ge=100)
     use_llm: bool = True
     experiment_id: str | None = None
+
+    @model_validator(mode="after")
+    def _check_amount_range(self) -> FleetStartRequest:
+        if self.min_amount_paise > self.max_amount_paise:
+            msg = "min_amount_paise must not exceed max_amount_paise"
+            raise ValueError(msg)
+        return self
 
 
 @router.get("/overview", summary="Get Pipeline Health & Queue Overview")
@@ -165,7 +178,7 @@ async def ingest_single_event(
         case_id=case_id,
         job_type="INGESTION_DIAGNOSIS",
         due_at=now,
-        status="QUEUED",
+        status=JobStatus.QUEUED,
         idempotency_key=f"ingest_{req.payment_id}",
         payload={"event_id": raw_event.event_id, "payment_id": req.payment_id},
         created_at=now,
@@ -220,7 +233,7 @@ async def start_fleet_simulation(req: FleetStartRequest) -> dict[str, Any]:
     simulator = FleetSimulator.get_instance()
     return simulator.start(
         events_per_minute=req.events_per_minute,
-        rails=req.rails,
+        rails=[r.value for r in req.rails] if req.rails else None,
         min_amount_paise=req.min_amount_paise,
         max_amount_paise=req.max_amount_paise,
         use_llm=req.use_llm,

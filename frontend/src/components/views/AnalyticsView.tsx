@@ -134,7 +134,7 @@ export function AnalyticsView({ analytics, loading }: AnalyticsViewProps) {
           <p className="metric-tile-label text-recovered">
             Net recovered value
           </p>
-          <p className="metric-tile-value money text-recovered">
+          <p className="metric-tile-value money text-left text-recovered">
             {formatINR(nrv)}
           </p>
           <p className="metric-tile-hint">
@@ -159,7 +159,9 @@ export function AnalyticsView({ analytics, loading }: AnalyticsViewProps) {
         </div>
         <div className="metric-tile">
           <p className="metric-tile-label">Revenue at risk</p>
-          <p className="metric-tile-value money">{formatINR(atRisk)}</p>
+          <p className="metric-tile-value money text-left">
+            {formatINR(atRisk)}
+          </p>
           <p className="metric-tile-hint">
             {formatINR(unrecovered)} still unrecovered.
           </p>
@@ -235,17 +237,19 @@ export function AnalyticsView({ analytics, loading }: AnalyticsViewProps) {
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <div className="metric-tile">
               <p className="metric-tile-label">Gross at risk</p>
-              <p className="metric-tile-value money">{formatINR(atRisk)}</p>
+              <p className="metric-tile-value money text-left">
+                {formatINR(atRisk)}
+              </p>
             </div>
             <div className="metric-tile border-recovered/30 bg-recovered-subtle/20">
               <p className="metric-tile-label text-recovered">Gross captured</p>
-              <p className="metric-tile-value money text-recovered">
+              <p className="metric-tile-value money text-left text-recovered">
                 {formatINR(recovered)}
               </p>
             </div>
             <div className="metric-tile border-failed/30 bg-failed-subtle/20">
               <p className="metric-tile-label text-failed">Total cost</p>
-              <p className="metric-tile-value money text-failed">
+              <p className="metric-tile-value money text-left text-failed">
                 -{formatINR(totalCost)}
               </p>
             </div>
@@ -341,6 +345,7 @@ export function AnalyticsView({ analytics, loading }: AnalyticsViewProps) {
 
       <HealthScoreCard
         healthScore={analytics.health_score}
+        healthScoreAvailable={analytics.health_score_available}
         returnOnSpend={analytics.return_on_recovery_spend}
       />
 

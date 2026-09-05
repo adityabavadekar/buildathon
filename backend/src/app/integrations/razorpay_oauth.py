@@ -59,7 +59,13 @@ def _client_credentials() -> tuple[str, str]:
 
 
 def callback_url() -> str:
-    """Return the redirect URI, which must be whitelisted on the partner client."""
+    """Return the redirect URI, which must be whitelisted on the partner client.
+
+    One-time setup: whoever registers the application on the Razorpay Partner
+    Dashboard whitelists this exact URL there. Merchants using this dashboard
+    never need to see or configure it, so it is deliberately not exposed in
+    the operator-facing settings UI.
+    """
     base = get_settings().app_public_base_url.rstrip("/")
     return f"{base}/api/integrations/oauth/callback"
 

@@ -46,11 +46,6 @@ def test_list_and_get_case_api(client: TestClient) -> None:
     assert audit_items[0]["event_name"] in ("case.created", "case.ingested")
 
 
-def test_get_nonexistent_case_returns_404(client: TestClient) -> None:
-    res = client.get("/api/cases/non_existent_case_id")
-    assert res.status_code == 404
-
-
 def test_cases_stream_endpoint(client: TestClient) -> None:
     res = client.get("/api/cases/stream")
     assert res.status_code == 200

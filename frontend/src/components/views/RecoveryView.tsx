@@ -180,6 +180,7 @@ export function RecoveryView({
           break
         case 'ESCALATED':
           params.state = 'ESCALATED'
+          params.escalation_reason = 'HUMAN_JUDGMENT'
           break
         default:
           break
@@ -269,7 +270,7 @@ export function RecoveryView({
     }
   }
 
-  const maxTouches = policy?.max_touches ?? 3
+  const maxAttempts = policy?.max_attempts ?? 3
   const totalPages = Math.ceil(totalCount / pageSize)
 
   return (
@@ -397,7 +398,7 @@ export function RecoveryView({
                   <option value="created_at">Created Time</option>
                   <option value="amount_paise">Amount</option>
                   <option value="recovered_amount_paise">Recovered NRV</option>
-                  <option value="touches_count">Touch Count</option>
+                  <option value="attempts_count">Attempt Count</option>
                 </select>
                 <select
                   value={sortDir}
@@ -613,7 +614,7 @@ export function RecoveryView({
                 <TableHead className="text-right">At-Risk Amount</TableHead>
                 <TableHead className="text-right">Net Recovered</TableHead>
                 <TableHead>Lifecycle Stage</TableHead>
-                <TableHead className="text-center">Touches</TableHead>
+                <TableHead className="text-center">Attempts</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -718,16 +719,16 @@ export function RecoveryView({
                         </Badge>
                       </TableCell>
 
-                      {/* Touches */}
+                      {/* Attempts */}
                       <TableCell className="text-center text-xs text-ink">
                         <span
                           className={
-                            c.touches_count >= maxTouches
+                            c.attempts_count >= maxAttempts
                               ? 'font-bold text-failed'
                               : 'text-ink-muted'
                           }
                         >
-                          {c.touches_count} / {maxTouches}
+                          Attempt {c.attempts_count} of {maxAttempts}
                         </span>
                       </TableCell>
 
@@ -741,7 +742,7 @@ export function RecoveryView({
                             onClick={(e) => {
                               void handleApprove(e, c)
                             }}
-                            className="h-7 gap-1 bg-accent text-xs text-white hover:bg-accent/90"
+                            className="h-auto gap-1 bg-accent py-2 text-xs text-white hover:bg-accent/90"
                           >
                             <UserCheck className="h-3 w-3" />
                             <span>

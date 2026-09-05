@@ -2,10 +2,12 @@
 
 import React from 'react'
 import { AlertTriangle, BrainCircuit, CheckCircle2, Send } from 'lucide-react'
-import type { RecoveryCase } from '@/lib/api'
+import type { RecoveryCase, SystemStatusResponse } from '@/lib/api'
+import { llmProviderLabel } from '@/lib/constants'
 
 interface RecoveryLifecycleStripProps {
   cases: RecoveryCase[]
+  status: SystemStatusResponse | null
   onStepClick?: (stepIndex: number) => void
 }
 
@@ -20,8 +22,15 @@ function formatINR(paise: number): string {
 
 export function RecoveryLifecycleStrip({
   cases,
+  status,
   onStepClick,
 }: RecoveryLifecycleStripProps) {
+  const diagnosisEngineLabel = status?.llm_engine.deterministic_fallback_active
+    ? 'Deterministic Rules'
+    : `${llmProviderLabel(status?.llm_engine.active_provider ?? null)} + Rules`
+
+  const holdoutPct = status?.policy_enforcement.holdout_ratio_pct
+
   const ingestCount = cases.filter(
     (c) => c.state === 'FAILED' || c.state === 'ANALYSIS_QUEUED',
   ).length
@@ -58,7 +67,7 @@ export function RecoveryLifecycleStrip({
       description:
         'AI planner & deterministic rules classify failure into 1 of 6 bounded categories.',
       icon: BrainCircuit,
-      metric: 'LLM + NPCI Rules',
+      metric: diagnosisEngineLabel,
       accentColor: 'text-accent',
     },
     {
@@ -66,7 +75,7 @@ export function RecoveryLifecycleStrip({
       title: 'Intervene',
       subtitle: 'Policy Gate & Execution',
       description:
-        'Touch limits & margin checked, then smart link, debit retry, or WhatsApp sent.',
+        'Attempt limits & margin checked, then smart link, debit retry, or WhatsApp sent.',
       icon: Send,
       metric: `${activeInterventionCount.toString()} Active`,
       accentColor: 'text-pending',
@@ -75,8 +84,9 @@ export function RecoveryLifecycleStrip({
       stepNumber: '04',
       title: 'Recover',
       subtitle: 'Counterfactual Proof',
-      description:
-        'Payment captured on gateway; recovery measured against 10% uncontacted holdout arm.',
+      description: `Payment captured on gateway; recovery measured against ${
+        holdoutPct?.toString() ?? '--'
+      }% uncontacted holdout arm.`,
       icon: CheckCircle2,
       metric: `${recoveredCount.toString()} Won (${formatINR(totalNrvPaise)})`,
       accentColor: 'text-recovered',
@@ -96,7 +106,7 @@ export function RecoveryLifecycleStrip({
           </span>
         </div>
         <span className="text-[10px] text-ink-subtle uppercase">
-          10% Holdout Arm Enforced
+          {holdoutPct ?? '--'}% Holdout Arm Enforced
         </span>
       </div>
 

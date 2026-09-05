@@ -41,3 +41,10 @@ export function formatCustomerName(customerId: string): string {
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(' ')
 }
+
+/** Replace every bare "<integer> paise" occurrence in free text with formatted INR. */
+export function inlinePaiseToINR(text: string): string {
+  return text.replace(/(\d+)\s*paise/g, (_match, digits: string) =>
+    formatINR(Number(digits), { maximumFractionDigits: 2 }),
+  )
+}

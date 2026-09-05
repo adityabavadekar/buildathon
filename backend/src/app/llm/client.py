@@ -15,7 +15,7 @@ from app.audit.models import ModelTelemetryEntry
 from app.audit.repository import get_case_repository
 from app.core.config import get_settings
 from app.core.logging import get_logger
-from app.llm.settings_store import get_llm_settings_store
+from app.llm.settings_store import MANDATORY_PROVIDER_NAME, get_llm_settings_store
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -122,9 +122,9 @@ async def complete(  # noqa: PLR0912, PLR0915
     state = store.get_state()
     repo = get_case_repository()
 
-    # Sort enabled providers by priority
+    # Providers, ordered by configured priority.
     active_providers = sorted(
-        [p for p in state.providers if p.enabled and p.name != "deterministic_rules"],
+        [p for p in state.providers if p.enabled and p.name != MANDATORY_PROVIDER_NAME],
         key=lambda x: x.priority,
     )
 

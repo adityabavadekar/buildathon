@@ -27,7 +27,6 @@ import { OverviewView } from '@/components/views/OverviewView'
 import { PipelineView } from '@/components/views/PipelineView'
 import { PoliciesView } from '@/components/views/PoliciesView'
 import { RecoveryView } from '@/components/views/RecoveryView'
-import { SettingsView } from '@/components/views/SettingsView'
 import { StatusView } from '@/components/views/StatusView'
 import {
   NAV_SECTION_LABELS,
@@ -85,9 +84,11 @@ function Dashboard() {
   const [isOffline, setIsOffline] = useState<boolean>(false)
   const [connectionError, setConnectionError] = useState<string | null>(null)
 
+  // Shared across the sidebar/topnav and most views regardless of which one is
+  // active, so this stays a single top-level poll rather than per-view.
   const fetchData = useCallback(async () => {
     try {
-      const [hRes, cRes, aRes, pRes, sRes, statusRes] = await Promise.all([
+      const [hRes, cRes, aRes, statusRes] = await Promise.all([
         getHealth(),
         listCases({ limit: 100 }).catch(() => ({
           total: 0,
@@ -96,16 +97,12 @@ function Dashboard() {
           items: [],
         })),
         getAnalytics().catch(() => null),
-        getPolicies().catch(() => null),
-        getSettings().catch(() => null),
         getSystemStatus().catch(() => null),
       ])
 
       setHealth(hRes)
       setCases(cRes.items)
       setAnalytics(aRes)
-      setPolicies(pRes)
-      setSettings(sRes)
       setSystemStatus(statusRes)
       setLastRefreshedAt(new Date())
       setIsOffline(false)
@@ -119,6 +116,23 @@ function Dashboard() {
       setHealthLoading(false)
       setCasesLoading(false)
     }
+  }, [])
+
+  // Policies and settings are only ever read by their own views (Policies,
+  // Settings, Integrations), so unlike fetchData above they poll only while
+  // one of those views is actually active instead of on every page.
+  const policiesOrSettingsActive =
+    activeSection === 'policies' ||
+    activeSection === 'settings-policies' ||
+    activeSection === 'settings-integrations'
+
+  const fetchPoliciesAndSettings = useCallback(async () => {
+    const [pRes, sRes] = await Promise.all([
+      getPolicies().catch(() => null),
+      getSettings().catch(() => null),
+    ])
+    setPolicies(pRes)
+    setSettings(sRes)
   }, [])
 
   useEffect(() => {
@@ -155,6 +169,24 @@ function Dashboard() {
       window.removeEventListener('offline', handleOffline)
     }
   }, [fetchData])
+
+  useEffect(() => {
+    if (!policiesOrSettingsActive) {
+      return
+    }
+    let active = true
+    const initTimer = setTimeout(() => {
+      if (active) void fetchPoliciesAndSettings()
+    }, 0)
+    const interval = setInterval(() => {
+      if (active) void fetchPoliciesAndSettings()
+    }, 10000)
+    return () => {
+      active = false
+      clearTimeout(initTimer)
+      clearInterval(interval)
+    }
+  }, [policiesOrSettingsActive, fetchPoliciesAndSettings])
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -211,6 +243,10 @@ function Dashboard() {
           }}
           casesCount={cases.length}
           escalatedCount={escalatedCount}
+          environment={systemStatus?.environment ?? null}
+          razorpayKeyId={settings?.razorpay_key_id ?? null}
+          razorpayMode={settings?.razorpay_mode ?? null}
+          razorpayAccountName={settings?.razorpay_account_name ?? null}
         />
 
         <div className="flex flex-1 flex-col overflow-hidden">
@@ -234,6 +270,7 @@ function Dashboard() {
                 <OverviewView
                   cases={cases}
                   analytics={analytics}
+                  status={systemStatus}
                   loading={casesLoading}
                   onSelectCase={(c) => {
                     setSelectedCase(c)
@@ -247,7 +284,9 @@ function Dashboard() {
                 />
               )}
 
-              {activeSection === 'pipeline' && <PipelineView />}
+              {activeSection === 'pipeline' && (
+                <PipelineView status={systemStatus} />
+              )}
 
               {(activeSection === 'transactions' ||
                 activeSection === 'recovery') && (
@@ -319,17 +358,12 @@ function Dashboard() {
                 />
               )}
 
-              {(activeSection === 'settings' ||
-                activeSection === 'settings-general') && (
-                <SettingsView settings={settings} loading={casesLoading} />
-              )}
-
               {activeSection === 'settings-integrations' && (
                 <IntegrationsView
                   settings={settings}
                   loading={casesLoading}
                   onRefresh={() => {
-                    void fetchData()
+                    void fetchPoliciesAndSettings()
                   }}
                 />
               )}

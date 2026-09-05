@@ -35,39 +35,41 @@ interface PoliciesViewProps {
 }
 
 interface EditablePolicies {
-  max_touches: number
+  max_attempts: number
   min_cooldown_hours: number
   max_discount_bps: number
   holdout_percentage: number
-  require_human_above_paise: number
+  // Edited in rupees in this form; converted to/from paise only at the
+  // fromResponse/save boundary, since the API contract stays paise-integer.
+  require_human_above_rupees: number
   allowed_channels: OutreachChannelValue[]
 }
 
 const RULE_TO_FIELD: Record<string, EditablePolicyField> = {
-  max_touches: 'max_touches',
+  max_attempts: 'max_attempts',
   cooldown: 'min_cooldown_hours',
   discount_cap: 'max_discount_bps',
   holdout_arm: 'holdout_percentage',
-  high_value_threshold: 'require_human_above_paise',
+  high_value_threshold: 'require_human_above_rupees',
 }
 
 const FIELD_UNITS: Record<EditablePolicyField, string> = {
-  max_touches: 'touches',
+  max_attempts: 'attempts',
   min_cooldown_hours: 'hours',
   max_discount_bps: 'bps',
   holdout_percentage: '%',
-  require_human_above_paise: 'paise',
+  require_human_above_rupees: 'INR',
 }
 
 type PolicyRuleDetailWithField = PolicyRuleDetail & { id: EditablePolicyField }
 
 function fromResponse(policies: PolicyResponse): EditablePolicies {
   return {
-    max_touches: policies.max_touches,
+    max_attempts: policies.max_attempts,
     min_cooldown_hours: policies.min_cooldown_hours,
     max_discount_bps: policies.max_discount_bps,
     holdout_percentage: policies.holdout_percentage,
-    require_human_above_paise: policies.require_human_above_paise,
+    require_human_above_rupees: policies.require_human_above_paise / 100,
     allowed_channels: policies.allowed_channels.filter(
       (channel): channel is OutreachChannelValue =>
         (OUTREACH_CHANNELS as readonly string[]).includes(channel),
@@ -77,7 +79,7 @@ function fromResponse(policies: PolicyResponse): EditablePolicies {
 
 function policySignature(policies: PolicyResponse): string {
   return [
-    policies.max_touches,
+    policies.max_attempts,
     policies.min_cooldown_hours,
     policies.max_discount_bps,
     policies.holdout_percentage,
@@ -86,12 +88,19 @@ function policySignature(policies: PolicyResponse): string {
   ].join('|')
 }
 
+// require_human_above_rupees is the one field edited as a decimal (paise / 100
+// can be fractional, e.g. 100.50), so it skips the whole-number check the
+// other four fields require.
+const DECIMAL_FIELDS: ReadonlySet<EditablePolicyField> = new Set([
+  'require_human_above_rupees',
+])
+
 function validateField(
   field: EditablePolicyField,
   value: number,
 ): string | null {
   const bounds = POLICY_FIELD_BOUNDS[field]
-  if (!Number.isInteger(value)) {
+  if (!DECIMAL_FIELDS.has(field) && !Number.isInteger(value)) {
     return 'Must be a whole number'
   }
   if (value < bounds.min) {
@@ -158,11 +167,13 @@ function PolicyEditor({ initial, onSaved }: PolicyEditorProps) {
     try {
       const payload: MerchantPolicyPayload = {
         merchant_id: initial.merchant_id,
-        max_touches: draft.max_touches,
+        max_attempts: draft.max_attempts,
         min_cooldown_hours: draft.min_cooldown_hours,
         max_discount_bps: draft.max_discount_bps,
         holdout_percentage: draft.holdout_percentage,
-        require_human_above_paise: draft.require_human_above_paise,
+        require_human_above_paise: Math.round(
+          draft.require_human_above_rupees * 100,
+        ),
         allowed_channels: [...draft.allowed_channels],
       }
       const saved = await updatePolicies(payload)
@@ -248,6 +259,7 @@ function PolicyEditor({ initial, onSaved }: PolicyEditorProps) {
                       value={draft[field].toString()}
                       min={bounds.min}
                       max={bounds.max}
+                      step={field === 'require_human_above_rupees' ? 0.01 : 1}
                       aria-label={rule.name}
                       aria-invalid={errors[field] ? 'true' : undefined}
                       onChange={(event) => {
@@ -283,13 +295,14 @@ function PolicyEditor({ initial, onSaved }: PolicyEditorProps) {
             </Badge>
           </div>
 
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             {OUTREACH_CHANNELS.map((channel) => {
               const meta = OUTREACH_CHANNEL_META[channel]
               const selected = draft.allowed_channels.includes(channel)
               return (
                 <label
                   key={channel}
+                  title={meta.description}
                   className={`channel-card ${selected ? 'channel-card--selected' : ''}`}
                 >
                   <input
@@ -300,20 +313,6 @@ function PolicyEditor({ initial, onSaved }: PolicyEditorProps) {
                       toggleChannel(channel)
                     }}
                   />
-                  <div className="channel-card-icon">
-                    <OutreachChannelIcon
-                      channel={channel}
-                      className="h-5 w-5"
-                    />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <span className="text-sm font-semibold text-ink">
-                      {meta.label}
-                    </span>
-                    <p className="mt-0.5 text-xs leading-relaxed text-ink-muted">
-                      {meta.description}
-                    </p>
-                  </div>
                   <span
                     className={`channel-card-check ${selected ? 'channel-card-check--on' : ''}`}
                     aria-hidden
@@ -323,6 +322,15 @@ function PolicyEditor({ initial, onSaved }: PolicyEditorProps) {
                     ) : (
                       <Radio className="h-3.5 w-3.5 opacity-30" />
                     )}
+                  </span>
+                  <div className="channel-card-icon">
+                    <OutreachChannelIcon
+                      channel={channel}
+                      className="h-5 w-5"
+                    />
+                  </div>
+                  <span className="text-sm font-semibold text-ink">
+                    {meta.label}
                   </span>
                 </label>
               )

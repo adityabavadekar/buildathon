@@ -11,11 +11,10 @@ from app.core.constants import (
     MIN_CONFIDENCE_THRESHOLD,
     RELIABLE_RECOVERY_RATE,
     REPEAT_LIQUIDITY_FAILURE_LIMIT,
-    SALARY_CYCLE_RETRY_SPACING_HOURS,
-    TRANSIENT_BANK_WINDOW_DELAY_HOURS,
 )
 from app.core.enums import FailureCategory, InterventionType, PaymentRail
 from app.core.logging import get_logger
+from app.detection.action_params import get_action_params
 from app.detection.customer_profile import (
     CustomerProfile,
     get_customer_profile_registry,
@@ -81,6 +80,115 @@ class FailureClassifier:
         "UPI_COLLECT_DECLINED",
     }
 
+    # Exact `error_reason` strings from razorpay.com/docs/errors/payments/list,
+    # /upi, /cards, and /common, mapped into the existing 9-branch taxonomy.
+    # Exact match, not substring: an exhaustive list is only trustworthy if a
+    # near-miss reason falls through to UNCLASSIFIED rather than silently
+    # matching the wrong category.
+    RAZORPAY_INDETERMINATE_REASONS: ClassVar[set[str]] = {
+        "payment_timed_out",
+        "request_timed_out",
+        "verification_failed",
+        "invalid_response_from_gateway",
+        "demed_transaction",
+    }
+    RAZORPAY_TRANSIENT_REASONS: ClassVar[set[str]] = {
+        "bank_cutoff_in_progress",
+        "bank_not_available",
+        "bank_technical_error",
+        "gateway_technical_error",
+        "issuer_technical_error",
+        "server_error",
+        "psp_app_not_available",
+        "psp_not_available",
+        "payment_declined_due_to_high_traffic",
+        "upi_app_technical_error",
+        "duplicate_rrn_found",
+    }
+    RAZORPAY_MANDATE_FAILURE_REASONS: ClassVar[set[str]] = {
+        "mandate_creation_declined",
+        "mandate_creation_expired",
+        "mandate_creation_failed",
+        "mandate_creation_timeout",
+        "funds_blocked_by_mandate",
+        "reqauth_mandate_not_acknowledged",
+        "recurring_payment_not_enabled",
+    }
+    RAZORPAY_LIQUIDITY_REASONS: ClassVar[set[str]] = {
+        "insufficient_funds",
+        "debit_declined",
+        "credit_limit_exceeded",
+        "credit_limit_expired",
+        "credit_limit_inactive",
+        "credit_limit_not_approved",
+        "credit_not_permitted",
+        "credit_failed",
+        "transaction_limit_exceeded",
+        "transaction_daily_limit_exceeded",
+        "transaction_daily_count_exceeded",
+        "mc_amount_limit_exceeded",
+    }
+    RAZORPAY_CHECKOUT_DROPOFF_REASONS: ClassVar[set[str]] = {
+        "authentication_failed",
+        "payment_cancelled",
+        "otp_expired",
+        "otp_attempts_exceeded",
+        "incorrect_otp",
+        "incorrect_cvv",
+        "incorrect_pin",
+        "incorrect_atm_pin",
+        "pin_attempts_exceeded",
+        "pin_not_set",
+        "payment_session_expired",
+        "payment_collect_request_expired",
+        "incorrect_card_details",
+        "incorrect_card_expiry_date",
+        "incorrect_cardholder_name",
+    }
+    # Customer/gateway/issuer-side declines with a known, specific cause but no
+    # retry or mandate/liquidity remedy -- routed the same as a 5XX today
+    # (PASSIVE_RETRY) since Razorpay's own guidance for nearly all of these is
+    # "customer retries with a different card/method", not "wait and retry the
+    # same one automatically". A future spec could split this into its own
+    # branch; folding into SYSTEMIC_GATEWAY_FAILURE keeps this pass a mapping
+    # exercise instead of a taxonomy redesign.
+    RAZORPAY_SYSTEMIC_REASONS: ClassVar[set[str]] = {
+        "card_declined",
+        "payment_declined",
+        "payment_failed",
+        "payment_risk_check_failed",
+        "card_expired",
+        "card_not_enrolled",
+        "card_disabled_for_online_payments",
+        "debit_instrument_blocked",
+        "debit_instrument_inactive",
+        "bank_account_invalid",
+        "invalid_vpa",
+        "vpa_resolution_failed",
+        "user_not_eligible",
+        "card_network_not_enabled",
+        "card_type_invalid",
+        "card_number_invalid",
+        "international_transaction_not_allowed",
+        "payment_method_not_enabled",
+        "user_not_registered_for_netbanking",
+        "beneficiary_account_does_not_exist",
+        "beneficiary_account_dormant",
+        "psp_not_registered",
+        "psp_app_not_supported",
+        "transaction_on_vpa_restricted",
+        "transaction_frequency_limit_exceeded",
+        "authorisation_declined_by_psp",
+        "collect_on_mc_blocked",
+        "collect_request_pending",
+        "payment_amount_tampered",
+        "emi_greater_than_max_amount",
+        "emi_plan_unavailable",
+        "upi_autopay_not_supported_on_psp",
+        "upi_collect_not_enabled",
+        "upi_intent_not_enabled",
+    }
+
     def _is_indeterminate(self, code: str, reason: str) -> bool:
         """True when the authorization outcome is unknown rather than known-failed.
 
@@ -89,6 +197,8 @@ class FailureClassifier:
         """
         if code in self.CHECKOUT_ABANDON_ERROR_CODES:
             return False
+        if reason in self.RAZORPAY_INDETERMINATE_REASONS:
+            return True
         return code in self.INDETERMINATE_ERROR_CODES or any(
             token in reason
             for token in (
@@ -108,19 +218,24 @@ class FailureClassifier:
         msg_hi = f"Namaste, INR {amt_inr} ke payment ki status confirm nahi ho payi. Humari team verify kar rahi hai."
         signals["dunning_message_en"] = msg_en
         signals["dunning_message_hi"] = msg_hi
+        params = get_action_params(
+            FailureCategory.INDETERMINATE_AUTHORIZATION,
+            InterventionType.MANUAL_ESCALATION,
+        )
         return DiagnosisResult(
             category=FailureCategory.INDETERMINATE_AUTHORIZATION,
             confidence=Decimal("0.90"),
             recommended_intervention=InterventionType.MANUAL_ESCALATION,
-            recommended_delay_hours=0,
-            discount_bps_suggested=0,
+            recommended_delay_hours=params.delay_hours,
+            discount_bps_suggested=params.discount_bps,
+            recommended_channel=params.channel,
             reasoning=(
                 f"Timeout or network failure (code: {code}) leaves the authorization "
                 "outcome unknown: the payment may already have succeeded. Retrying "
                 "risks charging the customer twice, so this is routed for "
                 "reconciliation against the gateway before any retry."
             ),
-            requires_human_approval=True,
+            requires_human_approval=params.requires_human_approval,
             dunning_message_en=msg_en,
             dunning_message_hi=msg_hi,
             signals_evaluated=signals,
@@ -157,14 +272,18 @@ class FailureClassifier:
             msg_hi = f"Namaste, INR {amt_inr} collect nahi ho paya. Humari team aapse alternative arrange karne ke liye sampark karegi."
             signals["dunning_message_en"] = msg_en
             signals["dunning_message_hi"] = msg_hi
+            params = get_action_params(
+                FailureCategory.LIQUIDITY_CONSTRAINT, InterventionType.MANUAL_ESCALATION
+            )
             return DiagnosisResult(
                 category=FailureCategory.LIQUIDITY_CONSTRAINT,
                 confidence=Decimal("0.75"),
                 recommended_intervention=InterventionType.MANUAL_ESCALATION,
-                recommended_delay_hours=0,
-                discount_bps_suggested=0,
+                recommended_delay_hours=params.delay_hours,
+                discount_bps_suggested=params.discount_bps,
+                recommended_channel=params.channel,
                 reasoning=f"Declined due to insufficient liquidity. {weighting}",
-                requires_human_approval=True,
+                requires_human_approval=params.requires_human_approval,
                 dunning_message_en=msg_en,
                 dunning_message_hi=msg_hi,
                 signals_evaluated=signals,
@@ -191,18 +310,22 @@ class FailureClassifier:
         msg_hi = f"Namaste, insufficient balance ki wajah se INR {amt_inr} ka payment decline hua. Auto-retry 48 ghante me hoga."
         signals["dunning_message_en"] = msg_en
         signals["dunning_message_hi"] = msg_hi
+        params = get_action_params(
+            FailureCategory.LIQUIDITY_CONSTRAINT, InterventionType.SMART_RETRY
+        )
         return DiagnosisResult(
             category=FailureCategory.LIQUIDITY_CONSTRAINT,
             confidence=Decimal("0.90"),
             recommended_intervention=InterventionType.SMART_RETRY,
-            recommended_delay_hours=SALARY_CYCLE_RETRY_SPACING_HOURS,
-            discount_bps_suggested=0,
+            recommended_delay_hours=params.delay_hours,
+            discount_bps_suggested=params.discount_bps,
+            recommended_channel=params.channel,
             reasoning=(
                 "Declined due to insufficient account liquidity. Retry spaced "
-                f"{SALARY_CYCLE_RETRY_SPACING_HOURS}h to align with liquidity windows. "
+                f"{params.delay_hours}h to align with liquidity windows. "
                 f"{weighting}"
             ),
-            requires_human_approval=False,
+            requires_human_approval=params.requires_human_approval,
             dunning_message_en=msg_en,
             dunning_message_hi=msg_hi,
             signals_evaluated=signals,
@@ -222,7 +345,7 @@ class FailureClassifier:
             logger.warning("classifier.profile_lookup_failed", customer_id=customer_id)
             return None
 
-    def classify(self, event: RawFailureEvent) -> DiagnosisResult:  # noqa: PLR0911
+    def classify(self, event: RawFailureEvent) -> DiagnosisResult:  # noqa: PLR0911, PLR0915
         """Classify a failure event using error codes, reason sub-codes, and NPCI codes."""
         reason = (event.error_reason or "").lower()
         code = (event.error_code or "").upper()
@@ -247,21 +370,29 @@ class FailureClassifier:
             or "overdue" in reason
             or event.payment_rail == PaymentRail.B2B_INVOICE
         ):
-            msg_en = f"Dear Customer, invoice #{event.payment_id} for INR {amt_inr} is overdue. Please complete settlement securely."
-            msg_hi = f"Priy Grahak, invoice #{event.payment_id} (INR {amt_inr}) overdue hai. Kripya diye gaye link se payment karein."
+            # payment_id is an internal id, not an invoice number a customer
+            # recognizes -- prefer the merchant-supplied reference if present.
+            invoice_ref = event.invoice_id or event.reference_id or event.payment_id
+            msg_en = f"Dear Customer, invoice #{invoice_ref} for INR {amt_inr} is overdue. Please complete settlement securely."
+            msg_hi = f"Priy Grahak, invoice #{invoice_ref} (INR {amt_inr}) overdue hai. Kripya diye gaye link se payment karein."
             signals["dunning_message_en"] = msg_en
             signals["dunning_message_hi"] = msg_hi
+            params = get_action_params(
+                FailureCategory.B2B_RECEIVABLES_OVERDUE,
+                InterventionType.B2B_INVOICE_CHASER,
+            )
             return DiagnosisResult(
                 category=FailureCategory.B2B_RECEIVABLES_OVERDUE,
                 confidence=Decimal("0.92"),
                 recommended_intervention=InterventionType.B2B_INVOICE_CHASER,
-                recommended_delay_hours=24,
-                discount_bps_suggested=0,
+                recommended_delay_hours=params.delay_hours,
+                discount_bps_suggested=params.discount_bps,
+                recommended_channel=params.channel,
                 reasoning=(
                     "B2B net-terms receivable past due date. "
                     "Automated multi-channel reconciliation dunning initiated with single-click payment link."
                 ),
-                requires_human_approval=False,
+                requires_human_approval=params.requires_human_approval,
                 dunning_message_en=msg_en,
                 dunning_message_hi=msg_hi,
                 signals_evaluated=signals,
@@ -279,17 +410,21 @@ class FailureClassifier:
             msg_hi = f"Namaste, aapke INR {amt_inr} payment ka scheduled reminder. Kripya diye gaye link se payment poora karein."
             signals["dunning_message_en"] = msg_en
             signals["dunning_message_hi"] = msg_hi
+            params = get_action_params(
+                FailureCategory.PROMISE_TO_PAY_DELAY, InterventionType.P2P_FOLLOWUP
+            )
             return DiagnosisResult(
                 category=FailureCategory.PROMISE_TO_PAY_DELAY,
                 confidence=Decimal("0.90"),
                 recommended_intervention=InterventionType.P2P_FOLLOWUP,
-                recommended_delay_hours=72,
-                discount_bps_suggested=0,
+                recommended_delay_hours=params.delay_hours,
+                discount_bps_suggested=params.discount_bps,
+                recommended_channel=params.channel,
                 reasoning=(
                     "Customer explicitly committed to pay by scheduled date. "
                     "Aggressive automated retries paused; scheduled gentle verification follow-up."
                 ),
-                requires_human_approval=False,
+                requires_human_approval=params.requires_human_approval,
                 dunning_message_en=msg_en,
                 dunning_message_hi=msg_hi,
                 signals_evaluated=signals,
@@ -303,6 +438,7 @@ class FailureClassifier:
         if (
             npci in self.TRANSIENT_NPCI_CODES
             or code in self.TRANSIENT_ERROR_CODES
+            or reason in self.RAZORPAY_TRANSIENT_REASONS
             or "cutoff" in reason
             or "bank_cutoff" in reason
             or "bank_technical_error" in reason
@@ -313,17 +449,21 @@ class FailureClassifier:
             msg_hi = f"Namaste, bank server me temporary issue ke karan INR {amt_inr} ka payment delay hua. Hum jald auto-retry karenge."
             signals["dunning_message_en"] = msg_en
             signals["dunning_message_hi"] = msg_hi
+            params = get_action_params(
+                FailureCategory.TRANSIENT_BANK_WINDOW, InterventionType.PASSIVE_RETRY
+            )
             return DiagnosisResult(
                 category=FailureCategory.TRANSIENT_BANK_WINDOW,
                 confidence=Decimal("0.95"),
                 recommended_intervention=InterventionType.PASSIVE_RETRY,
-                recommended_delay_hours=TRANSIENT_BANK_WINDOW_DELAY_HOURS,
-                discount_bps_suggested=0,
+                recommended_delay_hours=params.delay_hours,
+                discount_bps_suggested=params.discount_bps,
+                recommended_channel=params.channel,
                 reasoning=(
                     "Failure is attributed to transient bank CBS cutoff or temporary network lag. "
                     "Background passive retry scheduled after the standard banking window."
                 ),
-                requires_human_approval=False,
+                requires_human_approval=params.requires_human_approval,
                 dunning_message_en=msg_en,
                 dunning_message_hi=msg_hi,
                 signals_evaluated=signals,
@@ -333,27 +473,35 @@ class FailureClassifier:
         if (
             npci in self.MANDATE_FAIL_NPCI_CODES
             or code in self.MANDATE_FAIL_NPCI_CODES
+            or reason in self.RAZORPAY_MANDATE_FAILURE_REASONS
             or "mandate_revoked" in reason
             or "mandate_inactive" in reason
+            or "mandate_exhausted" in reason
             or "funds_blocked_by_mandate" in reason
             or "account_closed" in reason
             or "invalid_mandate" in reason
+            or code == "SUBSCRIPTION_HALTED"
         ):
             msg_en = f"Hello, your auto-debit of INR {amt_inr} was interrupted. Please update your mandate or pay securely here."
             msg_hi = f"Namaste, mandate issue ki wajah se aapka INR {amt_inr} ka auto-debit nahi ho paya. Kripya yahan pay karein."
             signals["dunning_message_en"] = msg_en
             signals["dunning_message_hi"] = msg_hi
+            params = get_action_params(
+                FailureCategory.STRUCTURAL_MANDATE_FAILURE,
+                InterventionType.SMART_PAYMENT_LINK,
+            )
             return DiagnosisResult(
                 category=FailureCategory.STRUCTURAL_MANDATE_FAILURE,
                 confidence=Decimal("0.95"),
                 recommended_intervention=InterventionType.SMART_PAYMENT_LINK,
-                recommended_delay_hours=0,
-                discount_bps_suggested=0,
+                recommended_delay_hours=params.delay_hours,
+                discount_bps_suggested=params.discount_bps,
+                recommended_channel=params.channel,
                 reasoning=(
                     "Mandate is structurally invalid, revoked, or halted. "
                     "Auto-debit stopped; immediate smart fallback payment link issued to customer."
                 ),
-                requires_human_approval=False,
+                requires_human_approval=params.requires_human_approval,
                 dunning_message_en=msg_en,
                 dunning_message_hi=msg_hi,
                 signals_evaluated=signals,
@@ -363,6 +511,7 @@ class FailureClassifier:
         if (
             npci in self.LIQUIDITY_NPCI_CODES
             or code in self.LIQUIDITY_NPCI_CODES
+            or reason in self.RAZORPAY_LIQUIDITY_REASONS
             or "insufficient_funds" in reason
             or "debit_declined" in reason
             or "credit_limit_exceeded" in reason
@@ -373,6 +522,7 @@ class FailureClassifier:
         # 7. Checkout Drop-off / Authentication Failure
         if (
             code in self.CHECKOUT_ABANDON_ERROR_CODES
+            or reason in self.RAZORPAY_CHECKOUT_DROPOFF_REASONS
             or "otp_timeout" in reason
             or "authentication_failed" in reason
             or "payment_cancelled" in reason
@@ -384,39 +534,51 @@ class FailureClassifier:
             msg_hi = f"Namaste, aapka INR {amt_inr} ka checkout poora nahi ho paya. Abhi pay karein aur 5% discount payein!"
             signals["dunning_message_en"] = msg_en
             signals["dunning_message_hi"] = msg_hi
+            params = get_action_params(
+                FailureCategory.CHECKOUT_DROP_OFF, InterventionType.INCENTIVIZED_LINK
+            )
             return DiagnosisResult(
                 category=FailureCategory.CHECKOUT_DROP_OFF,
                 confidence=Decimal("0.85"),
                 recommended_intervention=InterventionType.INCENTIVIZED_LINK,
-                recommended_delay_hours=0,
-                discount_bps_suggested=500,  # 5.00% discount
+                recommended_delay_hours=params.delay_hours,
+                discount_bps_suggested=params.discount_bps,
+                recommended_channel=params.channel,
                 reasoning=(
                     "Customer dropped off during checkout or 2FA authentication. "
                     f"Dispatched short-lived ({CHECKOUT_DROP_OFF_LINK_VALIDITY_MINUTES}m) fallback link with time-decay incentive."
                 ),
-                requires_human_approval=False,
+                requires_human_approval=params.requires_human_approval,
                 dunning_message_en=msg_en,
                 dunning_message_hi=msg_hi,
                 signals_evaluated=signals,
             )
 
         # 8. Systemic Gateway 5XX Error
-        if code in self.SYSTEMIC_ERROR_CODES or source == "gateway":
+        if (
+            code in self.SYSTEMIC_ERROR_CODES
+            or reason in self.RAZORPAY_SYSTEMIC_REASONS
+            or source == "gateway"
+        ):
             msg_en = f"Hi, your payment of INR {amt_inr} experienced a technical gateway issue. We are automatically retrying."
             msg_hi = f"Namaste, gateway error ke karan INR {amt_inr} ka payment ruk gaya tha. Hum auto-retry kar rahe hain."
             signals["dunning_message_en"] = msg_en
             signals["dunning_message_hi"] = msg_hi
+            params = get_action_params(
+                FailureCategory.SYSTEMIC_GATEWAY_FAILURE, InterventionType.PASSIVE_RETRY
+            )
             return DiagnosisResult(
                 category=FailureCategory.SYSTEMIC_GATEWAY_FAILURE,
                 confidence=Decimal("0.80"),
                 recommended_intervention=InterventionType.PASSIVE_RETRY,
-                recommended_delay_hours=1,
-                discount_bps_suggested=0,
+                recommended_delay_hours=params.delay_hours,
+                discount_bps_suggested=params.discount_bps,
+                recommended_channel=params.channel,
                 reasoning=(
                     "Gateway reported internal processing error or 5XX status. "
                     "Passive retry scheduled with 1-hour backoff."
                 ),
-                requires_human_approval=False,
+                requires_human_approval=params.requires_human_approval,
                 dunning_message_en=msg_en,
                 dunning_message_hi=msg_hi,
                 signals_evaluated=signals,
@@ -427,17 +589,21 @@ class FailureClassifier:
         msg_hi = f"Namaste, INR {amt_inr} ka payment process nahi ho paya. Humari support team review kar rahi hai."
         signals["dunning_message_en"] = msg_en
         signals["dunning_message_hi"] = msg_hi
+        params = get_action_params(
+            FailureCategory.UNCLASSIFIED, InterventionType.MANUAL_ESCALATION
+        )
         return DiagnosisResult(
             category=FailureCategory.UNCLASSIFIED,
             confidence=MIN_CONFIDENCE_THRESHOLD,
             recommended_intervention=InterventionType.MANUAL_ESCALATION,
-            recommended_delay_hours=0,
-            discount_bps_suggested=0,
+            recommended_delay_hours=params.delay_hours,
+            discount_bps_suggested=params.discount_bps,
+            recommended_channel=params.channel,
             reasoning=(
                 f"Unrecognized error pattern (code: {code}, reason: {reason}). "
                 "Confidence is low; routing to human operations queue for review."
             ),
-            requires_human_approval=True,
+            requires_human_approval=params.requires_human_approval,
             dunning_message_en=msg_en,
             dunning_message_hi=msg_hi,
             signals_evaluated=signals,

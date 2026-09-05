@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from app.audit.models import AuditEntry, RecoveryCase
-from app.core.enums import AuditActor, RecoveryState
+from app.core.enums import AuditActor, EscalationReason, RecoveryState
 
 
 class InvalidStateTransitionError(ValueError):
@@ -23,6 +23,7 @@ VALID_TRANSITIONS: dict[RecoveryState, set[RecoveryState]] = {
         RecoveryState.IN_DUNNING,
         RecoveryState.RETRY_SCHEDULED,
         RecoveryState.OUTREACH_PENDING,
+        RecoveryState.P2P_WAITING,
         RecoveryState.RECOVERED,
         RecoveryState.ESCALATED,
         RecoveryState.ABANDONED,
@@ -102,23 +103,38 @@ def transition_case(
     decision_outputs: dict[str, Any] | None = None,
     cost_incurred_paise: int = 0,
     model_metadata: dict[str, Any] | None = None,
+    escalation_reason: EscalationReason | None = None,
 ) -> RecoveryCase:
     """Transition a recovery case to a new state and record an immutable audit entry."""
     current_state = case.state
 
-    # Invariant: Terminal states are strictly immutable
+    # Invariant 1: a terminal case never moves again.
     if current_state.is_terminal:
         msg = f"Cannot transition case {case.case_id} from terminal state {current_state.value} to {to_state.value}"
         raise InvalidStateTransitionError(msg)
 
-    # Invariant: Must follow allowable state paths
+    # Invariant 2: only transitions on the allowed paths.
     allowed_targets = VALID_TRANSITIONS.get(current_state, set())
     if to_state not in allowed_targets:
         msg = f"Illegal transition for case {case.case_id} from {current_state.value} to {to_state.value}"
         raise InvalidStateTransitionError(msg)
 
+    # Invariant 3: escalating without recording why is exactly the defect this
+    # field exists to prevent -- a caller must say HUMAN_JUDGMENT or
+    # SYSTEM_ERROR explicitly, never leave it to be inferred later from log
+    # content. This makes a missing classification a hard error, not a null
+    # column discovered downstream.
+    if to_state == RecoveryState.ESCALATED and escalation_reason is None:
+        msg = (
+            f"Cannot escalate case {case.case_id}: escalation_reason is required "
+            "when to_state is ESCALATED"
+        )
+        raise InvalidStateTransitionError(msg)
+
     case.state = to_state
     case.updated_at = datetime.now(UTC)
+    if to_state == RecoveryState.ESCALATED:
+        case.escalation_reason = escalation_reason
     case.recompute_nrv()
 
     # Record immutable audit entry

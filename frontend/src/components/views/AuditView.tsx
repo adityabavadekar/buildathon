@@ -11,12 +11,8 @@ import {
 } from 'lucide-react'
 import { type RecoveryCase } from '@/lib/api'
 import { Button } from '@/components/ui/button'
-import {
-  formatCustomerName,
-  formatDateTime,
-  formatTime,
-  humanizeToken,
-} from '@/lib/format'
+import { formatCustomerName, formatDateTime, formatTime } from '@/lib/format'
+import { describeAuditActor, describeAuditEvent } from '@/lib/auditEvents'
 
 interface AuditViewProps {
   cases: RecoveryCase[]
@@ -40,71 +36,24 @@ interface EnrichedAuditEntry {
   to_state?: string | null
 }
 
+const TONE_PILL_CLASS: Record<string, string> = {
+  ai: 'audit-pill audit-pill--ai',
+  action: 'audit-pill audit-pill--action',
+  success: 'audit-pill audit-pill--success',
+  danger: 'audit-pill audit-pill--danger',
+  neutral: 'audit-pill',
+}
+
 function actionPillClass(eventName: string): string {
-  const lower = eventName.toLowerCase()
-  if (lower.includes('plan') || lower.includes('ai') || lower.includes('llm')) {
-    return 'audit-pill audit-pill--ai'
-  }
-  if (
-    lower.includes('executed') ||
-    lower.includes('dispatch') ||
-    lower.includes('retry') ||
-    lower.includes('link')
-  ) {
-    return 'audit-pill audit-pill--action'
-  }
-  if (lower.includes('recovered') || lower.includes('captured')) {
-    return 'audit-pill audit-pill--success'
-  }
-  if (
-    lower.includes('escalat') ||
-    lower.includes('breach') ||
-    lower.includes('failed')
-  ) {
-    return 'audit-pill audit-pill--danger'
-  }
-  return 'audit-pill'
+  return TONE_PILL_CLASS[describeAuditEvent(eventName).tone] ?? 'audit-pill'
 }
 
 function actionLabel(eventName: string): string {
-  const lower = eventName.toLowerCase()
-  if (lower.includes('plan') || lower.includes('llm')) return 'AI plan'
-  if (lower.includes('executed') || lower.includes('dispatch'))
-    return 'Dispatch'
-  if (lower.includes('recovered') || lower.includes('captured'))
-    return 'Recovered'
-  if (lower.includes('escalat')) return 'Escalated'
-  if (lower.includes('holdout')) return 'Holdout'
-  if (lower.includes('ingest') || lower.includes('created')) return 'Ingested'
-  return humanizeToken(eventName)
+  return describeAuditEvent(eventName).label
 }
 
 function actorLabel(actor: string): string {
-  return formatActorBadge(actor).label
-}
-
-function formatActorBadge(actor: string): {
-  label: string
-  sub: string
-} {
-  switch (actor) {
-    case 'AGENT_LLM':
-      return { label: 'AI planner', sub: 'Autonomous engine' }
-    case 'ORCHESTRATOR':
-    case 'SYSTEM':
-      return { label: 'System engine', sub: 'State machine' }
-    case 'POLICY_GATE':
-      return { label: 'Policy gate', sub: 'Invariant guardrail' }
-    case 'GATEWAY_WEBHOOK':
-      return { label: 'Razorpay webhook', sub: 'Event relay' }
-    case 'HUMAN_OPERATOR':
-      return { label: 'Ops operator', sub: 'HITL reviewer' }
-    default:
-      return {
-        label: humanizeToken(actor),
-        sub: 'System entity',
-      }
-  }
+  return describeAuditActor(actor).label
 }
 
 export function AuditView({
@@ -133,7 +82,7 @@ export function AuditView({
           timestamp: e.timestamp,
           event_name: e.event_name,
           actor: e.actor,
-          reason: (e.notes ?? e.reason) || '',
+          reason: e.notes ?? '',
           cost_incurred_paise: e.cost_incurred_paise,
           decision_inputs: e.decision_inputs,
           from_state: e.from_state,
@@ -339,7 +288,7 @@ export function AuditView({
               ) : (
                 paginatedEntries.map((entry) => {
                   const isExpanded = expandedEntryId === entry.entry_id
-                  const actorInfo = formatActorBadge(entry.actor)
+                  const actorInfo = describeAuditActor(entry.actor)
                   const stateTransition =
                     entry.from_state && entry.to_state
                       ? `${entry.from_state} -> ${entry.to_state}`
@@ -464,7 +413,7 @@ export function AuditView({
                           <p className="line-clamp-2 text-[13px] text-ink-muted">
                             {entry.reason ||
                               stateTransition ||
-                              entry.event_name}
+                              describeAuditEvent(entry.event_name).description}
                           </p>
                           {entry.cost_incurred_paise > 0 ? (
                             <p className="mt-0.5 text-[11px] font-medium text-failed">

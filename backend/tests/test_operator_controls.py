@@ -54,7 +54,7 @@ async def test_operator_mode_persistence_and_audit() -> None:
 
 @pytest.mark.anyio
 async def test_monitoring_only_circuit_breaker_holds_interventions() -> None:
-    """Test MONITORING_ONLY mode holds outbound interventions without sending touches."""
+    """Test MONITORING_ONLY mode holds outbound interventions without sending attempts."""
     set_operator_mode(OperatorMode.MONITORING_ONLY, reason="Engage circuit breaker")
     orchestrator = get_recovery_orchestrator()
 
@@ -74,7 +74,7 @@ async def test_monitoring_only_circuit_breaker_holds_interventions() -> None:
         event, experiment_arm_override=ExperimentArm.TREATMENT
     )
     # Interventions must be held
-    assert case.touches_count == 0
+    assert case.attempts_count == 0
     held_events = [
         e
         for e in case.audit_trail

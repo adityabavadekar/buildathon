@@ -35,7 +35,7 @@ def make_case(
         experiment_arm=arm,
         state=RecoveryState.RECOVERED if recovered else RecoveryState.IN_DUNNING,
         recovered_amount_paise=20000 if recovered else 0,
-        touches_count=0,
+        attempts_count=0,
         diagnosed_category=FailureCategory.LIQUIDITY_CONSTRAINT,
         strategy_tag=strategy_tag,
         failure_event=RawFailureEvent(

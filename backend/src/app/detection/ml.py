@@ -45,7 +45,7 @@ _PRIOR_WEIGHT = 0.5
 # bumps whenever the feature layout changes and persisted schemas stay honest.
 _BASE_CONTINUOUS = (
     "amount_paise_scaled",
-    "touches_count",
+    "attempts_count",
     "hour_of_day",
     "day_of_week",
     "repeated_customer",
@@ -143,8 +143,8 @@ def _features_for(
     for name in spec.continuous:
         if name == "amount_paise_scaled":
             vector.append(min(case.amount_paise / _MAX_AMOUNT_PAISE, 1.0))
-        elif name == "touches_count":
-            vector.append(float(case.touches_count))
+        elif name == "attempts_count":
+            vector.append(float(case.attempts_count))
         elif name == "hour_of_day":
             vector.append(occurred.hour / 23.0)
         elif name == "day_of_week":
@@ -171,7 +171,7 @@ def _recovery_elapsed_days(case: RecoveryCase) -> float | None:
     the label for the recovery-time estimator."""
     if not _is_recovered(case):
         return None
-    end = case.collected_at or case.last_touch_at
+    end = case.collected_at or case.last_attempt_at
     if end is None:
         return None
     start = case.created_at
@@ -226,7 +226,7 @@ def _logistic_fit_with_validation(  # noqa: PLR0917
     rows = list(zip(vectors, labels, strict=True))
     dim = size
     binarized = [False] * (dim - 1)
-    # Amount-scaled and touches sit on very different scales; flag the raw
+    # Amount-scaled and attempts sit on very different scales; flag the raw
     # ordinal/count group for plain continuous scaling and keep one-hots as-is.
     for idx, value in enumerate(vectors[0][:-1]):
         binarized[idx] = value in (0.0, 1.0)
@@ -889,7 +889,7 @@ def predict_and_audit(
             "score": prob,
             "inputs": {
                 "amount_paise": case.amount_paise,
-                "touches_count": case.touches_count,
+                "attempts_count": case.attempts_count,
                 "confidence_half_width": round(confidence, 4),
                 "expected_recovery_value_paise": model.expected_recovery_value_paise(
                     case

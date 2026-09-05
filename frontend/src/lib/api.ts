@@ -6,6 +6,27 @@
 /** Defaults to `/api`, which next.config.ts rewrites to the backend. */
 const API_BASE_URL: string = process.env.NEXT_PUBLIC_API_BASE_URL ?? '/api'
 
+// LoginGate subscribes to this so an expired session re-shows login immediately.
+type SessionExpiredListener = () => void
+const sessionExpiredListeners = new Set<SessionExpiredListener>()
+
+export function onSessionExpired(listener: SessionExpiredListener): () => void {
+  sessionExpiredListeners.add(listener)
+  return () => {
+    sessionExpiredListeners.delete(listener)
+  }
+}
+
+function notifySessionExpired(path: string): void {
+  // /auth/* 401s are a failed login attempt, not an expired session.
+  if (path.startsWith('/auth/')) {
+    return
+  }
+  for (const listener of sessionExpiredListeners) {
+    listener()
+  }
+}
+
 export type RecoveryState =
   | 'ANALYSIS_QUEUED'
   | 'IN_DUNNING'
@@ -39,6 +60,7 @@ export interface ModelTelemetrySnapshot {
   confidence_score?: number
   used_fallback?: boolean
   fallback_reason?: string | null
+  cache_hit?: boolean
   experiment_tag?: string | null
   config_snapshot?: Record<string, unknown> | null
   request_prompt?: string | null
@@ -52,7 +74,6 @@ export interface AuditEntry {
   actor: string
   from_state: RecoveryState | null
   to_state: RecoveryState | null
-  reason?: string | null
   event_name: string
   timestamp: string
   created_at?: string
@@ -100,7 +121,7 @@ export interface RecoveryCase {
   recovered_amount_paise: number
   discount_paise_granted: number
   total_cost_paise: number
-  touches_count: number
+  attempts_count: number
   retry_count: number
   outreach_count: number
   failure_event: RawFailureEvent
@@ -121,6 +142,13 @@ export interface RecoveryCase {
   payment_link_id?: string | null
   payment_link_url?: string | null
   payment_link_expires_at?: string | null
+  /** Null outside state === 'ESCALATED'. Says WHY the case is paused there:
+   * HUMAN_JUDGMENT (fraud suspicion, a policy-required approval, an explicit
+   * MANUAL_ESCALATION plan) vs SYSTEM_ERROR (a failed live gateway call
+   * needing a retry, not a merchant decision). Persisted at escalation time,
+   * not inferred from audit_trail content.
+   */
+  escalation_reason: 'HUMAN_JUDGMENT' | 'SYSTEM_ERROR' | null
 }
 
 export interface CaseListResponse {
@@ -139,7 +167,7 @@ export interface HealthResponse {
 
 export interface ChannelPerformance {
   channel: string
-  touches_sent: number
+  attempts_sent: number
   successful_recoveries: number
   success_rate_pct: number
 }
@@ -205,7 +233,7 @@ export interface EscalationQueueItem {
   escalation_reason: string
   recommended_action: string
   recommended_discount_bps: number
-  touches_count: number
+  attempts_count: number
   created_at: string
   state: string
 }
@@ -246,6 +274,7 @@ export interface AnalyticsSummaryResponse {
   simulated_executions: number
   simulated_cost_paise: number
   health_score: number
+  health_score_available: boolean
   category_distribution: CategoryBreakdown[]
   intervention_performance: ChannelPerformance[]
   rail_performance: RailBreakdown[]
@@ -266,7 +295,7 @@ export interface PolicyRuleDetail {
 
 export interface PolicyResponse {
   merchant_id: string
-  max_touches: number
+  max_attempts: number
   min_cooldown_hours: number
   max_discount_bps: number
   holdout_percentage: number
@@ -277,7 +306,7 @@ export interface PolicyResponse {
 
 export interface MerchantPolicyPayload {
   merchant_id: string
-  max_touches: number
+  max_attempts: number
   min_cooldown_hours: number
   max_discount_bps: number
   holdout_percentage: number
@@ -297,8 +326,8 @@ export interface SystemSettingsResponse {
   razorpay_account_name: string | null
   razorpay_account_type: string | null
   razorpay_account_status: string | null
-  primary_llm_provider: string
-  active_llm_model: string
+  primary_llm_provider: string | null
+  active_llm_model: string | null
   configured_llm_providers: string[]
   deterministic_fallback_active: boolean
 }
@@ -383,11 +412,12 @@ export interface CaseFilterParams {
   created_before?: string
   occurred_after?: string
   occurred_before?: string
-  touches_min?: number
-  touches_max?: number
+  attempts_min?: number
+  attempts_max?: number
   recovered?: boolean
   opted_out?: boolean
   has_escalation?: boolean
+  escalation_reason?: 'HUMAN_JUDGMENT' | 'SYSTEM_ERROR'
   customer_id?: string
   payment_id?: string
   invoice_id?: string
@@ -420,14 +450,16 @@ export interface SystemStatusResponse {
   }
   llm_engine: {
     configured_providers: string[]
-    active_model: string
+    active_provider: string | null
+    active_model: string | null
+    deterministic_fallback_active: boolean
     circuit_breaker: string
     operator_mode?: string
     offline_fallback_operational: boolean
   }
   policy_enforcement: {
     guardrail_status: string
-    max_touches_cap: number
+    max_attempts_cap: number
     cooldown_hours: number
     discount_cap_bps: number
     holdout_ratio_pct: number
@@ -494,142 +526,6 @@ export interface ScheduledJobItem {
   updated_at: string
 }
 
-export type WorkflowTemplate =
-  | 'FAILED_PAYMENT'
-  | 'SUBSCRIPTION_FAILURE'
-  | 'OVERDUE_INVOICE'
-  | 'ABANDONED_PAYMENT'
-  | 'PAYMENT_DEGRADATION'
-
-export type WorkflowStage =
-  | 'TRIGGERED'
-  | 'CONTEXT_HYDRATED'
-  | 'DIAGNOSING'
-  | 'POLICY_EVALUATING'
-  | 'ACTION_EXECUTING'
-  | 'WAITING_SIGNAL_OR_TIMER'
-  | 'EVALUATING_OUTCOME'
-  | 'REPLANNING'
-  | 'HUMAN_ESCALATED'
-  | 'COMPLETED'
-  | 'FAILED'
-  | 'CANCELLED'
-
-export type WorkflowSignalType =
-  | 'PAYMENT_CAPTURED'
-  | 'PAYMENT_FAILED'
-  | 'INVOICE_PAID'
-  | 'CUSTOMER_RESPONSE'
-  | 'RAIL_DEGRADED'
-  | 'PROMISED_PAYMENT'
-  | 'HUMAN_APPROVAL'
-  | 'TIMER_EXPIRED'
-
-export type WorkflowTriggerType =
-  | 'payment.failed'
-  | 'subscription.halted'
-  | 'invoice.overdue'
-  | 'checkout.abandoned'
-  | 'rail.degraded'
-export type WorkflowAction =
-  'diagnose' | 'retry' | 'notify' | 'payment_link' | 'escalate'
-export type WorkflowNodeType =
-  'trigger' | 'decision' | 'action' | 'wait' | 'human_handoff' | 'terminal'
-export type WorkflowTemplateStatus = 'draft' | 'published'
-
-export interface WorkflowSignal {
-  signal_id: string
-  signal_type: WorkflowSignalType
-  payload: Record<string, unknown>
-  source: string
-  timestamp: string
-}
-
-export interface WorkflowHistoryEvent {
-  event_id: string
-  timestamp: string
-  from_stage: WorkflowStage | null
-  to_stage: WorkflowStage
-  event_name: string
-  details: Record<string, unknown>
-}
-
-export interface WorkflowTimer {
-  timer_id: string
-  timer_type: string
-  fire_at: string
-  is_active: boolean
-  metadata: Record<string, unknown>
-}
-
-export interface WorkflowStoppingRules {
-  max_retries: number
-  max_touches: number
-  max_duration_hours: number
-  max_discount_bps: number
-  stop_on_recovered: boolean
-  stop_on_human_pause: boolean
-}
-
-export interface WorkflowInstance {
-  workflow_id: string
-  case_id: string
-  template: WorkflowTemplate
-  current_stage: WorkflowStage
-  recovery_state: RecoveryState
-  context: Record<string, unknown>
-  stopping_rules: WorkflowStoppingRules
-  timers: WorkflowTimer[]
-  signals_received: WorkflowSignal[]
-  history: WorkflowHistoryEvent[]
-  attempts_count: number
-  touches_count: number
-  is_terminal: boolean
-  terminal_outcome: string | null
-  created_at: string
-  updated_at: string
-}
-
-export interface WorkflowAnalyticsResponse {
-  total_workflows: number
-  stage_counts: Record<string, number>
-  template_counts: Record<string, number>
-}
-
-export interface WorkflowTemplateDefinition {
-  template_id: string
-  name: string
-  description?: string
-  status?: WorkflowTemplateStatus
-  base_template: WorkflowTemplate
-  trigger_type: WorkflowTriggerType
-  allowed_actions: WorkflowAction[]
-  graph_nodes: Array<Record<string, string>>
-  graph_edges: Array<Record<string, string>>
-  stopping_rules: WorkflowStoppingRules
-  created_at: string
-  updated_at: string
-}
-
-export interface WorkflowListParams {
-  limit?: number
-  stage?: WorkflowStage
-  template?: WorkflowTemplate
-}
-
-export interface SendWorkflowSignalRequest {
-  signal_type: WorkflowSignalType
-  payload?: Record<string, unknown>
-  source?: string
-}
-
-export interface WorkflowOptionsResponse {
-  trigger_types: WorkflowTriggerType[]
-  actions: WorkflowAction[]
-  node_types: WorkflowNodeType[]
-  signal_types: WorkflowSignalType[]
-}
-
 export interface PatternAlert {
   alert_id: string
   run_id: string
@@ -648,6 +544,9 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await fetch(url, { credentials: 'include', ...options })
 
   if (!response.ok) {
+    if (response.status === 401) {
+      notifySessionExpired(path)
+    }
     const body = await response.text().catch(() => '')
     throw new Error(
       `API error ${response.status.toString()} from ${path}: ${body || response.statusText}`,
@@ -675,6 +574,9 @@ async function requestWithDetail<T>(
   })
 
   if (!response.ok) {
+    if (response.status === 401) {
+      notifySessionExpired(path)
+    }
     let detail = response.statusText
     try {
       const body: unknown = await response.json()
@@ -839,28 +741,6 @@ export function getSystemStatus(): Promise<SystemStatusResponse> {
   return request<SystemStatusResponse>('/simulation/status')
 }
 
-export function seedSimulation(
-  count: number = 50,
-  simulateResolutions: boolean = true,
-  experimentTag?: string,
-  modelOverride?: string,
-): Promise<{
-  seeded_count: number
-  recovered_count: number
-  case_ids: string[]
-}> {
-  return request('/simulation/seed', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      count,
-      simulate_resolutions: simulateResolutions,
-      experiment_tag: experimentTag,
-      model_override: modelOverride,
-    }),
-  })
-}
-
 export function resetSimulation(): Promise<{ status: string }> {
   return request('/simulation/reset', {
     method: 'POST',
@@ -885,7 +765,6 @@ export function simulateResolveCase(
   })
 }
 
-export const seedSimulationBatch = seedSimulation
 export const resolveCaseSim = simulateResolveCase
 
 export function getPipelineOverview(): Promise<PipelineOverviewResponse> {
@@ -955,93 +834,6 @@ export function resumeFleetSimulation(): Promise<FleetStatusResponse> {
 
 export function getFleetStatus(): Promise<FleetStatusResponse> {
   return request<FleetStatusResponse>('/pipeline/fleet/status')
-}
-
-export function listWorkflows(
-  params?: WorkflowListParams,
-): Promise<WorkflowInstance[]> {
-  const query = new URLSearchParams()
-  if (params?.limit !== undefined) query.set('limit', params.limit.toString())
-  if (params?.stage) query.set('stage', params.stage)
-  if (params?.template) query.set('template', params.template)
-  const suffix = query.size > 0 ? `?${query.toString()}` : ''
-  return request<WorkflowInstance[]>(`/workflows${suffix}`)
-}
-
-export function getWorkflowAnalytics(): Promise<WorkflowAnalyticsResponse> {
-  return request<WorkflowAnalyticsResponse>('/workflows/analytics')
-}
-
-export function listWorkflowTemplates(): Promise<WorkflowTemplateDefinition[]> {
-  return request<WorkflowTemplateDefinition[]>('/workflows/templates')
-}
-
-export function getWorkflowOptions(): Promise<WorkflowOptionsResponse> {
-  return request<WorkflowOptionsResponse>('/workflows/options')
-}
-
-export function launchWorkflow(
-  caseId: string,
-  template?: WorkflowTemplate,
-): Promise<WorkflowInstance> {
-  return request<WorkflowInstance>('/workflows/launch', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ case_id: caseId, template }),
-  })
-}
-
-export function createWorkflowTemplate(
-  definition: Omit<
-    WorkflowTemplateDefinition,
-    'template_id' | 'created_at' | 'updated_at'
-  >,
-): Promise<WorkflowTemplateDefinition> {
-  return request<WorkflowTemplateDefinition>('/workflows/templates', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(definition),
-  })
-}
-
-export function updateWorkflowTemplate(
-  definition: WorkflowTemplateDefinition,
-): Promise<WorkflowTemplateDefinition> {
-  return request<WorkflowTemplateDefinition>(
-    `/workflows/templates/${encodeURIComponent(definition.template_id)}`,
-    {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(definition),
-    },
-  )
-}
-
-export function deleteWorkflowTemplate(templateId: string): Promise<undefined> {
-  return request<undefined>(
-    `/workflows/templates/${encodeURIComponent(templateId)}`,
-    { method: 'DELETE' },
-  )
-}
-
-export function getWorkflow(workflowId: string): Promise<WorkflowInstance> {
-  return request<WorkflowInstance>(
-    `/workflows/${encodeURIComponent(workflowId)}`,
-  )
-}
-
-export function sendWorkflowSignal(
-  workflowId: string,
-  signal: SendWorkflowSignalRequest,
-): Promise<WorkflowInstance> {
-  return request<WorkflowInstance>(
-    `/workflows/${encodeURIComponent(workflowId)}/signal`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(signal),
-    },
-  )
 }
 
 export interface GatewayCredentialStatus {

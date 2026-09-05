@@ -75,7 +75,7 @@ class CustomerProfileRegistry:
                         else 0.0
                     )
 
-                    # Compute average delay hours for recovered cases
+                    # Average time taken to recover, from the recovered batch only.
                     delay_hours_list: list[float] = []
                     for r in recovered_rows:
                         try:
@@ -99,7 +99,8 @@ class CustomerProfileRegistry:
                         else 0.0
                     )
 
-                    # Preferred rail: rail with most recovered or most total cases
+                    # The rail that clears most often, or any-history rail when
+                    # nothing has recovered yet.
                     rail_counts: dict[str, int] = {}
                     for r in recovered_rows if recovered_rows else rows:
                         rail = r[1] or "UPI"
@@ -110,7 +111,7 @@ class CustomerProfileRegistry:
                         else "UPI"
                     )
 
-                    # Outstanding amount over non-terminal cases
+                    # Value still owed across cases that are not terminal.
                     outstanding_paise = sum(
                         r[3]
                         for r in rows
@@ -129,7 +130,7 @@ class CustomerProfileRegistry:
                         )
                     )
 
-                    # Derive deterministic risk tier
+                    # Deterministic tier from recovery rate and case volume.
                     low_risk_threshold = 0.70
                     high_risk_threshold = 0.25
                     min_cases_for_tier = 2

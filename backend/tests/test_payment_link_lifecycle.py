@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+import httpx2
 import pytest
 
 from app.audit.models import RecoveryCase
 from app.audit.repository import get_case_repository
+from app.core.config import get_settings
 from app.core.enums import ExperimentArm, InterventionType, PaymentRail, RecoveryState
 from app.detection.models import RawFailureEvent
 from app.intervention.models import InterventionPlan
@@ -19,44 +22,58 @@ if TYPE_CHECKING:
 
 
 @pytest.mark.anyio
-async def test_payment_link_persisted_on_case() -> None:
+async def test_payment_link_persisted_on_case(monkeypatch: pytest.MonkeyPatch) -> None:
     """Verify tool execution sets payment_link_id, payment_link_url, and payment_link_expires_at on case."""
-    tool = RazorpayPaymentLinkTool()
+    settings = get_settings()
+    monkeypatch.setattr(settings, "razorpay_key_id", "rzp_test_lifecycle_key")
+    monkeypatch.setattr(settings, "razorpay_key_secret", "lifecycle_secret")
+
     now = datetime.now(UTC)
 
-    case = RecoveryCase(
-        case_id="case_plink_1",
-        merchant_id="merch_1",
-        state=RecoveryState.OUTREACH_PENDING,
-        experiment_arm=ExperimentArm.TREATMENT,
-        amount_paise=150000,
-        currency="INR",
-        failure_event=RawFailureEvent(
-            event_id="evt_plink_1",
-            payment_id="pay_plink_1",
-            customer_id="cust_1",
+    def mock_handler(request: httpx2.Request) -> httpx2.Response:
+        json.loads(request.content.decode("utf-8"))
+        return httpx2.Response(
+            status_code=200,
+            json={"id": "plink_lifecycle_1", "short_url": "https://rzp.io/i/lc1"},
+        )
+
+    transport = httpx2.MockTransport(mock_handler)
+    async with httpx2.AsyncClient(transport=transport) as mock_client:
+        tool = RazorpayPaymentLinkTool(client=mock_client)
+
+        case = RecoveryCase(
+            case_id="case_plink_1",
+            merchant_id="merch_1",
+            state=RecoveryState.OUTREACH_PENDING,
+            experiment_arm=ExperimentArm.TREATMENT,
             amount_paise=150000,
             currency="INR",
-            payment_rail=PaymentRail.CARD,
-            error_code="GATEWAY_ERROR",
-            occurred_at=now,
-        ),
-    )
+            failure_event=RawFailureEvent(
+                event_id="evt_plink_1",
+                payment_id="pay_plink_1",
+                customer_id="cust_1",
+                amount_paise=150000,
+                currency="INR",
+                payment_rail=PaymentRail.CARD,
+                error_code="GATEWAY_ERROR",
+                occurred_at=now,
+            ),
+        )
 
-    plan = InterventionPlan(
-        plan_id="plan_plink_1",
-        case_id=case.case_id,
-        intervention_type=InterventionType.SMART_PAYMENT_LINK,
-        scheduled_at=now,
-        idempotency_key="idem_plink_1",
-        rationale="Issue fallback recovery payment link",
-    )
+        plan = InterventionPlan(
+            plan_id="plan_plink_1",
+            case_id=case.case_id,
+            intervention_type=InterventionType.SMART_PAYMENT_LINK,
+            scheduled_at=now,
+            idempotency_key="idem_plink_1",
+            rationale="Issue fallback recovery payment link",
+        )
 
-    result = await tool.execute(case, plan)
-    assert result.success is True
-    assert case.payment_link_id is not None
-    assert case.payment_link_url is not None
-    assert case.payment_link_expires_at is not None
+        result = await tool.execute(case, plan)
+        assert result.success is True
+        assert case.payment_link_id == "plink_lifecycle_1"
+        assert case.payment_link_url == "https://rzp.io/i/lc1"
+        assert case.payment_link_expires_at is not None
 
 
 def test_payment_link_webhooks_paid_and_partial(client: TestClient) -> None:

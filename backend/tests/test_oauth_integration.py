@@ -285,8 +285,17 @@ async def test_no_credentials_returns_none(monkeypatch: pytest.MonkeyPatch) -> N
 
 
 @pytest.mark.anyio
-async def test_expired_access_token_is_not_offered_for_use() -> None:
-    """An expired token would 401 every call and silently fall back to simulation."""
+async def test_expired_access_token_is_not_offered_for_use(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An expired token falls through to key-pair credentials, not None, when
+    those are configured -- isolate them here to pin the no-fallback case.
+    """
+    settings = get_settings()
+    monkeypatch.setattr(settings, "razorpay_key_id", None)
+    monkeypatch.setattr(settings, "razorpay_key_secret", None)
+    get_gateway_credential_store().clear()
+
     now = datetime.now(UTC)
     get_oauth_connection_store().save(
         _stored_connection(

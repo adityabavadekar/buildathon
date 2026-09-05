@@ -1,7 +1,19 @@
 'use client'
 
 import React, { useEffect, useState } from 'react'
-import { Brain, MessageSquare, ShieldCheck, Sparkles, X } from 'lucide-react'
+import {
+  AlertTriangle,
+  Ban,
+  Brain,
+  CheckCircle2,
+  Inbox,
+  MessageSquare,
+  ShieldCheck,
+  Sparkles,
+  UserCheck,
+  X,
+  Zap,
+} from 'lucide-react'
 import {
   approveCase,
   getPolicies,
@@ -13,7 +25,8 @@ import { Badge, type BadgeVariant } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { GlossaryTerm } from '@/components/ui/GlossaryTerm'
 import { STATE_READINGS } from '@/lib/glossary'
-import { formatCustomerName, formatINR } from '@/lib/format'
+import { describeAuditActor, describeAuditEvent } from '@/lib/auditEvents'
+import { formatCustomerName, formatINR, inlinePaiseToINR } from '@/lib/format'
 import { RailBadge } from '@/components/ui/BrandIcons'
 import { WhatsAppPreview } from '@/components/whatsapp/WhatsAppPreview'
 
@@ -48,6 +61,81 @@ const TAB_LABELS = {
   actions: 'Actions',
 } as const
 
+/** Blocked/escalated verdicts read as a decision needing attention; approved
+ * ones read as confirmation the guardrails passed cleanly.
+ */
+const POLICY_VERDICT_TONE: Record<
+  string,
+  'recovered' | 'escalated' | 'pending'
+> = {
+  APPROVED: 'recovered',
+  ESCALATE_REQUIRED: 'escalated',
+  HOLDOUT_CONTROL: 'pending',
+}
+
+function policyVerdictFromNotes(notes: string): {
+  verdict: string
+  rest: string
+  tone: 'recovered' | 'escalated' | 'pending'
+} | null {
+  const match = /^Policy verdict:\s*([A-Z_]+)\.\s*(.*)$/s.exec(notes)
+  if (!match) return null
+  const [, verdict, rest] = match
+  if (!verdict) return null
+  return {
+    verdict,
+    rest: rest ?? '',
+    tone: POLICY_VERDICT_TONE[verdict] ?? 'escalated',
+  }
+}
+
+function eventIcon(eventName: string): typeof Brain {
+  if (eventName.startsWith('case.ingested')) {
+    return Inbox
+  }
+  if (eventName.startsWith('agent.')) {
+    return Brain
+  }
+  if (eventName.startsWith('policy.') || eventName.includes('policy')) {
+    return ShieldCheck
+  }
+  if (
+    eventName.startsWith('intervention.blocked') ||
+    eventName.includes('held_circuit_breaker')
+  ) {
+    return Ban
+  }
+  const tone = describeAuditEvent(eventName).tone
+  if (tone === 'danger') {
+    return AlertTriangle
+  }
+  if (eventName.includes('approv')) {
+    return UserCheck
+  }
+  if (tone === 'success') {
+    return CheckCircle2
+  }
+  if (tone === 'action') {
+    return Zap
+  }
+  return Sparkles
+}
+
+const TONE_TIMELINE_ICON_CLASS = {
+  success: 'border-recovered/50 bg-recovered/20 text-recovered',
+  ai: 'border-accent/40 bg-accent/15 text-accent',
+  neutral: 'border-recovered/40 bg-recovered/15 text-recovered',
+  action: 'border-border bg-surface-sunken text-ink-muted',
+} as const
+
+function timelineIconClass(eventName: string, isAgent: boolean): string {
+  const tone = describeAuditEvent(eventName).tone
+  if (tone === 'success') return TONE_TIMELINE_ICON_CLASS.success
+  if (isAgent) return TONE_TIMELINE_ICON_CLASS.ai
+  if (eventName.includes('policy')) return TONE_TIMELINE_ICON_CLASS.neutral
+  return TONE_TIMELINE_ICON_CLASS.action
+}
+
 export function CaseDetailDrawer({
   caseItem,
   onClose,
@@ -68,7 +156,7 @@ export function CaseDetailDrawer({
 
   if (!caseItem) return null
 
-  const maxTouches = policy?.max_touches ?? 3
+  const maxAttempts = policy?.max_attempts ?? 3
   const isHoldout = caseItem.experiment_arm === 'HOLDOUT_CONTROL'
   const stateDescription = STATE_READINGS[caseItem.state] || caseItem.state
   const recoveredValue =
@@ -143,9 +231,10 @@ export function CaseDetailDrawer({
               </p>
             </div>
             <div className="metric-tile">
-              <p className="metric-tile-label">Touches used</p>
+              <p className="metric-tile-label">Attempts</p>
               <p className="metric-tile-value">
-                {caseItem.touches_count.toString()} / {maxTouches.toString()}
+                Attempt {caseItem.attempts_count.toString()} of{' '}
+                {maxAttempts.toString()}
               </p>
             </div>
             <div className="metric-tile">
@@ -248,7 +337,7 @@ export function CaseDetailDrawer({
                     {rationale ? (
                       <div className="rounded-control border border-border/80 bg-surface p-3 text-xs leading-relaxed text-ink shadow-2xs">
                         <p className="mb-1 text-[10px] font-semibold tracking-wider text-ink-muted uppercase">
-                          Diagnostic Rationale & Strategy
+                          Rationale
                         </p>
                         <p className="font-medium text-ink">{rationale}</p>
                       </div>
@@ -264,7 +353,11 @@ export function CaseDetailDrawer({
                       </span>
                       {typeof meta?.latency_ms === 'number' && (
                         <span className="inline-flex items-center gap-1 rounded-control border border-border bg-surface px-2 py-1">
-                          <span>Latency: {meta.latency_ms.toFixed(1)}ms</span>
+                          <span>
+                            {meta.cache_hit
+                              ? 'Cached diagnosis (0ms model call)'
+                              : `Latency: ${meta.latency_ms.toFixed(1)}ms`}
+                          </span>
                         </span>
                       )}
                       {typeof meta?.cost_usd === 'number' &&
@@ -358,13 +451,13 @@ export function CaseDetailDrawer({
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div className="metric-tile">
                     <p className="metric-tile-label">
-                      <GlossaryTerm termKey="TOUCHES" showIcon={false}>
-                        Touch limit
+                      <GlossaryTerm termKey="ATTEMPTS" showIcon={false}>
+                        Attempt limit
                       </GlossaryTerm>
                     </p>
                     <p className="metric-tile-value">
-                      {caseItem.touches_count.toString()} of{' '}
-                      {maxTouches.toString()}
+                      Attempt {caseItem.attempts_count.toString()} of{' '}
+                      {maxAttempts.toString()}
                     </p>
                     <p className="metric-tile-hint">
                       Remaining attempts before escalation or stop.
@@ -422,7 +515,7 @@ export function CaseDetailDrawer({
                     variant="default"
                     className="border-accent/30 bg-accent/10 text-[10px] text-accent"
                   >
-                    AI Personalized
+                    Personalized
                   </Badge>
                 )}
               </div>
@@ -503,24 +596,24 @@ export function CaseDetailDrawer({
                   typeof entry.decision_inputs.confidence_threshold === 'string'
                     ? entry.decision_inputs.confidence_threshold
                     : null
+                const EventIcon = eventIcon(entry.event_name)
                 return (
                   <div
                     key={entry.entry_id}
-                    className="relative border-l-2 border-border pb-4 pl-5 last:pb-0"
+                    className="relative border-l-2 border-border pb-4 pl-7 last:pb-0"
                   >
                     <div
-                      className={`absolute top-1 -left-[5px] h-2 w-2 rounded-full ${
-                        isAgent
-                          ? 'bg-accent ring-2 ring-accent/30'
-                          : entry.event_name.includes('policy')
-                            ? 'bg-recovered'
-                            : 'bg-border'
-                      }`}
-                    />
+                      className={`absolute top-0 -left-[13px] flex h-6 w-6 items-center justify-center rounded-full border ${timelineIconClass(
+                        entry.event_name,
+                        isAgent,
+                      )}`}
+                    >
+                      <EventIcon className="h-3 w-3" aria-hidden="true" />
+                    </div>
                     <div className="flex items-center justify-between text-xs text-ink-muted">
                       <div className="flex items-center gap-2">
                         <span className="font-medium text-ink">
-                          {entry.event_name.replaceAll('_', ' ')}
+                          {describeAuditEvent(entry.event_name).label}
                         </span>
                         <Badge
                           variant={isAgent ? 'default' : 'outline'}
@@ -530,7 +623,7 @@ export function CaseDetailDrawer({
                               : ''
                           }`}
                         >
-                          {entry.actor}
+                          {describeAuditActor(entry.actor).label}
                         </Badge>
                       </div>
                       <span className="text-[10px]">
@@ -543,7 +636,7 @@ export function CaseDetailDrawer({
                       <div className="mt-2 rounded-control border border-accent/30 bg-accent/5 p-2.5 text-xs text-ink">
                         <div className="mb-1 flex items-center gap-1.5 text-[10px] font-bold text-accent">
                           <Brain className="h-3 w-3" />
-                          <span>Agent Strategy Rationale</span>
+                          <span>Reasoning</span>
                         </div>
                         <p className="font-medium text-ink">{rationale}</p>
                       </div>
@@ -551,12 +644,20 @@ export function CaseDetailDrawer({
 
                     {/* Decision Confidence Callout */}
                     {(decisionConfidence || decisionThreshold) && (
-                      <div className="mt-2 flex flex-wrap items-center gap-2 rounded-control border border-border/80 bg-surface-sunken/60 p-2 text-[11px] text-ink-muted">
-                        <span className="text-[10px] font-bold tracking-wider text-ink-muted uppercase">
+                      <div className="mt-2 flex flex-wrap items-center gap-2 rounded-control border border-border/80 bg-surface-sunken/60 p-2.5 text-sm text-ink-muted">
+                        <span className="text-xs font-bold tracking-wider text-ink-muted uppercase">
                           Model confidence
                         </span>
                         {decisionConfidence && (
-                          <span className="rounded border border-border/80 bg-surface-sunken px-1.5 py-0.5 text-ink">
+                          <span
+                            className={`rounded border px-1.5 py-0.5 font-bold ${
+                              decisionThreshold &&
+                              Number(decisionConfidence) <
+                                Number(decisionThreshold)
+                                ? 'border-escalated/40 bg-escalated/10 text-escalated'
+                                : 'border-recovered/40 bg-recovered/10 text-recovered'
+                            }`}
+                          >
                             {decisionConfidence}
                           </span>
                         )}
@@ -595,21 +696,47 @@ export function CaseDetailDrawer({
                     )}
 
                     {/* General Notes or Reason */}
-                    {entry.notes && !rationale ? (
-                      <p className="mt-1.5 text-xs text-ink-muted">
-                        {entry.notes}
-                      </p>
-                    ) : null}
+                    {entry.notes && !rationale
+                      ? (() => {
+                          const policyVerdict = policyVerdictFromNotes(
+                            entry.notes,
+                          )
+                          if (!policyVerdict) {
+                            return (
+                              <p className="mt-1.5 text-sm text-ink-muted">
+                                {inlinePaiseToINR(entry.notes)}
+                              </p>
+                            )
+                          }
+                          const toneText =
+                            policyVerdict.tone === 'recovered'
+                              ? 'text-recovered'
+                              : policyVerdict.tone === 'escalated'
+                                ? 'text-escalated'
+                                : 'text-pending'
+                          return (
+                            <p className="mt-1.5 text-sm text-ink-muted">
+                              <span className={`font-bold ${toneText}`}>
+                                Policy verdict:{' '}
+                                {policyVerdict.verdict.replaceAll('_', ' ')}.
+                              </span>{' '}
+                              {inlinePaiseToINR(policyVerdict.rest)}
+                            </p>
+                          )
+                        })()
+                      : null}
 
                     {/* Model Telemetry Chips */}
                     {entry.model_metadata && (
-                      <div className="mt-2 flex flex-wrap gap-1.5 text-[10px] text-ink-muted">
+                      <div className="mt-2 flex flex-wrap gap-1.5 text-xs text-ink-muted">
                         <span className="rounded border border-border/80 bg-surface-sunken px-1.5 py-0.5">
                           {entry.model_metadata.model}
                         </span>
                         {entry.model_metadata.latency_ms !== undefined && (
                           <span className="rounded border border-border/80 bg-surface-sunken px-1.5 py-0.5">
-                            {entry.model_metadata.latency_ms.toFixed(1)}ms
+                            {entry.model_metadata.cache_hit
+                              ? 'cached'
+                              : `${entry.model_metadata.latency_ms.toFixed(1)}ms`}
                           </span>
                         )}
                         {entry.model_metadata.cost_usd !== undefined &&
@@ -633,7 +760,7 @@ export function CaseDetailDrawer({
                     ) : null}
 
                     {entry.cost_incurred_paise > 0 ? (
-                      <span className="mt-0.5 block text-xs font-medium text-failed">
+                      <span className="mt-1 block text-sm font-bold text-failed">
                         Cost incurred: -
                         {formatINR(entry.cost_incurred_paise, {
                           maximumFractionDigits: 2,
@@ -652,16 +779,20 @@ export function CaseDetailDrawer({
                 Operator actions
               </h3>
               <p className="text-sm text-ink-muted">
-                Recovery is paused on an escalated case until you approve it.
+                {caseItem.state === 'ESCALATED'
+                  ? 'Recovery is paused on this case until you approve it.'
+                  : (STATE_READINGS[caseItem.state] ??
+                    'No operator action is required on this case right now.')}
               </p>
               <div className="flex flex-wrap gap-2 pt-1">
                 {caseItem.state === 'ESCALATED' ? (
                   <Button
-                    size="sm"
+                    size="md"
                     onClick={() => {
                       void handleApprove()
                     }}
                     disabled={actionLoading}
+                    className="h-auto py-2"
                   >
                     {actionLoading ? 'Approving...' : 'Approve case'}
                   </Button>

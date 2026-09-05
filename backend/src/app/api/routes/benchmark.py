@@ -17,6 +17,7 @@ from app.benchmark.dataset import (
 )
 from app.benchmark.report import write_report
 from app.benchmark.runner import run_benchmark
+from app.core.constants import DEFAULT_CURRENCY
 from app.core.enums import AuditActor
 from app.core.logging import get_logger
 
@@ -80,7 +81,7 @@ async def post_benchmark_run(
         ),
         notes=(
             f"Lift {run.lift_pct_points} pct points; attributable "
-            f"{run.attributable_recovered_paise} paise."
+            f"{DEFAULT_CURRENCY} {run.attributable_recovered_paise / 100:,.2f}."
         ),
         decision_inputs={
             "run_id": run.run_id,

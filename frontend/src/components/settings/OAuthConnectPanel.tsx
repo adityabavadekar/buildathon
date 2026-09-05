@@ -4,6 +4,8 @@ import React, { useCallback, useEffect, useState } from 'react'
 import {
   AlertTriangle,
   CheckCircle2,
+  ChevronDown,
+  ChevronRight,
   ExternalLink,
   Link2,
   RefreshCw,
@@ -25,7 +27,6 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
-import { CopyButton } from '@/components/ui/CopyButton'
 import { RazorpaySymbol } from '@/components/ui/BrandIcons'
 
 interface OAuthConnectPanelProps {
@@ -61,6 +62,8 @@ export function OAuthConnectPanel({ onChanged }: OAuthConnectPanelProps) {
   const [busy, setBusy] = useState<boolean>(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const [expanded, setExpanded] = useState<boolean>(false)
+  const [userToggled, setUserToggled] = useState<boolean>(false)
 
   const refresh = useCallback((): void => {
     getOAuthStatus()
@@ -155,10 +158,24 @@ export function OAuthConnectPanel({ onChanged }: OAuthConnectPanelProps) {
   const shownNotice =
     notice ?? (callbackOutcome?.ok === true ? callbackOutcome.detail : null)
 
+  // Nothing to act on once connected -- default to collapsed. An error, a
+  // notice, or the user's own toggle always wins over that default.
+  const isExpanded =
+    userToggled || connected || shownError !== null || shownNotice !== null
+      ? expanded
+      : false
+
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-start justify-between gap-3">
+        <button
+          type="button"
+          onClick={() => {
+            setUserToggled(true)
+            setExpanded((prev) => !prev)
+          }}
+          className="flex w-full cursor-pointer items-start justify-between gap-3 text-left"
+        >
           <div className="min-w-0">
             <CardTitle className="flex items-center gap-2">
               <Link2 className="h-4 w-4" aria-hidden="true" />
@@ -170,155 +187,141 @@ export function OAuthConnectPanel({ onChanged }: OAuthConnectPanelProps) {
               that merchant.
             </CardDescription>
           </div>
-          <Badge
-            variant={connected ? 'recovered' : 'outline'}
-            className="shrink-0 text-[10px]"
-          >
-            {connected
-              ? 'Connected'
-              : configured
-                ? 'Not connected'
-                : 'Unconfigured'}
-          </Badge>
-        </div>
-      </CardHeader>
-
-      <CardContent className="space-y-4">
-        {!configured && (
-          <div className="space-y-2 rounded-control border border-border bg-surface-sunken p-3 text-xs">
-            <p className="font-semibold text-ink">
-              Requires Technology Partner onboarding
-            </p>
-            <ol className="ml-4 list-decimal space-y-1 text-ink-muted">
-              <li>Sign up as a Razorpay Technology Partner via support.</li>
-              <li>Register an application on the Partner Dashboard.</li>
-              <li>Whitelist the redirect URI below on that application.</li>
-            </ol>
-            <div className="flex items-center gap-2 pt-1">
-              <span className="truncate text-[11px] text-ink select-all">
-                {status?.redirect_uri ?? ''}
-              </span>
-              <CopyButton
-                value={status?.redirect_uri ?? ''}
-                subject="redirect URI"
-                variant="outline"
-              />
-            </div>
-          </div>
-        )}
-
-        <div className="flex items-center gap-3 rounded-panel border border-border bg-surface-sunken p-4">
-          <div
-            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${
-              connected
-                ? 'bg-recovered/15 text-recovered'
-                : 'bg-border/60 text-ink-muted'
-            }`}
-          >
-            {connected ? (
-              <Link2 className="h-5 w-5" aria-hidden="true" />
+          <div className="flex shrink-0 items-center gap-2">
+            <Badge
+              variant={connected ? 'recovered' : 'outline'}
+              className="text-[10px]"
+            >
+              {connected
+                ? 'Connected'
+                : configured
+                  ? 'Not connected'
+                  : 'Unconfigured'}
+            </Badge>
+            {isExpanded ? (
+              <ChevronDown className="h-4 w-4 text-ink-muted" />
             ) : (
-              <Unplug className="h-5 w-5" aria-hidden="true" />
+              <ChevronRight className="h-4 w-4 text-ink-muted" />
             )}
           </div>
+        </button>
+      </CardHeader>
 
-          <div className="h-px flex-1 border-t-2 border-dashed border-border" />
+      {isExpanded && (
+        <CardContent className="space-y-4">
+          <div className="flex items-center gap-3 rounded-panel border border-border bg-surface-sunken p-4">
+            <div
+              className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${
+                connected
+                  ? 'bg-recovered/15 text-recovered'
+                  : 'bg-border/60 text-ink-muted'
+              }`}
+            >
+              {connected ? (
+                <Link2 className="h-5 w-5" aria-hidden="true" />
+              ) : (
+                <Unplug className="h-5 w-5" aria-hidden="true" />
+              )}
+            </div>
 
-          <div
-            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${
-              connected ? 'bg-recovered/15' : 'bg-border/60'
-            }`}
-          >
-            <RazorpaySymbol className="h-5 w-5" />
+            <div className="h-px flex-1 border-t-2 border-dashed border-border" />
+
+            <div
+              className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${
+                connected ? 'bg-recovered/15' : 'bg-border/60'
+              }`}
+            >
+              <RazorpaySymbol className="h-5 w-5" />
+            </div>
+
+            <div className="min-w-0 flex-1 pl-1">
+              <p className="text-sm font-semibold text-ink">
+                {connected
+                  ? (status.account_id_masked ?? 'Merchant account connected')
+                  : 'No account connected'}
+              </p>
+              <p className="text-xs text-ink-muted">
+                {connected
+                  ? `Renews automatically, ${expiryLabel(
+                      status.token_expires_at,
+                      status.access_token_expired,
+                    ).toLowerCase()}`
+                  : 'Recovery actions use your API keys until an account is connected.'}
+              </p>
+            </div>
           </div>
 
-          <div className="min-w-0 flex-1 pl-1">
-            <p className="text-sm font-semibold text-ink">
-              {connected
-                ? (status.account_id_masked ?? 'Merchant account connected')
-                : 'No account connected'}
+          {shownError !== null && (
+            <p
+              role="alert"
+              className="border-status-failed/40 bg-status-failed/10 flex items-start gap-2 rounded-control border p-3 text-xs text-ink"
+            >
+              <AlertTriangle
+                className="mt-0.5 h-3.5 w-3.5 shrink-0"
+                aria-hidden="true"
+              />
+              {shownError}
             </p>
-            <p className="text-xs text-ink-muted">
-              {connected
-                ? `Renews automatically, ${expiryLabel(
-                    status.token_expires_at,
-                    status.access_token_expired,
-                  ).toLowerCase()}`
-                : 'Recovery actions use your API keys until an account is connected.'}
-            </p>
-          </div>
-        </div>
-
-        {shownError !== null && (
-          <p
-            role="alert"
-            className="border-status-failed/40 bg-status-failed/10 flex items-start gap-2 rounded-control border p-3 text-xs text-ink"
-          >
-            <AlertTriangle
-              className="mt-0.5 h-3.5 w-3.5 shrink-0"
-              aria-hidden="true"
-            />
-            {shownError}
-          </p>
-        )}
-
-        {shownNotice !== null && (
-          <p
-            role="status"
-            className="border-status-recovered/40 bg-status-recovered/10 flex items-start gap-2 rounded-control border p-3 text-xs text-ink"
-          >
-            <CheckCircle2
-              className="mt-0.5 h-3.5 w-3.5 shrink-0"
-              aria-hidden="true"
-            />
-            {shownNotice}
-          </p>
-        )}
-
-        <div className="flex flex-wrap items-center gap-3">
-          <Button
-            variant="primary"
-            size="sm"
-            disabled={busy || !configured}
-            onClick={() => {
-              void handleConnect()
-            }}
-            className="cursor-pointer gap-2 text-xs"
-          >
-            <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
-            {connected ? 'Reconnect account' : 'Connect Razorpay account'}
-          </Button>
-
-          {connected && (
-            <>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={busy}
-                onClick={() => {
-                  void handleRefresh()
-                }}
-                className="cursor-pointer gap-2 text-xs"
-              >
-                <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
-                Refresh token
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={busy}
-                onClick={() => {
-                  void handleDisconnect()
-                }}
-                className="cursor-pointer gap-2 text-xs"
-              >
-                <Unplug className="h-3.5 w-3.5" aria-hidden="true" />
-                Disconnect
-              </Button>
-            </>
           )}
-        </div>
-      </CardContent>
+
+          {shownNotice !== null && (
+            <p
+              role="status"
+              className="border-status-recovered/40 bg-status-recovered/10 flex items-start gap-2 rounded-control border p-3 text-xs text-ink"
+            >
+              <CheckCircle2
+                className="mt-0.5 h-3.5 w-3.5 shrink-0"
+                aria-hidden="true"
+              />
+              {shownNotice}
+            </p>
+          )}
+
+          <div className="flex flex-wrap items-center gap-3">
+            <Button
+              variant="primary"
+              size="sm"
+              disabled={busy || !configured}
+              onClick={() => {
+                void handleConnect()
+              }}
+              className="cursor-pointer gap-2 text-xs"
+            >
+              <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+              {connected ? 'Reconnect account' : 'Connect Razorpay account'}
+            </Button>
+
+            {connected && (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={busy}
+                  onClick={() => {
+                    void handleRefresh()
+                  }}
+                  className="cursor-pointer gap-2 text-xs"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
+                  Refresh token
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={busy}
+                  onClick={() => {
+                    void handleDisconnect()
+                  }}
+                  className="cursor-pointer gap-2 text-xs"
+                >
+                  <Unplug className="h-3.5 w-3.5" aria-hidden="true" />
+                  Disconnect
+                </Button>
+              </>
+            )}
+          </div>
+        </CardContent>
+      )}
     </Card>
   )
 }

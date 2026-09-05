@@ -7,7 +7,12 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from app.core.constants import DEFAULT_CURRENCY
-from app.core.enums import FailureCategory, InterventionType, PaymentRail
+from app.core.enums import (
+    FailureCategory,
+    InterventionType,
+    OutreachChannel,
+    PaymentRail,
+)
 
 
 class RawFailureEvent(BaseModel):
@@ -17,7 +22,9 @@ class RawFailureEvent(BaseModel):
     payment_id: str
     customer_id: str
     amount_paise: int = Field(gt=0, description="Amount in minor units (paise)")
-    currency: str = Field(default=DEFAULT_CURRENCY)
+    currency: str = Field(
+        default=DEFAULT_CURRENCY, pattern=r"^[A-Z]{3}$", description="ISO 4217 code"
+    )
     payment_rail: PaymentRail = PaymentRail.UNKNOWN
 
     error_code: str = Field(
@@ -58,6 +65,7 @@ class DiagnosisResult(BaseModel):
     recommended_intervention: InterventionType
     recommended_delay_hours: int = Field(ge=0)
     discount_bps_suggested: int = Field(default=0, ge=0, le=10000)
+    recommended_channel: OutreachChannel | None = None
     reasoning: str
     requires_human_approval: bool = False
     dunning_message_en: str | None = None

@@ -15,6 +15,7 @@ import {
   type AnalyticsSummaryResponse,
   type OperatorAutonomyMode,
   type RecoveryCase,
+  type SystemStatusResponse,
 } from '@/lib/api'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -49,6 +50,7 @@ import type { NavSection } from '@/components/layout/Sidebar'
 interface OverviewViewProps {
   cases: RecoveryCase[]
   analytics: AnalyticsSummaryResponse | null
+  status: SystemStatusResponse | null
   loading: boolean
   onSelectCase: (c: RecoveryCase) => void
   onNavigateToRecovery: (subTab?: string) => void
@@ -58,6 +60,7 @@ interface OverviewViewProps {
 export function OverviewView({
   cases,
   analytics,
+  status,
   loading,
   onSelectCase,
   onNavigateToRecovery,
@@ -161,6 +164,7 @@ export function OverviewView({
       {/* Guided 4-Step Recovery Lifecycle Strip */}
       <RecoveryLifecycleStrip
         cases={cases}
+        status={status}
         onStepClick={(idx) => {
           if (idx === 0) onNavigateToRecovery('AT_RISK')
           else if (idx === 1) onNavigateToRecovery('ALL')
@@ -239,32 +243,30 @@ export function OverviewView({
       </section>
 
       {/* Operations Quick Action Cards Grid */}
-      <section className="grid grid-cols-1 gap-6 md:grid-cols-3">
+      <section className="grid grid-cols-1 gap-3 md:grid-cols-3">
         <Card
           className="cursor-pointer transition-colors hover:border-accent/40"
           onClick={() => {
             onNavigateToRecovery('ACTIVE')
           }}
         >
-          <CardHeader className="p-4 pb-2 sm:p-5">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-semibold text-ink">
-                In-Flight Queue
-              </CardTitle>
-              <RotateCcw className="h-4 w-4 text-accent" />
+          <CardContent className="flex items-center justify-between gap-3 p-3.5">
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5">
+                <RotateCcw className="h-3.5 w-3.5 shrink-0 text-accent" />
+                <span className="truncate text-xs font-semibold text-ink">
+                  In-Flight Queue
+                </span>
+              </div>
+              <p className="mt-0.5 truncate text-xs text-ink-muted">
+                Active dunning & scheduled retries
+              </p>
             </div>
-            <CardDescription className="text-xs text-ink-muted">
-              Active dunning sequences & scheduled smart retries
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="p-4 pt-0 sm:p-5">
-            <div className="mt-2 flex items-baseline justify-between">
-              <span className="text-2xl font-bold text-ink">
+            <div className="flex shrink-0 items-center gap-2">
+              <span className="text-xl font-bold text-ink">
                 {activeCount.toString()}
               </span>
-              <span className="flex items-center gap-1 text-xs text-accent">
-                View Queue <ArrowRight className="h-3 w-3" />
-              </span>
+              <ArrowRight className="h-3.5 w-3.5 text-accent" />
             </div>
           </CardContent>
         </Card>
@@ -279,27 +281,25 @@ export function OverviewView({
             onNavigateToRecovery('ESCALATED')
           }}
         >
-          <CardHeader className="p-4 pb-2 sm:p-5">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-semibold text-ink">
-                Manual Approvals
-              </CardTitle>
-              <ShieldAlert className="h-4 w-4 text-escalated" />
+          <CardContent className="flex items-center justify-between gap-3 p-3.5">
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5">
+                <ShieldAlert className="h-3.5 w-3.5 shrink-0 text-escalated" />
+                <span className="truncate text-xs font-semibold text-ink">
+                  Manual Approvals
+                </span>
+              </div>
+              <p className="mt-0.5 truncate text-xs text-ink-muted">
+                Escalated by guardrails
+              </p>
             </div>
-            <CardDescription className="text-xs text-ink-muted">
-              Cases escalated by deterministic guardrails
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="p-4 pt-0 sm:p-5">
-            <div className="mt-2 flex items-baseline justify-between">
+            <div className="flex shrink-0 items-center gap-2">
               <span
-                className={`text-2xl font-bold ${escalatedCount > 0 ? 'text-escalated' : 'text-ink'}`}
+                className={`text-xl font-bold ${escalatedCount > 0 ? 'text-escalated' : 'text-ink'}`}
               >
                 {escalatedCount.toString()}
               </span>
-              <span className="flex items-center gap-1 text-xs text-escalated">
-                Review Cases <ArrowRight className="h-3 w-3" />
-              </span>
+              <ArrowRight className="h-3.5 w-3.5 text-escalated" />
             </div>
           </CardContent>
         </Card>
@@ -310,25 +310,23 @@ export function OverviewView({
             onNavigateToRecovery('RECOVERED')
           }}
         >
-          <CardHeader className="p-4 pb-2 sm:p-5">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-semibold text-ink">
-                Recovered Volume
-              </CardTitle>
-              <CheckCircle2 className="h-4 w-4 text-recovered" />
+          <CardContent className="flex items-center justify-between gap-3 p-3.5">
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5">
+                <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-recovered" />
+                <span className="truncate text-xs font-semibold text-ink">
+                  Recovered Volume
+                </span>
+              </div>
+              <p className="mt-0.5 truncate text-xs text-ink-muted">
+                Completed revenue recoveries
+              </p>
             </div>
-            <CardDescription className="text-xs text-ink-muted">
-              Successfully completed revenue recoveries
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="p-4 pt-0 sm:p-5">
-            <div className="mt-2 flex items-baseline justify-between">
-              <span className="text-2xl font-bold text-recovered">
+            <div className="flex shrink-0 items-center gap-2">
+              <span className="text-xl font-bold text-recovered">
                 {recoveredCount.toString()}
               </span>
-              <span className="flex items-center gap-1 text-xs text-recovered">
-                View Ledger <ArrowRight className="h-3 w-3" />
-              </span>
+              <ArrowRight className="h-3.5 w-3.5 text-recovered" />
             </div>
           </CardContent>
         </Card>
@@ -352,6 +350,7 @@ export function OverviewView({
           </div>
           <HealthScoreCard
             healthScore={analytics.health_score}
+            healthScoreAvailable={analytics.health_score_available}
             returnOnSpend={analytics.return_on_recovery_spend}
           />
         </section>

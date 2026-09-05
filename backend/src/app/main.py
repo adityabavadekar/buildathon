@@ -25,8 +25,8 @@ from app.api.routes import (
     policies,
     rail_health,
     simulation,
+    voice_audio,
     webhooks,
-    workflows,
 )
 from app.api.routes import settings as settings_router
 from app.core.auth import require_operator
@@ -91,9 +91,11 @@ def create_app() -> FastAPI:
     app.include_router(health.router, prefix="/api")
 
     # Unauthenticated by necessity: the dashboard must ask whether a login is
-    # required before it has a session, and webhooks authenticate by HMAC.
+    # required before it has a session, webhooks authenticate by HMAC, and
+    # voice-audio is fetched directly by Twilio, which cannot present a cookie.
     app.include_router(auth.router, prefix="/api")
     app.include_router(webhooks.router, prefix="/api")
+    app.include_router(voice_audio.router, prefix="/api")
 
     # Gated by default, so a route added later is protected without opting in.
     # require_operator is a no-op when no operator password is configured.
@@ -108,7 +110,6 @@ def create_app() -> FastAPI:
     app.include_router(operator.router, prefix="/api", dependencies=guarded)
     app.include_router(experiments.router, prefix="/api", dependencies=guarded)
     app.include_router(settings_router.router, prefix="/api", dependencies=guarded)
-    app.include_router(workflows.router, prefix="/api", dependencies=guarded)
     app.include_router(benchmark.router, prefix="/api", dependencies=guarded)
     app.include_router(integrations.router, prefix="/api", dependencies=guarded)
     return app

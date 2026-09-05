@@ -10,7 +10,6 @@ import {
   Receipt,
   Settings,
   ShieldCheck,
-  SlidersHorizontal,
   Unplug,
 } from 'lucide-react'
 
@@ -20,23 +19,18 @@ export type NavSection =
   | 'transactions'
   | 'audit'
   | 'settings-policies'
-  | 'settings-general'
   | 'settings-integrations'
   | 'pipeline'
-  | 'workflows'
   | 'recovery'
   | 'approvals'
   | 'agent'
   | 'policies'
   | 'status'
-  | 'settings'
 
 export const SETTINGS_SECTIONS: NavSection[] = [
   'settings-policies',
-  'settings-general',
   'settings-integrations',
   'policies',
-  'settings',
 ]
 
 export function isSettingsSection(section: NavSection): boolean {
@@ -49,16 +43,13 @@ export const NAV_SECTION_LABELS: Record<NavSection, string> = {
   transactions: 'Transactions',
   audit: 'Audit Log',
   'settings-policies': 'Merchant Policies',
-  'settings-general': 'General Settings',
   'settings-integrations': 'Integrations',
   pipeline: 'Data Pipeline (dev)',
-  workflows: 'Workflows',
   recovery: 'Recovery Cases',
   approvals: 'Awaiting Approval',
   agent: 'AI Agent Telemetry',
   policies: 'Merchant Policies',
   status: 'System Status',
-  settings: 'Settings',
 }
 
 export const MAIN_NAV_ITEMS: {
@@ -95,16 +86,18 @@ export const OPERATIONS_NAV_ITEMS: {
   { id: 'status', label: 'System Status', icon: Activity },
 ]
 
+/** Nav sections that expose simulation/dev-only tooling and must stay out of production. */
+const DEV_ONLY_NAV_SECTIONS: NavSection[] = ['pipeline']
+
+export function isDevOnlyNavSection(section: NavSection): boolean {
+  return DEV_ONLY_NAV_SECTIONS.includes(section)
+}
+
 export const SETTINGS_NAV_ITEMS: {
   id: NavSection
   label: string
   icon: LucideIcon
 }[] = [
-  {
-    id: 'settings-general',
-    label: 'General Settings',
-    icon: SlidersHorizontal,
-  },
   { id: 'settings-policies', label: 'Merchant Policies', icon: ShieldCheck },
   { id: 'settings-integrations', label: 'Integrations', icon: Unplug },
 ]
@@ -117,16 +110,13 @@ const ALL_NAV_SECTIONS: NavSection[] = [
   'transactions',
   'audit',
   'settings-policies',
-  'settings-general',
   'settings-integrations',
   'pipeline',
-  'workflows',
   'recovery',
   'approvals',
   'agent',
   'policies',
   'status',
-  'settings',
 ]
 
 export function isNavSection(value: string): value is NavSection {

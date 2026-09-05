@@ -1,4 +1,4 @@
-"""Tests for policy invariants, touch caps, cooldowns, and margin limits."""
+"""Tests for policy invariants, attempt caps, cooldowns, and margin limits."""
 
 from datetime import UTC, datetime, timedelta
 
@@ -18,10 +18,10 @@ from app.intervention.policy_gate import PolicyGate
 
 def create_sample_case(
     amount_paise: int = 100000,
-    touches_count: int = 0,
+    attempts_count: int = 0,
     is_opted_out: bool = False,
     experiment_arm: ExperimentArm = ExperimentArm.TREATMENT,
-    last_touch_at: datetime | None = None,
+    last_attempt_at: datetime | None = None,
 ) -> RecoveryCase:
     event = RawFailureEvent(
         event_id="evt_test",
@@ -35,10 +35,10 @@ def create_sample_case(
         case_id="case_test",
         amount_paise=amount_paise,
         failure_event=event,
-        touches_count=touches_count,
+        attempts_count=attempts_count,
         is_opted_out=is_opted_out,
         experiment_arm=experiment_arm,
-        last_touch_at=last_touch_at,
+        last_attempt_at=last_attempt_at,
     )
 
 
@@ -77,10 +77,10 @@ def test_policy_gate_preserves_holdout_control_group() -> None:
     assert not evaluation.is_allowed
 
 
-def test_policy_gate_blocks_when_max_touches_exceeded() -> None:
+def test_policy_gate_blocks_when_max_attempts_exceeded() -> None:
     gate = PolicyGate()
-    case = create_sample_case(touches_count=3)
-    policy = MerchantPolicy(max_touches=3)
+    case = create_sample_case(attempts_count=3)
+    policy = MerchantPolicy(max_attempts=3)
     plan = InterventionPlan(
         plan_id="plan_3",
         case_id=case.case_id,
@@ -98,7 +98,9 @@ def test_policy_gate_blocks_when_max_touches_exceeded() -> None:
 def test_policy_gate_enforces_minimum_cooldown() -> None:
     gate = PolicyGate()
     now = datetime.now(UTC)
-    case = create_sample_case(touches_count=1, last_touch_at=now - timedelta(hours=6))
+    case = create_sample_case(
+        attempts_count=1, last_attempt_at=now - timedelta(hours=6)
+    )
     policy = MerchantPolicy(min_cooldown_hours=24)
     plan = InterventionPlan(
         plan_id="plan_4",
@@ -211,7 +213,9 @@ def test_policy_gate_escalates_requires_human_approval_flag() -> None:
     assert not evaluation.is_allowed
 
 
-def _sibling_case(case_id: str, customer_id: str, touched_at: datetime) -> RecoveryCase:
+def _sibling_case(
+    case_id: str, customer_id: str, attempted_at: datetime
+) -> RecoveryCase:
     """A second case for the same customer, already contacted."""
     return RecoveryCase(
         case_id=case_id,
@@ -223,14 +227,14 @@ def _sibling_case(case_id: str, customer_id: str, touched_at: datetime) -> Recov
             customer_id=customer_id,
             amount_paise=100000,
             error_code="AP15",
-            occurred_at=touched_at,
+            occurred_at=attempted_at,
         ),
         audit_trail=[
             AuditEntry(
                 case_id=case_id,
                 event_name="intervention.executed",
                 actor=AuditActor.SYSTEM,
-                timestamp=touched_at,
+                timestamp=attempted_at,
                 decision_inputs={
                     "plan": {"intervention_type": InterventionType.CUSTOMER_NUDGE.value}
                 },
@@ -278,7 +282,7 @@ def test_cooldown_is_scoped_to_the_customer_not_the_case() -> None:
     assert "same customer" in evaluation.reason
 
 
-def test_a_different_customer_is_not_blocked_by_someone_elses_touch() -> None:
+def test_a_different_customer_is_not_blocked_by_someone_elses_attempt() -> None:
     repo = get_case_repository()
     now = datetime.now(UTC)
     repo.save(_sibling_case("case_other", "cust_unrelated", now - timedelta(hours=1)))

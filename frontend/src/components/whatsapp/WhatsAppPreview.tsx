@@ -189,7 +189,7 @@ export function WhatsAppPreview({ caseItem }: WhatsAppPreviewProps) {
             className={`h-1.5 w-1.5 rounded-full ${isAgentDrafted ? 'animate-pulse bg-[#25D366]' : 'bg-white/60'}`}
           />
           {isAgentDrafted
-            ? 'AI Personalized Outreach'
+            ? 'Personalized Outreach'
             : 'Deterministic Rules Template'}
         </span>
         <span className="max-w-[180px] truncate text-white/70">

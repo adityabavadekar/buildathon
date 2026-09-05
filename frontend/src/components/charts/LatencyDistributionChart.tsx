@@ -19,6 +19,8 @@ interface LatencyDistributionChartProps {
 export function LatencyDistributionChart({
   ttrBuckets,
 }: LatencyDistributionChartProps) {
+  const hasData = ttrBuckets.some((bucket) => bucket.count > 0)
+
   return (
     <Card>
       <CardHeader>
@@ -33,15 +35,19 @@ export function LatencyDistributionChart({
       </CardHeader>
       <CardContent>
         <HistogramChart
-          bars={ttrBuckets.map((bucket) => ({
-            key: bucket.bucket,
-            label: bucket.bucket,
-            value: bucket.count,
-            detail: `${bucket.percentage.toFixed(1)}% of resolved cases`,
-          }))}
+          bars={
+            hasData
+              ? ttrBuckets.map((bucket) => ({
+                  key: bucket.bucket,
+                  label: bucket.bucket,
+                  value: bucket.count,
+                  detail: `${bucket.percentage.toFixed(1)}% of resolved cases`,
+                }))
+              : []
+          }
           valueSuffix=" cases"
           valueLabel="Cases by time to recovery"
-          emptyMessage="No resolution latency telemetry available."
+          emptyMessage="No cases have recovered yet -- latency data will appear here once some do."
         />
       </CardContent>
     </Card>

@@ -17,7 +17,8 @@ from app.core.auth import (
     verify_password,
     verify_session_token,
 )
-from app.core.config import get_settings
+from app.core.config import Settings, get_settings
+from app.core.constants import DEFAULT_OPERATOR_PASSWORD
 
 if TYPE_CHECKING:
     from fastapi.testclient import TestClient
@@ -34,9 +35,20 @@ def _with_password(monkeypatch: pytest.MonkeyPatch) -> None:
     get_login_throttle().reset()
 
 
-def test_auth_is_disabled_when_no_password_is_set() -> None:
-    """The default posture: dev and the existing suite must keep working."""
+def test_auth_is_disabled_with_an_empty_password() -> None:
+    """conftest.py's autouse fixture sets this for every test but
+    test_operator_auth.py itself; verifies the underlying invariant directly.
+    """
     assert auth_enabled() is False
+
+
+def test_settings_default_password_is_not_empty() -> None:
+    """A Settings() built with no APP_OPERATOR_PASSWORD env var must still
+    have a real password, or a deployment that forgets to set one is wide
+    open. Constructed directly, bypassing conftest.py's test-only override.
+    """
+    fresh = Settings(_env_file=None)
+    assert fresh.operator_password.get_secret_value() == DEFAULT_OPERATOR_PASSWORD
 
 
 def test_auth_enabled_with_a_password(_with_password: None) -> None:

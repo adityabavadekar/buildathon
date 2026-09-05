@@ -28,7 +28,7 @@ class RecoverySyncConsumer:
             "worker.event_processed",
             case_id=case.case_id,
             state=case.state.value,
-            touches=case.touches_count,
+            attempts=case.attempts_count,
         )
         return case.case_id
 

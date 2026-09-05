@@ -31,16 +31,14 @@ const NAV_DESCRIPTIONS: Partial<Record<NavSection, string>> = {
   analytics: 'Counterfactual proof and NRV accounting',
   transactions: 'Active recovery queue and operational table',
   audit: 'System-wide immutable chronology',
-  'settings-policies': 'Guardrails, touch limits, and discount caps',
-  'settings-general': 'LLM provider hierarchy and experiment evaluation',
-  'settings-integrations': 'Razorpay gateway, webhooks, and subsystem health',
+  'settings-policies': 'Guardrails, attempt limits, and discount caps',
+  'settings-integrations':
+    'Razorpay gateway, webhooks, LLM provider hierarchy, and subsystem health',
   pipeline: 'Ingestion queue, fleet control, and worker telemetry',
-  workflows: 'Durable recovery workflows and decision history',
   recovery: 'Active dunning queue and operational table',
   agent: 'Live decision stream and model token metrics',
-  policies: 'Guardrails, touch limits, and discount caps',
+  policies: 'Guardrails, attempt limits, and discount caps',
   status: 'Telemetry, gateway health, and active queues',
-  settings: 'Razorpay webhook URLs and integration config',
 }
 
 const SUGGEST_DEBOUNCE_MS = 160

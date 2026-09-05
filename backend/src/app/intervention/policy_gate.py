@@ -6,6 +6,10 @@ from app.audit.models import RecoveryCase
 from app.audit.repository import get_case_repository
 from app.core.enums import ExperimentArm, InterventionType, PolicyCheckResult
 from app.detection.rail_health import get_rail_health_registry
+from app.intervention.mandate_backoff import (
+    compute_mandate_backoff_hours,
+    is_mandate_retry,
+)
 from app.intervention.models import InterventionPlan, MerchantPolicy, PolicyEvaluation
 from app.intervention.policy_store import get_policy_store
 
@@ -42,15 +46,15 @@ class PolicyGate:
         active_policy = policy or get_active_policy()
         now = datetime.now(UTC)
 
-        # Run primary gate checks
+        # 1. Hard blocking checks: opt-outs, holdout, escalation, retry caps.
         blocking_eval = self._check_blocking_invariants(case, plan, active_policy, now)
         if blocking_eval is not None:
             return blocking_eval
 
-        # Validate and sanitize drafted customer messaging guardrails
+        # 2. Enforce messaging guardrails on drafted customer copy.
         sanitized_plan = self._validate_and_sanitize_messages(case, plan, active_policy)
 
-        # Margin & Discount Cap Clamping
+        # 3. Clamp any discount above the merchant's margin cap.
         if sanitized_plan.discount_bps > active_policy.max_discount_bps:
             clamped_discount_bps = active_policy.max_discount_bps
             clamped_discount_paise = int(
@@ -71,11 +75,10 @@ class PolicyGate:
                 modified_plan=modified,
             )
 
-        # All invariants passed
         return PolicyEvaluation(
             result=PolicyCheckResult.APPROVED,
             is_allowed=True,
-            reason="All policy guardrails, touch limits, and margin constraints satisfied.",
+            reason="All policy guardrails, attempt limits, and margin constraints satisfied.",
             evaluated_at=now,
             modified_plan=sanitized_plan,
         )
@@ -96,7 +99,6 @@ class PolicyGate:
         max_allowed_discount_bps = min(plan.discount_bps, policy.max_discount_bps)
         max_allowed_pct = max_allowed_discount_bps / 100.0
 
-        # Validate message length
         if msg_en and len(msg_en) > 500:  # noqa: PLR2004
             msg_en = msg_en[:497] + "..."
             changed = True
@@ -104,7 +106,8 @@ class PolicyGate:
             msg_hi = msg_hi[:497] + "..."
             changed = True
 
-        # Check for hallucinated discounts exceeding policy (e.g. "50% discount", "20% off")
+        # The model may hallucinate a discount percentage into the copy; any figure
+        # above the policy cap gets replaced with the safe fallback message.
         for text, lang in [(msg_en, "en"), (msg_hi, "hi")]:
             if not text:
                 continue
@@ -170,18 +173,19 @@ class PolicyGate:
                 result=PolicyCheckResult.ESCALATE_REQUIRED,
                 is_allowed=False,
                 reason=(
-                    f"Case amount ({case.amount_paise} paise) exceeds merchant high-value threshold "
-                    f"({policy.require_human_above_paise} paise); requires human approval."
+                    f"Case amount ({case.currency} {case.amount_paise / 100:,.2f}) exceeds "
+                    f"merchant high-value threshold ({case.currency} "
+                    f"{policy.require_human_above_paise / 100:,.2f}); requires human approval."
                 ),
                 evaluated_at=now,
             )
 
-        if case.touches_count >= policy.max_touches:
+        if case.attempts_count >= policy.max_attempts:
             return PolicyEvaluation(
                 result=PolicyCheckResult.BLOCKED_MAX_RETRIES,
                 is_allowed=False,
                 reason=(
-                    f"Maximum touch limit reached ({case.touches_count}/{policy.max_touches}). "
+                    f"Maximum attempt limit reached ({case.attempts_count}/{policy.max_attempts}). "
                     "Halting automated retries to prevent customer harassment."
                 ),
                 evaluated_at=now,
@@ -247,25 +251,43 @@ class PolicyGate:
         Scoped to the customer, not the case: two subscriptions failing the same
         day are one person receiving two messages.
         """
-        if plan.intervention_type in {
-            InterventionType.PASSIVE_RETRY,
-            InterventionType.NO_ACTION,
-        }:
+        if plan.intervention_type == InterventionType.NO_ACTION:
             return None
 
-        last_touch = case.last_touch_at
+        last_attempt = case.last_attempt_at
         scope = "this case"
-        sibling_touch = self._last_sibling_touch(case)
-        if sibling_touch is not None and (
-            last_touch is None or sibling_touch > last_touch
+        sibling_attempt = self._last_sibling_attempt(case)
+        if sibling_attempt is not None and (
+            last_attempt is None or sibling_attempt > last_attempt
         ):
-            last_touch = sibling_touch
+            last_attempt = sibling_attempt
             scope = "another case for the same customer"
 
-        if last_touch is None:
+        if last_attempt is None:
             return None
 
-        elapsed_seconds = (plan.scheduled_at - last_touch).total_seconds()
+        elapsed_seconds = (plan.scheduled_at - last_attempt).total_seconds()
+
+        if is_mandate_retry(plan.intervention_type):
+            rail = case.failure_event.payment_rail
+            required_hours = compute_mandate_backoff_hours(
+                policy, rail, case.retry_count + 1
+            )
+            required_seconds = required_hours * 3600
+            if elapsed_seconds < required_seconds:
+                hours_left = (required_seconds - elapsed_seconds) / 3600
+                return PolicyEvaluation(
+                    result=PolicyCheckResult.BLOCKED_COOLDOWN,
+                    is_allowed=False,
+                    reason=(
+                        f"Mandate retry backoff violated: only {elapsed_seconds / 3600:.1f}h elapsed since last "
+                        f"attempt on {scope} (rail {rail.value} requires {required_hours}h at retry "
+                        f"{case.retry_count + 1}, {hours_left:.1f}h remaining)."
+                    ),
+                    evaluated_at=now,
+                )
+            return None
+
         min_cooldown_seconds = policy.min_cooldown_hours * 3600
         if elapsed_seconds < min_cooldown_seconds:
             hours_left = (min_cooldown_seconds - elapsed_seconds) / 3600
@@ -273,14 +295,14 @@ class PolicyGate:
                 result=PolicyCheckResult.BLOCKED_COOLDOWN,
                 is_allowed=False,
                 reason=(
-                    f"Cooldown constraint violated: only {elapsed_seconds / 3600:.1f}h elapsed since last touch "
+                    f"Cooldown constraint violated: only {elapsed_seconds / 3600:.1f}h elapsed since last attempt "
                     f"on {scope} (minimum {policy.min_cooldown_hours}h required, {hours_left:.1f}h remaining)."
                 ),
                 evaluated_at=now,
             )
         return None
 
-    def _last_sibling_touch(self, case: RecoveryCase) -> datetime | None:
+    def _last_sibling_attempt(self, case: RecoveryCase) -> datetime | None:
         """Most recent outreach to this customer on any of their other cases.
 
         Degrades to None on a lookup failure: the per-case cooldown still applies,

@@ -13,7 +13,13 @@ from pydantic import BaseModel, Field
 
 from app.audit.global_log import record_global_audit
 from app.audit.repository import get_case_repository
-from app.core.enums import AuditActor, ExperimentArm, PaymentRail, RecoveryState
+from app.core.enums import (
+    AuditActor,
+    EscalationReason,
+    ExperimentArm,
+    PaymentRail,
+    RecoveryState,
+)
 from app.detection.classifier import classify_failure
 from app.detection.clustering import recompute_patterns
 from app.detection.customer_profile import get_customer_profile_registry
@@ -24,7 +30,7 @@ from app.intervention.policy_gate import get_active_policy
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from app.audit.models import RecoveryCase
+    from app.audit.models import AuditEntry, RecoveryCase
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 
@@ -182,8 +188,26 @@ class EscalationQueueItem(BaseModel):
     escalation_reason: str
     recommended_action: str
     recommended_discount_bps: int
-    touches_count: int
+    attempts_count: int
     created_at: str
+    state: str
+
+
+class FailedExecutionQueueItem(BaseModel):
+    """A case escalated only because a live gateway call failed -- needs a retry
+    or an engineer, not merchant judgment. Kept out of EscalationQueueItem so the
+    two never mix in one queue or one count.
+    """
+
+    case_id: str
+    customer_id: str
+    payment_id: str
+    payment_rail: str
+    amount_paise: int
+    attempted_intervention: str
+    failure_reason: str
+    attempts_count: int
+    failed_at: str
     state: str
 
 
@@ -255,6 +279,10 @@ class AnalyticsSummaryResponse(BaseModel):
     simulated_cost_paise: int
 
     health_score: int
+    # False until at least one treatment case has resolved (recovered or not).
+    # The score formula floors at 20 with zero signal, which reads as "unhealthy"
+    # rather than "no data yet" -- callers must check this before showing the score.
+    health_score_available: bool
 
     forecast: RecoveryForecast | None = None
     category_distribution: list[CategoryBreakdown] = Field(default_factory=list)
@@ -428,12 +456,16 @@ def _compute_daily_metrics(cases: Sequence[RecoveryCase]) -> list[DailyMetricPoi
             stats["recovered"] += 1
             stats["recovered_paise"] += c.recovered_amount_paise
             stats["nrv"] += c.net_recovered_value_paise
-        elif c.state == RecoveryState.ESCALATED:
+        elif (
+            c.state == RecoveryState.ESCALATED
+            and c.escalation_reason == EscalationReason.HUMAN_JUDGMENT
+        ):
             stats["escalated"] += 1
         elif c.state in (RecoveryState.FAILED, RecoveryState.ABANDONED):
             stats["failed"] += 1
         else:
-            # Active in-flight
+            # Active in-flight, or ESCALATED only on a failed gateway call
+            # (escalation_reason == SYSTEM_ERROR, not HUMAN_JUDGMENT).
             stats["failed"] += 1
 
     daily_points: list[DailyMetricPoint] = []
@@ -482,7 +514,10 @@ def _compute_monthly_metrics(cases: Sequence[RecoveryCase]) -> list[MonthlyMetri
             stats["recovered"] += 1
             stats["recovered_paise"] += c.recovered_amount_paise
             stats["nrv"] += c.net_recovered_value_paise
-        elif c.state == RecoveryState.ESCALATED:
+        elif (
+            c.state == RecoveryState.ESCALATED
+            and c.escalation_reason == EscalationReason.HUMAN_JUDGMENT
+        ):
             stats["escalated"] += 1
         elif c.state in (RecoveryState.FAILED, RecoveryState.ABANDONED):
             stats["failed"] += 1
@@ -611,7 +646,12 @@ async def get_analytics_summary() -> AnalyticsSummaryResponse:
             RecoveryState.ANALYSIS_QUEUED,
         )
     )
-    escalated_count = sum(1 for c in cases if c.state == RecoveryState.ESCALATED)
+    escalated_count = sum(
+        1
+        for c in cases
+        if c.state == RecoveryState.ESCALATED
+        and c.escalation_reason == EscalationReason.HUMAN_JUDGMENT
+    )
     recovered_count = sum(1 for c in cases if c.state == RecoveryState.RECOVERED)
 
     total_spend = total_gw_fees + total_comm_cost + total_discounts
@@ -620,10 +660,22 @@ async def get_analytics_summary() -> AnalyticsSummaryResponse:
         if total_spend > 0
         else (50.0 if recovered_amount > 0 else 0.0)
     )
+    treatment_settled = [
+        c
+        for c in treatment_cases
+        if c.state
+        in (
+            RecoveryState.RECOVERED,
+            RecoveryState.ESCALATED,
+            RecoveryState.ABANDONED,
+            RecoveryState.WRITTEN_OFF,
+        )
+    ]
+    health_score_available = len(treatment_settled) > 0
     health_score = (
         min(100, max(20, int(treatment_rate * 1.1 + (lift * 1.5))))
-        if treatment_cases
-        else 85
+        if health_score_available
+        else 0
     )
     forecast_data = _compute_recovery_forecast(cases, lift)
     campaign_list = _compute_campaign_metrics(cases)
@@ -653,6 +705,7 @@ async def get_analytics_summary() -> AnalyticsSummaryResponse:
         simulated_cost_paise=fidelity["simulated_cost_paise"],
         return_on_recovery_spend=rors,
         health_score=health_score,
+        health_score_available=health_score_available,
         forecast=forecast_data,
         category_distribution=cat_distribution,
         intervention_performance=perf_list,
@@ -692,7 +745,10 @@ def _compute_campaign_metrics(
             b["recovered"] += 1
             b["recovered_paise"] += c.recovered_amount_paise
             b["nrv"] += c.net_recovered_value_paise
-        if c.state == RecoveryState.ESCALATED:
+        if (
+            c.state == RecoveryState.ESCALATED
+            and c.escalation_reason == EscalationReason.HUMAN_JUDGMENT
+        ):
             b["escalated"] += 1
 
     result: list[CampaignMetrics] = []
@@ -735,7 +791,6 @@ def _compute_recovery_forecast(
     total_at_risk_open = sum(c.amount_paise for c in open_cases)
     total_recovered_so_far = sum(c.recovered_amount_paise for c in recovered_cases)
 
-    # Compute segmented baseline recovery rates by payment rail
     rail_rates: dict[str, float] = {}
     for rail in PaymentRail:
         rail_cases = [c for c in cases if c.failure_event.payment_rail == rail]
@@ -809,52 +864,62 @@ async def get_recovery_forecast() -> RecoveryForecast:
     return _compute_recovery_forecast(cases, lift)
 
 
+def _escalation_reason(case: RecoveryCase) -> str:
+    """Human-facing why for a case in the human-judgment escalation queue.
+
+    Called only for cases already filtered to escalation_reason ==
+    HUMAN_JUDGMENT, so the entry that actually recorded the escalation (its
+    to_state transition into ESCALATED) is exactly the one worth quoting.
+    """
+    for entry in reversed(case.audit_trail):
+        if entry.to_state == RecoveryState.ESCALATED:
+            reason = (
+                entry.notes
+                or getattr(entry, "reason", None)
+                or (
+                    entry.decision_inputs.get("plan", {}).get("rationale")
+                    if isinstance(entry.decision_inputs.get("plan"), dict)
+                    else None
+                )
+            )
+            if reason:
+                return reason
+    return (
+        f"Policy ceiling exceeded: {case.attempts_count} attempts completed "
+        f"on {case.failure_event.payment_rail.value}."
+    )
+
+
 @router.get(
     "/escalations",
     response_model=list[EscalationQueueItem],
     summary="Get Expected Recoverable Value (EV) Prioritized Operator Escalation Queue",
 )
 async def get_escalation_queue() -> list[EscalationQueueItem]:
-    """Return all cases currently requiring human operator action, prioritized by EV."""
+    """Cases where a human must exercise judgment: fraud suspicion, policy-required
+    approval, or a plan the agent explicitly routed for review. Excludes cases
+    escalated only because a live gateway call failed (see /failed-executions) --
+    those need a retry or an engineer, not a merchant's judgment, and mixing them
+    in here would both misrepresent what the queue means and inflate the
+    Manual Approvals count with infrastructure noise.
+    """
     repo = get_case_repository()
-    escalated_cases = repo.list_cases(state=RecoveryState.ESCALATED, limit=200)
+    escalated_cases = repo.list_cases(
+        state=RecoveryState.ESCALATED,
+        escalation_reason=EscalationReason.HUMAN_JUDGMENT.value,
+        limit=200,
+    )
     policy = get_active_policy()
 
     queue: list[EscalationQueueItem] = []
 
     for c in escalated_cases:
-        # 1. Surface the persisted why from audit trail
-        reason_found: str | None = None
-        for entry in reversed(c.audit_trail):
-            if entry.event_name in (
-                "intervention.pending_human_approval",
-                "intervention.escalated",
-                "policy.blocked",
-                "case.escalated",
-            ) or entry.actor in (
-                AuditActor.POLICY_GATE,
-                AuditActor.HUMAN_OPERATOR,
-                AuditActor.SYSTEM,
-            ):
-                reason_found = (
-                    entry.notes
-                    or getattr(entry, "reason", None)
-                    or (
-                        entry.decision_inputs.get("plan", {}).get("rationale")
-                        if isinstance(entry.decision_inputs.get("plan"), dict)
-                        else None
-                    )
-                )
-                if reason_found:
-                    break
-
-        if not reason_found:
-            reason_found = f"Policy ceiling exceeded: {c.touches_count} touches completed on {c.failure_event.payment_rail.value}."
+        reason_found = _escalation_reason(c)
 
         # 2. Customer Profile & Rail Health Informed Opportunity Scoring
         amount = c.amount_paise
         rail = c.failure_event.payment_rail
-        touches = c.touches_count
+        attempts = c.attempts_count
 
         cust_profile = get_customer_profile_registry().get_profile(
             c.failure_event.customer_id
@@ -867,7 +932,7 @@ async def get_escalation_queue() -> list[EscalationQueueItem]:
         if "HITL" in reason_found or "human approval" in reason_found.lower():
             prob = 0.85
             recommended_action = "Approve formulated AI recovery plan"
-        elif touches >= policy.max_touches:
+        elif attempts >= policy.max_attempts:
             prob = 0.60
             recommended_discount = policy.max_discount_bps
             recommended_action = (
@@ -913,12 +978,69 @@ async def get_escalation_queue() -> list[EscalationQueueItem]:
                 escalation_reason=reason_found,
                 recommended_action=recommended_action,
                 recommended_discount_bps=recommended_discount,
-                touches_count=touches,
+                attempts_count=attempts,
                 created_at=c.created_at.isoformat(),
                 state=c.state.value,
             )
         )
 
-    # Sort strictly by Expected Recoverable Value descending
+    # Highest expected recoverable value first.
     queue.sort(key=lambda x: x.expected_recoverable_value_paise, reverse=True)
+    return queue
+
+
+@router.get(
+    "/failed-executions",
+    response_model=list[FailedExecutionQueueItem],
+    summary="Get cases stuck on a failed live gateway call, most recent first",
+)
+async def get_failed_execution_queue() -> list[FailedExecutionQueueItem]:
+    """Cases where the agent chose a valid intervention but the live Razorpay
+    call itself failed (rate limit, missing credentials, 4xx/5xx, network
+    error) -- distinct from /escalations, which is for cases needing a human's
+    judgment on what to do. Nothing here needs a decision; it needs the
+    underlying call retried or the integration fixed.
+    """
+    repo = get_case_repository()
+    escalated_cases = repo.list_cases(
+        state=RecoveryState.ESCALATED,
+        escalation_reason=EscalationReason.SYSTEM_ERROR.value,
+        limit=200,
+    )
+
+    queue: list[FailedExecutionQueueItem] = []
+
+    for c in escalated_cases:
+        latest_failure: AuditEntry | None = None
+        for entry in reversed(c.audit_trail):
+            if entry.to_state == RecoveryState.ESCALATED:
+                latest_failure = entry
+                break
+
+        if latest_failure is None:
+            continue
+
+        plan = latest_failure.decision_inputs.get("plan")
+        attempted_intervention = (
+            plan.get("intervention_type", "UNKNOWN")
+            if isinstance(plan, dict)
+            else "UNKNOWN"
+        )
+
+        queue.append(
+            FailedExecutionQueueItem(
+                case_id=c.case_id,
+                customer_id=c.failure_event.customer_id,
+                payment_id=c.failure_event.payment_id,
+                payment_rail=c.failure_event.payment_rail.value,
+                amount_paise=c.amount_paise,
+                attempted_intervention=attempted_intervention,
+                failure_reason=latest_failure.notes or "Execution failed.",
+                attempts_count=c.attempts_count,
+                failed_at=latest_failure.timestamp.isoformat(),
+                state=c.state.value,
+            )
+        )
+
+    queue.sort(key=lambda x: x.failed_at, reverse=True)
     return queue

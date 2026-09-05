@@ -22,6 +22,7 @@ import {
   UpiIcon,
 } from '@/components/ui/BrandIcons'
 import { SkeletonCard } from '@/components/ui/skeleton'
+import { llmProviderLabel } from '@/lib/constants'
 
 interface StatusViewProps {
   status: SystemStatusResponse | null
@@ -172,14 +173,12 @@ export function StatusView({
             </div>
             <div>
               <span className="block text-[11px] text-ink-muted">
-                HMAC Signature Verification:
+                Webhook Security:
               </span>
               <Badge
                 variant={gatewayTestResult.hmac_ready ? 'recovered' : 'pending'}
               >
-                {gatewayTestResult.hmac_ready
-                  ? 'SHA-256 Verified'
-                  : 'Dev Simulation'}
+                {gatewayTestResult.hmac_ready ? 'Verified' : 'Dev Simulation'}
               </Badge>
             </div>
             <div>
@@ -312,15 +311,16 @@ export function StatusView({
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3 text-xs">
-            {status.llm_engine.configured_providers.length > 0 ? (
+            {!status.llm_engine.deterministic_fallback_active &&
+            status.llm_engine.active_model ? (
               <>
                 <div className="flex items-center justify-between border-b border-border/60 py-1">
                   <span className="text-ink-muted">Deciding with</span>
                   <span
-                    className="max-w-[140px] truncate text-[11px] font-semibold text-accent"
+                    className="max-w-[180px] truncate text-[11px] font-semibold text-accent"
                     title={status.llm_engine.active_model}
                   >
-                    {status.llm_engine.active_model}
+                    {llmProviderLabel(status.llm_engine.active_provider)}
                   </span>
                 </div>
                 <div className="flex items-center justify-between py-1">
@@ -350,13 +350,13 @@ export function StatusView({
           </CardHeader>
           <CardContent className="space-y-3 text-xs">
             <div className="flex items-center justify-between border-b border-border/60 py-1">
-              <span className="text-ink-muted">Max Touch Limit:</span>
+              <span className="text-ink-muted">Max Attempt Limit:</span>
               <span className="font-semibold text-ink">
-                {status.policy_enforcement.max_touches_cap} touches
+                {status.policy_enforcement.max_attempts_cap} attempts
               </span>
             </div>
             <div className="flex items-center justify-between border-b border-border/60 py-1">
-              <span className="text-ink-muted">Touch Cooldown:</span>
+              <span className="text-ink-muted">Attempt Cooldown:</span>
               <span className="font-semibold text-ink">
                 {status.policy_enforcement.cooldown_hours}h
               </span>

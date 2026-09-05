@@ -21,6 +21,13 @@ MIN_KEY_ID_LENGTH = 8
 MIN_SECRET_LENGTH = 12
 
 
+def mask_key_id(key_id: str) -> str:
+    """Elide the middle of a Razorpay key id."""
+    if len(key_id) <= MIN_KEY_ID_LENGTH:
+        return key_id
+    return f"{key_id[:8]}...{key_id[-4:]}"
+
+
 class GatewayCredentials(BaseModel):
     """A Razorpay API key pair with the optional webhook signing secret."""
 
@@ -33,9 +40,7 @@ class GatewayCredentials(BaseModel):
 
     def masked_key_id(self) -> str:
         """Return the key id with its middle elided, safe to log and display."""
-        if len(self.key_id) <= MIN_KEY_ID_LENGTH:
-            return self.key_id
-        return f"{self.key_id[:8]}...{self.key_id[-4:]}"
+        return mask_key_id(self.key_id)
 
 
 class GatewayCredentialStore:

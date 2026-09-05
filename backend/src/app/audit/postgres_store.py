@@ -103,7 +103,7 @@ class RelationalCaseStore:
                     INSERT INTO cases (
                         case_id, payment_id, merchant_id, customer_id, payment_rail,
                         error_code, error_source, state, experiment_arm, amount_paise,
-                        currency, touches_count, retry_count, outreach_count,
+                        currency, attempts_count, retry_count, outreach_count,
                         discount_paise_granted, recovered_amount_paise, total_cost_paise,
                         net_recovered_value_paise, is_opted_out, occurred_at, invoice_id,
                         subscription_id, campaign_id, user_ref, reference_id,
@@ -111,12 +111,13 @@ class RelationalCaseStore:
                         bank_transfer_id, collected_amount_paise, collection_mode,
                         collected_at, payment_link_id, payment_link_url,
                         payment_link_expires_at, strategy_tag, dunning_message_en,
-                        dunning_message_hi, due_at, next_action, version, data_json,
-                        created_at, updated_at
+                        dunning_message_hi, due_at, next_action, version,
+                        promised_payment_date, p2p_reminder_count, escalation_reason,
+                        data_json, created_at, updated_at
                     ) VALUES (
                         :case_id, :payment_id, :merchant_id, :customer_id, :payment_rail,
                         :error_code, :error_source, :state, :experiment_arm, :amount_paise,
-                        :currency, :touches_count, :retry_count, :outreach_count,
+                        :currency, :attempts_count, :retry_count, :outreach_count,
                         :discount_paise_granted, :recovered_amount_paise, :total_cost_paise,
                         :net_recovered_value_paise, :is_opted_out, :occurred_at, :invoice_id,
                         :subscription_id, :campaign_id, :user_ref, :reference_id,
@@ -124,8 +125,9 @@ class RelationalCaseStore:
                         :bank_transfer_id, :collected_amount_paise, :collection_mode,
                         :collected_at, :payment_link_id, :payment_link_url,
                         :payment_link_expires_at, :strategy_tag, :dunning_message_en,
-                        :dunning_message_hi, :due_at, :next_action, :version, CAST(:data_json AS jsonb),
-                        :created_at, :updated_at
+                        :dunning_message_hi, :due_at, :next_action, :version,
+                        :promised_payment_date, :p2p_reminder_count, :escalation_reason,
+                        CAST(:data_json AS jsonb), :created_at, :updated_at
                     )
                     ON CONFLICT (case_id) DO UPDATE SET
                         payment_id = EXCLUDED.payment_id,
@@ -138,7 +140,7 @@ class RelationalCaseStore:
                         experiment_arm = EXCLUDED.experiment_arm,
                         amount_paise = EXCLUDED.amount_paise,
                         currency = EXCLUDED.currency,
-                        touches_count = EXCLUDED.touches_count,
+                        attempts_count = EXCLUDED.attempts_count,
                         retry_count = EXCLUDED.retry_count,
                         outreach_count = EXCLUDED.outreach_count,
                         discount_paise_granted = EXCLUDED.discount_paise_granted,
@@ -169,6 +171,9 @@ class RelationalCaseStore:
                         due_at = EXCLUDED.due_at,
                         next_action = EXCLUDED.next_action,
                         version = cases.version + 1,
+                        promised_payment_date = EXCLUDED.promised_payment_date,
+                        p2p_reminder_count = EXCLUDED.p2p_reminder_count,
+                        escalation_reason = EXCLUDED.escalation_reason,
                         data_json = EXCLUDED.data_json,
                         updated_at = EXCLUDED.updated_at;
                     """
@@ -187,7 +192,7 @@ class RelationalCaseStore:
                     "experiment_arm": case.experiment_arm.value,
                     "amount_paise": case.amount_paise,
                     "currency": case.currency,
-                    "touches_count": case.touches_count,
+                    "attempts_count": case.attempts_count,
                     "retry_count": case.retry_count,
                     "outreach_count": case.outreach_count,
                     "discount_paise_granted": case.discount_paise_granted,
@@ -222,6 +227,13 @@ class RelationalCaseStore:
                     "due_at": getattr(case, "due_at", None),
                     "next_action": getattr(case, "next_action", None),
                     "version": getattr(case, "version", 1),
+                    "promised_payment_date": getattr(
+                        case, "promised_payment_date", None
+                    ),
+                    "p2p_reminder_count": getattr(case, "p2p_reminder_count", 0),
+                    "escalation_reason": case.escalation_reason.value
+                    if case.escalation_reason
+                    else None,
                     "data_json": data_json,
                     "created_at": now,
                     "updated_at": now,
@@ -365,11 +377,12 @@ class RelationalCaseStore:
         created_before: datetime | None = None,
         occurred_after: datetime | None = None,
         occurred_before: datetime | None = None,
-        touches_min: int | None = None,
-        touches_max: int | None = None,
+        attempts_min: int | None = None,
+        attempts_max: int | None = None,
         recovered: bool | None = None,
         opted_out: bool | None = None,
         has_escalation: bool | None = None,
+        escalation_reason: str | None = None,
         customer_id: str | None = None,
         payment_id: str | None = None,
         invoice_id: str | None = None,
@@ -429,12 +442,12 @@ class RelationalCaseStore:
         if occurred_before is not None:
             clauses.append("occurred_at <= :occurred_before")
             params["occurred_before"] = occurred_before
-        if touches_min is not None:
-            clauses.append("touches_count >= :touches_min")
-            params["touches_min"] = touches_min
-        if touches_max is not None:
-            clauses.append("touches_count <= :touches_max")
-            params["touches_max"] = touches_max
+        if attempts_min is not None:
+            clauses.append("attempts_count >= :attempts_min")
+            params["attempts_min"] = attempts_min
+        if attempts_max is not None:
+            clauses.append("attempts_count <= :attempts_max")
+            params["attempts_max"] = attempts_max
         if recovered is True:
             clauses.append("recovered_amount_paise > 0")
         elif recovered is False:
@@ -449,6 +462,9 @@ class RelationalCaseStore:
             clauses.append(escalated if has_escalation else f"NOT {escalated}")
             params["escalated_state"] = RecoveryState.ESCALATED.value
             params["escalation_like"] = "%case.escalated%"
+        if escalation_reason is not None:
+            clauses.append("escalation_reason = :escalation_reason")
+            params["escalation_reason"] = escalation_reason
         if customer_id:
             clauses.append("customer_id ILIKE :customer_id")
             params["customer_id"] = f"{customer_id}%"
@@ -516,11 +532,12 @@ class RelationalCaseStore:
         created_before: datetime | None = None,
         occurred_after: datetime | None = None,
         occurred_before: datetime | None = None,
-        touches_min: int | None = None,
-        touches_max: int | None = None,
+        attempts_min: int | None = None,
+        attempts_max: int | None = None,
         recovered: bool | None = None,
         opted_out: bool | None = None,
         has_escalation: bool | None = None,
+        escalation_reason: str | None = None,
         customer_id: str | None = None,
         payment_id: str | None = None,
         invoice_id: str | None = None,
@@ -555,11 +572,12 @@ class RelationalCaseStore:
             created_before=created_before,
             occurred_after=occurred_after,
             occurred_before=occurred_before,
-            touches_min=touches_min,
-            touches_max=touches_max,
+            attempts_min=attempts_min,
+            attempts_max=attempts_max,
             recovered=recovered,
             opted_out=opted_out,
             has_escalation=has_escalation,
+            escalation_reason=escalation_reason,
             customer_id=customer_id,
             payment_id=payment_id,
             invoice_id=invoice_id,
@@ -575,7 +593,7 @@ class RelationalCaseStore:
             "created_at",
             "occurred_at",
             "amount_paise",
-            "touches_count",
+            "attempts_count",
             "recovered_amount_paise",
             "net_recovered_value_paise",
             "state",
@@ -623,11 +641,12 @@ class RelationalCaseStore:
         created_before: datetime | None = None,
         occurred_after: datetime | None = None,
         occurred_before: datetime | None = None,
-        touches_min: int | None = None,
-        touches_max: int | None = None,
+        attempts_min: int | None = None,
+        attempts_max: int | None = None,
         recovered: bool | None = None,
         opted_out: bool | None = None,
         has_escalation: bool | None = None,
+        escalation_reason: str | None = None,
         customer_id: str | None = None,
         payment_id: str | None = None,
         invoice_id: str | None = None,
@@ -657,11 +676,12 @@ class RelationalCaseStore:
             created_before=created_before,
             occurred_after=occurred_after,
             occurred_before=occurred_before,
-            touches_min=touches_min,
-            touches_max=touches_max,
+            attempts_min=attempts_min,
+            attempts_max=attempts_max,
             recovered=recovered,
             opted_out=opted_out,
             has_escalation=has_escalation,
+            escalation_reason=escalation_reason,
             customer_id=customer_id,
             payment_id=payment_id,
             invoice_id=invoice_id,
@@ -1044,7 +1064,7 @@ class RelationalCaseStore:
                 case_id=row["case_id"],
                 job_type=row["job_type"],
                 due_at=due_dt,
-                status=JobStatus.PROCESSING.value,
+                status=JobStatus.PROCESSING,
                 idempotency_key=row["idempotency_key"],
                 attempts=new_attempts,
                 payload=payload,
@@ -1527,88 +1547,102 @@ class RelationalCaseStore:
     def get_pipeline_timeseries(
         self, bucket_minutes: int = 60, hours: int = 24
     ) -> list[dict[str, Any]]:
-        """Fetch timeseries of ingested vs processed events from PostgreSQL."""
+        """Fetch timeseries of ingested vs processed events from PostgreSQL.
+
+        Bucketing and counting happen in one aggregated SQL query per series
+        rather than pulling every matching row into Python -- polled every 3s
+        while PipelineView is open, so the row-per-event approach scaled with
+        table size on every tick.
+        """
         now = datetime.now(UTC)
         since_time = now - timedelta(hours=hours)
+        bucket_interval = f"{bucket_minutes} minutes"
         with self._lock, get_db_connection() as conn:
-            case_rows = conn.execute(
+            ingested_rows = conn.execute(
                 text(
-                    "SELECT created_at FROM cases WHERE created_at >= :since ORDER BY created_at ASC"
+                    """
+                    SELECT date_bin(:bucket_interval, created_at, :since) AS bucket,
+                           COUNT(*) AS count
+                    FROM cases
+                    WHERE created_at >= :since
+                    GROUP BY bucket
+                    """
                 ),
-                {"since": since_time},
+                {"bucket_interval": bucket_interval, "since": since_time},
             ).fetchall()
-            case_times = [
-                (
-                    r[0]
-                    if isinstance(r[0], datetime)
-                    else datetime.fromisoformat(str(r[0]))
-                )
-                for r in case_rows
-            ]
-
             job_rows = conn.execute(
                 text(
-                    "SELECT updated_at, status FROM jobs WHERE updated_at >= :since ORDER BY updated_at ASC"
+                    """
+                    SELECT date_bin(:bucket_interval, updated_at, :since) AS bucket,
+                           status,
+                           COUNT(*) AS count
+                    FROM jobs
+                    WHERE updated_at >= :since
+                    GROUP BY bucket, status
+                    """
                 ),
-                {"since": since_time},
+                {"bucket_interval": bucket_interval, "since": since_time},
             ).fetchall()
-            job_tuples = [
-                (
-                    r[0]
-                    if isinstance(r[0], datetime)
-                    else datetime.fromisoformat(str(r[0])),
-                    str(r[1]),
-                )
-                for r in job_rows
-            ]
+
+        ingested_by_bucket: dict[datetime, int] = {
+            row[0]: int(row[1]) for row in ingested_rows
+        }
+        done_by_bucket: dict[datetime, int] = {}
+        failed_by_bucket: dict[datetime, int] = {}
+        for bucket, status, count in job_rows:
+            status_upper = str(status).upper()
+            if status_upper == "DONE":
+                done_by_bucket[bucket] = done_by_bucket.get(bucket, 0) + int(count)
+            elif status_upper in ("FAILED", "DEAD"):
+                failed_by_bucket[bucket] = failed_by_bucket.get(bucket, 0) + int(count)
 
         num_buckets = max(1, (hours * 60) // max(1, bucket_minutes))
-        buckets: list[dict[str, Any]] = []
         bucket_delta = timedelta(minutes=bucket_minutes)
         start_t = now - (bucket_delta * num_buckets)
 
+        buckets: list[dict[str, Any]] = []
         for i in range(num_buckets):
             b_start = start_t + (bucket_delta * i)
             b_end = b_start + bucket_delta
-            ingested = sum(1 for t in case_times if b_start <= t < b_end)
-            done = sum(
-                1 for t, st in job_tuples if b_start <= t < b_end and st == "DONE"
-            )
-            failed = sum(
-                1
-                for t, st in job_tuples
-                if b_start <= t < b_end and st in ("FAILED", "DEAD")
-            )
             buckets.append(
                 {
                     "timestamp": b_end.isoformat(),
-                    "ingested": ingested,
-                    "processed": done,
-                    "failed": failed,
+                    "ingested": ingested_by_bucket.get(b_start, 0),
+                    "processed": done_by_bucket.get(b_start, 0),
+                    "failed": failed_by_bucket.get(b_start, 0),
                 }
             )
         return buckets
 
     def get_pipeline_heatmap(self) -> list[dict[str, Any]]:
-        """Fetch 7x24 event distribution matrix from PostgreSQL."""
-        with self._lock, get_db_connection() as conn:
-            rows = conn.execute(text("SELECT created_at FROM cases")).fetchall()
-            times = [
-                (
-                    r[0]
-                    if isinstance(r[0], datetime)
-                    else datetime.fromisoformat(str(r[0]))
-                )
-                for r in rows
-            ]
+        """Fetch 7x24 event distribution matrix from PostgreSQL.
 
+        Aggregated in SQL (GROUP BY day-of-week, hour) rather than fetching
+        every case row ever created -- the prior version had no WHERE clause
+        at all and re-scanned the full cases table on every 3s poll.
+        """
+        with self._lock, get_db_connection() as conn:
+            rows = conn.execute(
+                text(
+                    """
+                    SELECT EXTRACT(DOW FROM created_at)::int AS day,
+                           EXTRACT(HOUR FROM created_at)::int AS hour,
+                           COUNT(*) AS count
+                    FROM cases
+                    GROUP BY day, hour
+                    """
+                )
+            ).fetchall()
+
+        # Postgres DOW is 0=Sunday; Python's date.weekday() is 0=Monday, which
+        # the frontend heatmap expects since it also drives the timeseries chart.
+        pg_dow_to_weekday = {0: 6, 1: 0, 2: 1, 3: 2, 4: 3, 5: 4, 6: 5}
         matrix: dict[tuple[int, int], int] = {
             (d, h): 0 for d in range(7) for h in range(24)
         }
-        for t in times:
-            d = t.weekday()
-            h = t.hour
-            matrix[(d, h)] = matrix.get((d, h), 0) + 1
+        for pg_day, hour, count in rows:
+            weekday = pg_dow_to_weekday[int(pg_day)]
+            matrix[(weekday, int(hour))] = int(count)
 
         return [
             {"day": d, "hour": h, "count": matrix[(d, h)]}
@@ -1654,22 +1688,22 @@ class RelationalCaseStore:
         return results[:limit]
 
     def clear(self) -> None:
-        """Purge all database tables in PostgreSQL (used for test teardown)."""
+        """Purge all database tables in PostgreSQL (used for test teardown).
+
+        One TRUNCATE statement rather than sequential DELETEs: TRUNCATE
+        skips per-row logging/scanning, and running before and after every
+        test (conftest.py's autouse test_isolation fixture) makes the
+        round-trip count matter far more here than in normal request paths.
+        """
         with self._lock, get_db_connection() as conn:
-            conn.execute(text("DELETE FROM idempotency_keys;"))
-            conn.execute(text("DELETE FROM audit;"))
-            conn.execute(text("DELETE FROM jobs;"))
-            conn.execute(text("DELETE FROM cases;"))
-            conn.execute(text("DELETE FROM model_telemetry;"))
-            conn.execute(text("DELETE FROM ml_models;"))
-            conn.execute(text("DELETE FROM ml_predictions;"))
-            conn.execute(text("DELETE FROM pattern_alerts;"))
-            conn.execute(text("DELETE FROM workflow_events;"))
-            conn.execute(text("DELETE FROM workflow_signals;"))
-            conn.execute(text("DELETE FROM workflows;"))
             conn.execute(
                 text(
-                    "DELETE FROM workflow_template_definitions WHERE is_builtin = false;"
+                    """
+                    TRUNCATE TABLE
+                        idempotency_keys, audit, jobs, cases, model_telemetry,
+                        ml_models, ml_predictions, pattern_alerts
+                    CASCADE;
+                    """
                 )
             )
 

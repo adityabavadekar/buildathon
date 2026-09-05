@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+import httpx2
 import pytest
 
 from app.audit.repository import get_case_repository
@@ -11,9 +12,23 @@ from app.core.config import get_settings
 from app.core.enums import JobStatus, PaymentRail
 from app.detection.models import RawFailureEvent
 from app.intervention.orchestrator import RecoveryOrchestrator
+from app.intervention.tools.mandate_retry import MandateRetryTool
 from app.simulation.fleet import FleetSimulator
 
 COMPRESSION_TEST_HOURS = 48
+
+
+def _mock_mandate_retry_tool() -> MandateRetryTool:
+    """A MandateRetryTool wired to a mock transport that always charges
+    successfully, so this queue-timing test never depends on a live Razorpay
+    subscription existing for a synthetic payment_id.
+    """
+
+    def handler(_request: httpx2.Request) -> httpx2.Response:
+        return httpx2.Response(status_code=200, json={"id": "chg_queue_test"})
+
+    client = httpx2.AsyncClient(transport=httpx2.MockTransport(handler))
+    return MandateRetryTool(client=client)
 
 
 def _event(*, source: str, code: str = "AP15") -> RawFailureEvent:
@@ -47,7 +62,9 @@ async def test_simulated_events_are_scheduled_sooner_than_real_ones(
         get_settings(), "fleet_time_compression", COMPRESSION_TEST_HOURS, raising=False
     )
     repo = get_case_repository()
-    orchestrator = RecoveryOrchestrator(repository=repo)
+    orchestrator = RecoveryOrchestrator(
+        repository=repo, mandate_retry_tool=_mock_mandate_retry_tool()
+    )
 
     live = await orchestrator.process_failure_event(_event(source="webhook"))
     sim = await orchestrator.process_failure_event(_event(source="fleet"))
@@ -58,24 +75,27 @@ async def test_simulated_events_are_scheduled_sooner_than_real_ones(
 
 
 @pytest.mark.anyio
-async def test_fleet_ingestion_rows_are_terminal_not_claimable() -> None:
-    """The fleet diagnoses inline, so its own job row must not be re-claimable."""
+async def test_fleet_events_are_queued_via_the_real_webhook_route() -> None:
+    """Fleet now posts through the webhook endpoint, so its ingestion row is
+    QUEUED like any other webhook-originated case, not diagnosed inline.
+    """
     repo = get_case_repository()
     repo.clear()
     try:
         fleet = FleetSimulator()
-        await fleet._emit_single_event(repo)
+        await fleet._emit_single_event()
 
         jobs = repo.fetch_queued_jobs(
             limit=50, statuses=[JobStatus.DONE.value, JobStatus.QUEUED.value]
         )
         ingestion = [j for j in jobs if j.job_type == "INGESTION_DIAGNOSIS"]
         assert ingestion, "fleet did not record an ingestion job"
-        assert all(j.status == JobStatus.DONE.value for j in ingestion)
+        assert all(j.status == JobStatus.QUEUED.value for j in ingestion)
 
-        # A terminal row must never be handed to the worker.
+        # A queued row from fleet traffic must be claimable by the worker just
+        # like a real webhook-originated job.
         claimed = repo.claim_next_due_job()
-        if claimed is not None:
-            assert claimed.job_type != "INGESTION_DIAGNOSIS"
+        assert claimed is not None
+        assert claimed.job_type == "INGESTION_DIAGNOSIS"
     finally:
         repo.clear()

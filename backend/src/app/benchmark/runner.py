@@ -50,7 +50,7 @@ class ArmResult:
     recovered_paise: int = 0
     cost_paise: int = 0
     net_recovered_paise: int = 0
-    touches: int = 0
+    attempts: int = 0
     escalated_count: int = 0
     # At-risk value of the cases that recovered, used to derive capture depth.
     recovered_case_at_risk_paise: int = 0
@@ -79,7 +79,7 @@ class ArmResult:
             "net_recovered_paise": self.net_recovered_paise,
             "escalated_count": self.escalated_count,
             "recovered_case_at_risk_paise": self.recovered_case_at_risk_paise,
-            "total_touches": self.touches,
+            "total_attempts": self.attempts,
             "recovery_rate_pct": self.recovery_rate_pct,
             "value_recovery_rate_pct": self.value_recovery_rate_pct,
         }
@@ -211,13 +211,13 @@ def _was_treated(case: RecoveryCase) -> bool:
     # credits the agent for work it did not do.
     if case.experiment_arm == ExperimentArm.HOLDOUT_CONTROL:
         return False
-    return case.touches_count > 0 or case.outreach_count > 0
+    return case.attempts_count > 0 or case.outreach_count > 0
 
 
 def _accumulate(target: ArmResult, case: RecoveryCase, *, recovered: bool) -> None:
     target.case_count += 1
     target.at_risk_paise += case.amount_paise
-    target.touches += case.touches_count
+    target.attempts += case.attempts_count
     target.cost_paise += case.total_cost_paise
     if case.state == RecoveryState.ESCALATED:
         target.escalated_count += 1

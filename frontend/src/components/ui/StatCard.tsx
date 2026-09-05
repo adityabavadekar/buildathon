@@ -43,6 +43,14 @@ export function StatCard({
     accent: 'text-accent',
   }
 
+  const iconChipStyles = {
+    default: 'bg-surface-sunken',
+    recovered: 'bg-recovered/15',
+    escalated: 'bg-escalated/15',
+    failed: 'bg-failed/15',
+    accent: 'bg-accent/15',
+  }
+
   return (
     <Card
       className={`${variantStyles[variant]} transition-colors ${className}`}
@@ -53,7 +61,9 @@ export function StatCard({
             {title}
           </CardDescription>
           {icon && (
-            <div className="rounded-control bg-surface-sunken p-2">{icon}</div>
+            <div className={`rounded-control p-2 ${iconChipStyles[variant]}`}>
+              {icon}
+            </div>
           )}
         </div>
         <CardTitle

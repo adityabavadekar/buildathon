@@ -7,6 +7,7 @@ import {
   OPERATIONS_NAV_ITEMS,
   SETTINGS_NAV_ITEMS,
   hashForSection,
+  isDevOnlyNavSection,
   type NavSection,
 } from '@/lib/navigation'
 
@@ -17,6 +18,10 @@ interface SidebarProps {
   onSelectSection: (section: NavSection) => void
   casesCount?: number
   escalatedCount?: number
+  environment?: string | null
+  razorpayKeyId?: string | null
+  razorpayMode?: string | null
+  razorpayAccountName?: string | null
 }
 
 interface NavItemConfig {
@@ -31,7 +36,17 @@ export function Sidebar({
   onSelectSection,
   casesCount = 0,
   escalatedCount = 0,
+  environment = null,
+  razorpayKeyId = null,
+  razorpayMode = null,
+  razorpayAccountName = null,
 }: SidebarProps) {
+  // Dev-only tooling (fleet/simulation controls) has no place in a production nav.
+  const operationsNavItems =
+    environment === 'production'
+      ? OPERATIONS_NAV_ITEMS.filter((item) => !isDevOnlyNavSection(item.id))
+      : OPERATIONS_NAV_ITEMS
+
   const renderNavItem = (item: NavItemConfig, nested = false) => {
     const isActive = activeSection === item.id
     const Icon = item.icon
@@ -113,10 +128,37 @@ export function Sidebar({
         {SETTINGS_NAV_ITEMS.map((item) => renderNavItem(item, true))}
 
         <div className="sidebar-section-label">Operations</div>
-        {OPERATIONS_NAV_ITEMS.map((item) => renderNavItem(item))}
+        {operationsNavItems.map((item) => renderNavItem(item))}
       </nav>
 
       <div className="sidebar-footer px-4 py-3.5">
+        {(razorpayKeyId || razorpayMode) && (
+          <button
+            type="button"
+            onClick={() => {
+              onSelectSection('settings-integrations')
+            }}
+            className="sidebar-footer-button mb-2 flex w-full cursor-pointer items-center justify-between text-sm transition-colors"
+            title={razorpayKeyId ?? undefined}
+          >
+            <span className="min-w-0 truncate font-medium">
+              {razorpayMode && razorpayMode !== 'TEST' && razorpayAccountName
+                ? razorpayAccountName
+                : (razorpayKeyId ?? 'Not configured')}
+            </span>
+            {razorpayMode && (
+              <span
+                className={`ml-2 shrink-0 rounded-control px-1.5 py-0.5 text-[10px] font-semibold uppercase ${
+                  razorpayMode === 'LIVE'
+                    ? 'bg-recovered-subtle text-recovered'
+                    : 'bg-pending-subtle text-pending'
+                }`}
+              >
+                {razorpayMode}
+              </span>
+            )}
+          </button>
+        )}
         <button
           type="button"
           onClick={() => {
