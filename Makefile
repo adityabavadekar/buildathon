@@ -1,4 +1,4 @@
-.PHONY: help setup install dev dev-backend dev-frontend test lint lint-backend lint-frontend \
+.PHONY: help setup db-up db-down install dev dev-backend dev-frontend test lint lint-backend lint-frontend \
         format format-backend format-frontend build check clean \
         prod-build prod-up prod-down prod-logs prod-ps
 
@@ -9,8 +9,14 @@ help: ## Show this help
 	@grep -hE '^[a-z-]+:.*?## ' $(MAKEFILE_LIST) \
 		| awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
 
-setup: ## Create the backend .venv and install frontend dependencies
+setup: ## Create the backend .venv, start the database, install frontend deps
 	./scripts/setup.sh
+
+db-up: ## Start the development database
+	docker compose -f docker-compose.dev.yml up -d --wait
+
+db-down: ## Stop the development database, keeping its data
+	docker compose -f docker-compose.dev.yml down
 
 install: ## Install dependencies for both services
 	cd $(BACKEND) && uv sync --all-groups

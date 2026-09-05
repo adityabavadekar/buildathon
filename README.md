@@ -20,12 +20,14 @@ Built for the Razorpay AI Buildathon, Track 3 (AI Revenue Recovery).
 ## Installation
 
 ```bash
-make install     # backend deps via uv, frontend deps via pnpm
+make setup       # deps for both services, plus the database in docker
 make dev         # backend :8000, frontend :5173
 make worker      # queue-draining daemon, not started by make dev
 ```
 
-Without the worker, queued jobs stay QUEUED. `make help` lists the rest.
+`make setup` starts PostgreSQL from `docker-compose.dev.yml`, and the backend
+applies its migrations at startup. Without the worker, queued jobs stay QUEUED.
+`make help` lists the rest.
 
 
 ## Configuration
