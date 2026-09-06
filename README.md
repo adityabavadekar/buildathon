@@ -1,16 +1,25 @@
 # FORTX - Flow Orchestration & Revenue Trust eXecution
 
+> **Razorpay AI Buildathon - Track 03: AI Revenue Recovery Agent**  
+> **Live Application:** [https://fortx.adixb.me](https://fortx.adixb.me)  
+> **Video Walkthrough:** [https://youtu.be/ndwqjQJH8Hs](https://youtu.be/ndwqjQJH8Hs)
+
+<p align="center">
+  <a href="https://fortx.adixb.me/">
+    <img src="https://img.shields.io/badge/Live_App-fortx.adixb.me-0052CC?style=for-the-badge" alt="Live Deployment" />
+  </a>
+  <a href="https://youtu.be/ndwqjQJH8Hs">
+    <img src="https://img.shields.io/badge/YouTube-Video_Walkthrough-FF0000?style=for-the-badge" alt="Video Walkthrough" />
+  </a>
+</p>
+
 <p align="center">
   <a href="#getting-started">Getting Started</a> &bull;
   <a href="#how-it-works">How it Works</a> &bull;
   <a href="#what-it-does">What it Does</a> &bull;
+  <a href="#the-dashboard">The Dashboard</a> &bull;
   <a href="#setting-up-integrations">Integrations</a> &bull;
   <a href="webhook-relay/README.md">Webhook Relay</a>
-</p>
-
-<p align="center">
-  <img src="https://img.shields.io/badge/Razorpay_Buildathon-Track_03:_AI_Revenue_Recovery-0C2340?style=flat" alt="Track 03" />
-  <img src="https://img.shields.io/badge/Powered_by-Razorpay-0C2340?style=flat" alt="Powered by Razorpay" />
 </p>
 
 <p align="center">
