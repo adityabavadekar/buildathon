@@ -67,6 +67,7 @@ function Dashboard() {
   const [health, setHealth] = useState<HealthResponse | null>(null)
   const [healthLoading, setHealthLoading] = useState<boolean>(true)
   const [cases, setCases] = useState<RecoveryCase[]>([])
+  const [casesTotal, setCasesTotal] = useState<number>(0)
   const [casesLoading, setCasesLoading] = useState<boolean>(true)
   const [analytics, setAnalytics] = useState<AnalyticsSummaryResponse | null>(
     null,
@@ -102,6 +103,7 @@ function Dashboard() {
 
       setHealth(hRes)
       setCases(cRes.items)
+      setCasesTotal(cRes.total)
       setAnalytics(aRes)
       setSystemStatus(statusRes)
       setLastRefreshedAt(new Date())
@@ -241,7 +243,7 @@ function Dashboard() {
           onSelectSection={(section) => {
             navigate(section)
           }}
-          casesCount={cases.length}
+          casesCount={casesTotal}
           escalatedCount={escalatedCount}
           environment={systemStatus?.environment ?? null}
           razorpayKeyId={settings?.razorpay_key_id ?? null}

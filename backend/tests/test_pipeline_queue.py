@@ -61,6 +61,11 @@ async def test_simulated_events_are_scheduled_sooner_than_real_ones(
     monkeypatch.setattr(
         get_settings(), "fleet_time_compression", COMPRESSION_TEST_HOURS, raising=False
     )
+    # The mocked HTTP client below is only reached once resolve_razorpay_auth()
+    # sees a usable key pair -- without real credentials configured it raises
+    # before any network call, so the mock transport never runs.
+    monkeypatch.setattr(get_settings(), "razorpay_key_id", "rzp_test_queue_key")
+    monkeypatch.setattr(get_settings(), "razorpay_key_secret", "queue_test_secret")
     repo = get_case_repository()
     orchestrator = RecoveryOrchestrator(
         repository=repo, mandate_retry_tool=_mock_mandate_retry_tool()
