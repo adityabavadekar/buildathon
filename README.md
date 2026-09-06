@@ -1,25 +1,21 @@
 # FORTX - Flow Orchestration & Revenue Trust eXecution
 
 <p align="center">
-  <a href="#how-it-works">How it Works</a> &bull;
   <a href="#getting-started">Getting Started</a> &bull;
+  <a href="#how-it-works">How it Works</a> &bull;
   <a href="#what-it-does">What it Does</a> &bull;
-  <a href="#the-dashboard">The Dashboard</a> &bull;
-  <a href="#configuration">Configuration</a> &bull;
   <a href="#setting-up-integrations">Integrations</a> &bull;
-  <a href="AGENTS.md">AGENTS.md</a> &bull;
   <a href="webhook-relay/README.md">Webhook Relay</a>
 </p>
 
-FORTX watches for revenue that's about to be lost - a failed payment, an
-abandoned checkout, a subscription that stopped renewing, an overdue
-invoice - figures out why, and takes one bounded action to recover it: a
-retry, a payment link, a reminder, or a handoff to a human. Every batch is
-measured against a 10% holdout group that never gets contacted, so the
-recovery numbers are real, not just claimed.
+<p align="center">
+  <img src="https://img.shields.io/badge/Razorpay_Buildathon-Track_03:_AI_Revenue_Recovery-0C2340?style=flat" alt="Track 03" />
+  <img src="https://img.shields.io/badge/Powered_by-Razorpay-0C2340?style=flat" alt="Powered by Razorpay" />
+</p>
 
-Built for the Razorpay AI Buildathon, Track 3 (AI Revenue Recovery), on top
-of [Razorpay's API](https://razorpay.com/docs/api/) and webhooks.
+<p align="center">
+  <b>An agentic recovery system that diagnoses failed payments and executes policy-bounded actions to recover lost revenue.</b>
+</p>
 
 ![FORTX Dashboard Overview](assets/dashboard-overview.png)
 
@@ -143,12 +139,6 @@ make help
 | Case Diagnosis & Strategy Formulation | Transaction Decision Audit Trail |
 | :---: | :---: |
 | ![Case Detail Overview](assets/case-detail-overview.png) | ![Transaction Audit Log](assets/case-detail-audit-log.png) |
-
-
-## Configuration
-
-`backend/.env.example` already has the settings you'd want, with an
-explanation next to each one.
 
 
 ## Setting up integrations
