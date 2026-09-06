@@ -1,5 +1,16 @@
 # FORTX - Flow Orchestration & Revenue Trust eXecution
 
+<p align="center">
+  <a href="#how-it-works">How it Works</a> &bull;
+  <a href="#getting-started">Getting Started</a> &bull;
+  <a href="#what-it-does">What it Does</a> &bull;
+  <a href="#the-dashboard">The Dashboard</a> &bull;
+  <a href="#configuration">Configuration</a> &bull;
+  <a href="#setting-up-integrations">Integrations</a> &bull;
+  <a href="AGENTS.md">AGENTS.md</a> &bull;
+  <a href="webhook-relay/README.md">Webhook Relay</a>
+</p>
+
 FORTX watches for revenue that's about to be lost - a failed payment, an
 abandoned checkout, a subscription that stopped renewing, an overdue
 invoice - figures out why, and takes one bounded action to recover it: a
@@ -10,20 +21,90 @@ recovery numbers are real, not just claimed.
 Built for the Razorpay AI Buildathon, Track 3 (AI Revenue Recovery), on top
 of [Razorpay's API](https://razorpay.com/docs/api/) and webhooks.
 
-![Dashboard screenshot placeholder](docs/screenshot-dashboard.png)
+![FORTX Dashboard Overview](assets/dashboard-overview.png)
 
 
 ## How it works
 
-A failed payment, an abandoned checkout, a halted subscription mandate, and
-an overdue invoice are all the same problem underneath: money that almost
-came in and then didn't. FORTX picks up the failure event, has an LLM (or a
-plain rule-based fallback if no AI provider is set up) work out what went
-wrong and choose one bounded response, then runs that response through a
-policy check with hard limits and cooldowns before anything happens. Every
-decision is logged before it's acted on. One in ten cases is held back on
-purpose and never contacted, so recovery can be compared against doing
-nothing.
+- **Webhook Ingestion** - Ingests payment failures, abandoned checkouts, mandate halts, and overdue invoices in real time.
+- **AI Diagnosis & Rule Fallback** - Identifies root cause and formulates recovery strategy via LLM, with deterministic rule fallback.
+- **Policy Enforcement** - Validates contact caps, cooldowns, discount limits, and routes high-value cases to human approval.
+- **Pre-Action Audit Log** - Immutably logs all decision inputs and state transitions prior to executing any recovery action.
+- **Safe Holdout Control** - Sets aside a deterministic baseline (default 10%, configurable from 0 to 50%) with zero outreach to mathematically verify incremental lift over organic recovery without disrupting normal customer payments.
+
+<details>
+<summary><b>View Architecture Flowchart</b></summary>
+
+```mermaid
+flowchart TD
+    In["Failure Ingestion (Razorpay Webhooks)"] --> Split{"Holdout Split (SHA-256)"}
+
+    Split -->|10% Control| Hold["Control Arm (Zero Contact Baseline)"]
+    Split -->|90% Target| Diag["Diagnosis Engine (LLM with Rule Fallback)"]
+
+    Diag --> Gate["Policy Gate (Caps, Cooldowns, Limits)"]
+    Gate --> Esc{"Approval Required?"}
+
+    Esc -->|Yes| Rev["Escalate to Human"]
+    Esc -->|No| Audit["Pre-Action Audit Log"]
+    Rev -->|Approved| Audit
+
+    Audit --> Act["Execute Recovery (Retry, WhatsApp, Voice, Link)"]
+
+    Act --> Lift["Recovered Revenue (Lift vs Holdout)"]
+    Hold --> Lift
+```
+
+</details>
+
+
+## Getting started
+
+### Prerequisites
+
+- Python 3.13
+- uv
+- Node 22
+- pnpm 11, through corepack
+- Docker, for the PostgreSQL database
+- An AI provider key is optional; without one it uses the rule-based fallback. Supported providers: OpenRouter, Anthropic, OpenAI, and Groq
+
+### Setup
+
+1. Make sure you have the prerequisites above installed.
+
+2. Clone the repo and enter it:
+
+```bash
+git clone https://github.com/adityabavadekar/buildathon.git
+cd buildathon
+```
+
+3. Copy the example environment file:
+
+```bash
+cp backend/.env.example backend/.env
+```
+
+4. Install dependencies and start the database:
+
+```bash
+make setup
+```
+
+5. Start the entire development stack:
+
+```bash
+make dev
+```
+
+`make dev` runs the backend (`:8000`), the frontend (`:5173`), and the recovery worker daemon all together.
+
+To see all other available targets (such as running services individually or running tests):
+
+```bash
+make help
+```
 
 
 ## What it does
@@ -39,7 +120,9 @@ nothing.
 - Handles the full set of Razorpay webhooks: payments, refunds, disputes,
   subscriptions, payment links, invoices, and Smart Collect
 - Keeps a plain-language record of every decision made and why
-- Holds back 10% of cases from contact, as a real comparison group
+- Holds back a deterministic control group (default 10%, can be set to 0% to disable)
+  to measure true incremental lift over organic recovery without disrupting normal
+  customer payments
 - Includes a benchmark tool that replays a fixed dataset and reports lift
   over doing nothing
 - Lets a merchant edit the rules, choose an AI provider, and connect
@@ -48,69 +131,18 @@ nothing.
 
 ## The dashboard
 
-- **Overview / Analytics** - at-risk revenue, recovered revenue, and lift
-  over the holdout group
-- **Transactions / Awaiting Approval** - the case list and human sign-off queue
-- **Audit Log** - plain-language history of every decision
-- **AI Agent Telemetry** - model, tokens, cost, and latency in real time
-- **Data Pipeline / System Status** (dev) - queue depth and worker health
-- **Merchant Policies / Integrations** - limits and Razorpay connection
+- **Overview / Analytics** - At-risk revenue, recovered revenue, and lift over the holdout group
+- **Transactions / Awaiting Approval** - The case list, customer timeline, and human sign-off queue
+- **Audit Log** - Plain-language history of every decision with full input transparency
+- **AI Agent Telemetry** - Model, tokens, cost, and latency in real time
+- **Data Pipeline / System Status** (dev) - Queue depth and worker health
+- **Merchant Policies / Integrations** - Safety limits, cooldowns, and Razorpay connection
 
+### Case Investigation & Transaction Audit Trail
 
-## What you'll need
-
-- Python 3.13, as pinned in `backend/.python-version`
-- uv
-- Node 22
-- pnpm 11, through corepack
-- Docker, for the PostgreSQL database
-- An AI provider key is optional; without one it uses the rule-based
-  fallback. Supported providers: OpenRouter, Anthropic, OpenAI, and Groq
-
-
-## Getting it running
-
-1. Make sure you have everything listed above installed.
-
-2. Clone the repo and enter it:
-
-```bash
-git clone https://github.com/adityabavadekar/buildathon.git
-cd buildathon
-```
-
-3. Copy the example environment file:
-
-```bash
-cp backend/.env.example backend/.env
-```
-
-4. Install everything and start the database:
-
-```bash
-make setup
-```
-
-5. Start the backend and the frontend:
-
-```bash
-make dev
-```
-
-The backend runs on port 8000, the frontend on port 5173.
-
-6. In another terminal, start the background worker. Without it, jobs just
-   sit queued:
-
-```bash
-make worker
-```
-
-To see everything else you can run:
-
-```bash
-make help
-```
+| Case Diagnosis & Strategy Formulation | Transaction Decision Audit Trail |
+| :---: | :---: |
+| ![Case Detail Overview](assets/case-detail-overview.png) | ![Transaction Audit Log](assets/case-detail-audit-log.png) |
 
 
 ## Configuration
@@ -121,20 +153,11 @@ explanation next to each one.
 
 ## Setting up integrations
 
-These are optional; without them the matching feature just simulates.
+These are optional; without them the matching feature runs in simulation mode.
 
-**Razorpay** - get a key pair from the
-[Razorpay dashboard](https://dashboard.razorpay.com/), or register a
-[Technology Partner OAuth](https://razorpay.com/docs/partners/technology-partners/onboard-businesses/integrate-oauth/)
-app, and fill in the matching `RAZORPAY_*` variables.
-
-**Sarvam AI + Twilio** - for outbound Hinglish voice calls, get a key from
-[Sarvam AI](https://www.sarvam.ai/) and a [Twilio](https://www.twilio.com/)
-account, and fill in `SARVAM_API_KEY` and the `TWILIO_*` variables.
-
-**WhatsApp** - set up a
-[Meta WhatsApp Business Cloud API](https://developers.facebook.com/docs/whatsapp/cloud-api/)
-app and fill in the `WHATSAPP_*` variables.
+- **Razorpay** - Obtain API keys from the [Razorpay dashboard](https://dashboard.razorpay.com/) or configure a [Technology Partner OAuth](https://razorpay.com/docs/partners/technology-partners/onboard-businesses/integrate-oauth/) application, and populate the `RAZORPAY_*` variables.
+- **Sarvam AI & Twilio** - For outbound Hinglish voice calls, obtain API keys from [Sarvam AI](https://www.sarvam.ai/) and [Twilio](https://www.twilio.com/), and set `SARVAM_API_KEY` along with `TWILIO_*` variables.
+- **WhatsApp Cloud API** - Set up a [Meta WhatsApp Business Cloud API](https://developers.facebook.com/docs/whatsapp/cloud-api/) app and configure the `WHATSAPP_*` variables.
 
 
 ## License
