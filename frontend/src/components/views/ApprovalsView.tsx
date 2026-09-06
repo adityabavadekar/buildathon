@@ -7,17 +7,17 @@ import { EscalationsQueuePanel } from '@/components/recovery/EscalationsQueuePan
 
 interface ApprovalsViewProps {
   cases: RecoveryCase[]
+  escalatedCount: number
   onSelectCase: (caseItem: RecoveryCase) => void
   onActionComplete?: () => void
 }
 
 export function ApprovalsView({
   cases,
+  escalatedCount,
   onSelectCase,
   onActionComplete,
 }: ApprovalsViewProps) {
-  const escalatedCount = cases.filter((c) => c.state === 'ESCALATED').length
-
   return (
     <div className="space-y-4">
       <div className="flex items-end justify-between gap-3">

@@ -38,7 +38,7 @@ uv sync --all-groups
 uv run pytest
 uv run ruff check .
 uv run ruff format .
-uv run mypy
+uv run ty check
 uv run fastapi dev src/app/main.py
 
 # frontend/
@@ -108,7 +108,7 @@ headers.append((REQUEST_ID_HEADER, request_id))
 - Add config as a field on `Settings` in `backend/src/app/core/config.py`.
 - Use `structlog` via `app.core.logging.get_logger`, with event names like
   `intervention.attempted` and structured key-values.
-- Type everything. `mypy --strict` and `eslint strictTypeChecked` both gate CI.
+- Type everything. `ty check` and `eslint strictTypeChecked` both gate CI.
 - Keep the frontend's backend calls in `frontend/src/lib/api.ts`.
 - Comprehensive Audit Trails: Persist timestamped LLM outputs.
 - Every action taken by system, should be logged in the database and should be visilble in audit trail

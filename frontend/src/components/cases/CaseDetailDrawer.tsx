@@ -26,7 +26,8 @@ import { Button } from '@/components/ui/button'
 import { GlossaryTerm } from '@/components/ui/GlossaryTerm'
 import { STATE_READINGS } from '@/lib/glossary'
 import { describeAuditActor, describeAuditEvent } from '@/lib/auditEvents'
-import { formatCustomerName, formatINR, inlinePaiseToINR } from '@/lib/format'
+import { formatCustomerName, formatINR } from '@/lib/format'
+import { HighlightMoney } from '@/components/ui/HighlightMoney'
 import { RailBadge } from '@/components/ui/BrandIcons'
 import { WhatsAppPreview } from '@/components/whatsapp/WhatsAppPreview'
 
@@ -142,6 +143,7 @@ export function CaseDetailDrawer({
   onActionComplete,
 }: CaseDetailDrawerProps) {
   const [actionLoading, setActionLoading] = useState<boolean>(false)
+  const [actionError, setActionError] = useState<string | null>(null)
   const [activeTab, setActiveTab] =
     useState<keyof typeof TAB_LABELS>('overview')
   const [policy, setPolicy] = useState<PolicyResponse | null>(null)
@@ -167,8 +169,11 @@ export function CaseDetailDrawer({
   const handleApprove = async () => {
     try {
       setActionLoading(true)
+      setActionError(null)
       await approveCase(caseItem.case_id, 'Approved via operator drawer')
       onActionComplete()
+    } catch (err: unknown) {
+      setActionError(err instanceof Error ? err.message : 'Approval failed')
     } finally {
       setActionLoading(false)
     }
@@ -276,9 +281,32 @@ export function CaseDetailDrawer({
                     a.event_name === 'agent.message_drafted' ||
                     a.actor.toLowerCase().includes('agent'),
                 )
-                const meta = planEntry?.model_metadata
+
+                if (!planEntry) {
+                  // Distinguish "not diagnosed yet" from "resolved before
+                  // diagnosis ran" rather than fabricating a rationale.
+                  const stillQueued = caseItem.state === 'ANALYSIS_QUEUED'
+                  return (
+                    <section className="space-y-2 rounded-panel border border-border bg-surface-sunken/40 p-4">
+                      <div className="flex items-center gap-2">
+                        <div className="flex h-6 w-6 items-center justify-center rounded-control bg-surface text-ink-muted">
+                          <Brain className="h-3.5 w-3.5" />
+                        </div>
+                        <h3 className="text-sm font-bold text-ink">
+                          AI Agent Diagnostic Reasoning
+                        </h3>
+                      </div>
+                      <p className="text-xs text-ink-muted">
+                        {stillQueued
+                          ? 'No AI decision yet. This case is still queued for diagnosis.'
+                          : 'No AI decision was made on this case. It was resolved before the diagnosis step ran.'}
+                      </p>
+                    </section>
+                  )
+                }
+
+                const meta = planEntry.model_metadata
                 const planObj =
-                  planEntry &&
                   typeof planEntry.decision_outputs.plan === 'object' &&
                   planEntry.decision_outputs.plan !== null
                     ? (planEntry.decision_outputs.plan as Record<
@@ -290,28 +318,23 @@ export function CaseDetailDrawer({
                   (typeof planObj?.rationale === 'string'
                     ? planObj.rationale
                     : null) ||
-                  planEntry?.notes ||
-                  caseItem.failure_event.error_description ||
+                  planEntry.notes ||
                   null
                 const strategy =
-                  (typeof planObj?.intervention_type === 'string'
+                  typeof planObj?.intervention_type === 'string'
                     ? planObj.intervention_type
-                    : null) ||
-                  caseItem.next_action ||
-                  'DYNAMIC_INTERVENTION'
+                    : caseItem.next_action
 
                 const msgEn =
                   caseItem.dunning_message_en ||
-                  (planEntry &&
-                  typeof planEntry.decision_outputs.dunning_message_en ===
-                    'string'
+                  (typeof planEntry.decision_outputs.dunning_message_en ===
+                  'string'
                     ? planEntry.decision_outputs.dunning_message_en
                     : null)
                 const msgHi =
                   caseItem.dunning_message_hi ||
-                  (planEntry &&
-                  typeof planEntry.decision_outputs.dunning_message_hi ===
-                    'string'
+                  (typeof planEntry.decision_outputs.dunning_message_hi ===
+                  'string'
                     ? planEntry.decision_outputs.dunning_message_hi
                     : null)
 
@@ -326,12 +349,14 @@ export function CaseDetailDrawer({
                           AI Agent Diagnostic Reasoning
                         </h3>
                       </div>
-                      <Badge
-                        variant="default"
-                        className="border-accent/30 bg-accent/10 text-[10px] text-accent"
-                      >
-                        {strategy.replaceAll('_', ' ')}
-                      </Badge>
+                      {strategy && (
+                        <Badge
+                          variant="default"
+                          className="border-accent/30 bg-accent/10 text-[10px] text-accent"
+                        >
+                          {strategy.replaceAll('_', ' ')}
+                        </Badge>
+                      )}
                     </div>
 
                     {rationale ? (
@@ -704,7 +729,7 @@ export function CaseDetailDrawer({
                           if (!policyVerdict) {
                             return (
                               <p className="mt-1.5 text-sm text-ink-muted">
-                                {inlinePaiseToINR(entry.notes)}
+                                <HighlightMoney text={entry.notes} />
                               </p>
                             )
                           }
@@ -720,7 +745,7 @@ export function CaseDetailDrawer({
                                 Policy verdict:{' '}
                                 {policyVerdict.verdict.replaceAll('_', ' ')}.
                               </span>{' '}
-                              {inlinePaiseToINR(policyVerdict.rest)}
+                              <HighlightMoney text={policyVerdict.rest} />
                             </p>
                           )
                         })()
@@ -798,6 +823,15 @@ export function CaseDetailDrawer({
                   </Button>
                 ) : null}
               </div>
+              {actionError && (
+                <p className="border-status-failed/40 bg-status-failed/10 flex items-start gap-2 rounded-control border p-3 text-xs text-ink">
+                  <AlertTriangle
+                    className="mt-0.5 h-3.5 w-3.5 shrink-0"
+                    aria-hidden="true"
+                  />
+                  {actionError}
+                </p>
+              )}
             </section>
           )}
         </div>

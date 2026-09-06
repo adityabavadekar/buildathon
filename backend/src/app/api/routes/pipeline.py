@@ -6,7 +6,7 @@ import asyncio
 import json
 from collections.abc import AsyncIterator  # noqa: TC003
 from datetime import UTC, datetime
-from typing import Annotated, Any
+from typing import Annotated, Any, cast
 from uuid import uuid4
 
 from fastapi import APIRouter, Query, Response, status
@@ -15,6 +15,8 @@ from pydantic import BaseModel, Field, model_validator
 
 from app.audit.models import AuditEntry, RecoveryCase, ScheduledJob
 from app.audit.repository import get_case_repository
+from app.core.cache import cached_json_value
+from app.core.config import get_settings
 from app.core.constants import DEFAULT_CURRENCY, MAX_FLEET_EVENTS_PER_MINUTE
 from app.core.enums import (
     AuditActor,
@@ -68,8 +70,15 @@ class FleetStartRequest(BaseModel):
 @router.get("/overview", summary="Get Pipeline Health & Queue Overview")
 async def get_pipeline_overview() -> dict[str, Any]:
     """Return live observable queue counts, throughput rates, and backlog depth."""
-    repo = get_case_repository()
-    return repo.get_pipeline_overview()
+
+    async def _compute() -> object:
+        repo = get_case_repository()
+        return repo.get_pipeline_overview()
+
+    result = await cached_json_value(
+        "pipeline:overview:v1", get_settings().analytics_cache_ttl_seconds, _compute
+    )
+    return cast("dict[str, Any]", result)
 
 
 @router.get("/timeseries", summary="Get Ingestion & Processing Timeseries")
@@ -78,15 +87,31 @@ async def get_pipeline_timeseries(
     hours: Annotated[int, Query(ge=1, le=168)] = 24,
 ) -> list[dict[str, Any]]:
     """Return aggregated time series for ingested vs processed events."""
-    repo = get_case_repository()
-    return repo.get_pipeline_timeseries(bucket_minutes=bucket_minutes, hours=hours)
+
+    async def _compute() -> object:
+        repo = get_case_repository()
+        return repo.get_pipeline_timeseries(bucket_minutes=bucket_minutes, hours=hours)
+
+    result = await cached_json_value(
+        f"pipeline:timeseries:v1:{bucket_minutes}:{hours}",
+        get_settings().analytics_cache_ttl_seconds,
+        _compute,
+    )
+    return cast("list[dict[str, Any]]", result)
 
 
 @router.get("/heatmap", summary="Get 7x24 Flood/Peak Traffic Heatmap")
 async def get_pipeline_heatmap() -> list[dict[str, Any]]:
     """Return 7x24 matrix of event counts across day-of-week and hour-of-day."""
-    repo = get_case_repository()
-    return repo.get_pipeline_heatmap()
+
+    async def _compute() -> object:
+        repo = get_case_repository()
+        return repo.get_pipeline_heatmap()
+
+    result = await cached_json_value(
+        "pipeline:heatmap:v1", get_settings().analytics_cache_ttl_seconds, _compute
+    )
+    return cast("list[dict[str, Any]]", result)
 
 
 @router.get("/queued", summary="Get Queued Jobs Listing")

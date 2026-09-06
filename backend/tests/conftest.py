@@ -20,6 +20,7 @@ from collections.abc import Iterator
 import psycopg
 import pytest
 from fastapi.testclient import TestClient
+from psycopg import sql
 from pydantic import SecretStr
 
 from app.audit.repository import get_case_repository
@@ -39,7 +40,7 @@ def _ensure_database_exists(worker_id: str) -> None:
             "SELECT 1 FROM pg_database WHERE datname = %s", (db_name,)
         ).fetchone()
         if not exists:
-            conn.execute(f'CREATE DATABASE "{db_name}"')
+            conn.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(db_name)))
     finally:
         conn.close()
 

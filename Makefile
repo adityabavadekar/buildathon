@@ -26,7 +26,7 @@ dev: ## Run both services (backend :8000, frontend :5173)
 	./scripts/dev-up.sh
 
 dev-backend: ## Run the backend only
-	cd $(BACKEND) && uv run fastapi dev src/app/main.py --port 8000
+	cd $(BACKEND) && uv run fastapi dev src/app/main.py --host 0.0.0.0 --port 8000
 
 dev-frontend: ## Run the frontend only
 	cd $(FRONTEND) && pnpm dev --port 5173
@@ -44,7 +44,7 @@ lint: lint-backend lint-frontend ## Lint and typecheck both services
 
 lint-backend:
 	cd $(BACKEND) && uv run ruff check .
-	cd $(BACKEND) && uv run mypy
+	cd $(BACKEND) && uv run ty check
 
 lint-frontend:
 	cd $(FRONTEND) && pnpm lint
@@ -88,6 +88,6 @@ prod-ps: ## Show production service status and health
 	docker compose ps
 
 clean: ## Remove caches and build output
-	rm -rf $(BACKEND)/.pytest_cache $(BACKEND)/.mypy_cache $(BACKEND)/.ruff_cache
+	rm -rf $(BACKEND)/.pytest_cache $(BACKEND)/.ruff_cache
 	rm -rf $(FRONTEND)/.next $(FRONTEND)/dist $(FRONTEND)/node_modules/.vite
 	find . -type d -name __pycache__ -not -path '*/node_modules/*' -exec rm -rf {} +

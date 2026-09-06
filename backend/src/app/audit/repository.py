@@ -270,6 +270,10 @@ class CaseRepository:
         """Count executed interventions by whether they reached a live gateway."""
         return self._store.get_execution_fidelity()
 
+    def get_analytics_aggregates(self) -> dict[str, Any]:
+        """Compute the recovery analytics summary via SQL aggregation."""
+        return self._store.get_analytics_aggregates()
+
     def clear(self) -> None:
         """Clear repository contents (used for test teardown)."""
         self._store.clear()

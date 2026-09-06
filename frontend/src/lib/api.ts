@@ -633,14 +633,17 @@ export function approveCase(
   notes: string,
   overrideDiscountBps?: number,
 ): Promise<RecoveryCase> {
-  return request<RecoveryCase>(`/cases/${encodeURIComponent(id)}/approve`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      notes,
-      override_discount_bps: overrideDiscountBps,
-    }),
-  })
+  return requestWithDetail<RecoveryCase>(
+    `/cases/${encodeURIComponent(id)}/approve`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        notes,
+        override_discount_bps: overrideDiscountBps,
+      }),
+    },
+  )
 }
 
 export function getAnalytics(): Promise<AnalyticsSummaryResponse> {

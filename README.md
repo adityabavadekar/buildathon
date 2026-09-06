@@ -150,6 +150,25 @@ These are optional; without them the matching feature runs in simulation mode.
 - **WhatsApp Cloud API** - Set up a [Meta WhatsApp Business Cloud API](https://developers.facebook.com/docs/whatsapp/cloud-api/) app and configure the `WHATSAPP_*` variables.
 
 
+## Testing & linting
+
+```bash
+cd backend
+uv run pytest
+uv run ruff check .
+uv run ruff format --check .
+uv run ty check
+```
+
+```bash
+cd frontend
+pnpm lint
+pnpm typecheck
+pnpm format:check
+pnpm build
+```
+
+
 ## License
 
 Apache License 2.0 - see [LICENSE](LICENSE).

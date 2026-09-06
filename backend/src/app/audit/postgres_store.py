@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import threading
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import text
@@ -113,7 +114,7 @@ class RelationalCaseStore:
                         payment_link_expires_at, strategy_tag, dunning_message_en,
                         dunning_message_hi, due_at, next_action, version,
                         promised_payment_date, p2p_reminder_count, escalation_reason,
-                        data_json, created_at, updated_at
+                        diagnosed_category, data_json, created_at, updated_at
                     ) VALUES (
                         :case_id, :payment_id, :merchant_id, :customer_id, :payment_rail,
                         :error_code, :error_source, :state, :experiment_arm, :amount_paise,
@@ -127,7 +128,7 @@ class RelationalCaseStore:
                         :payment_link_expires_at, :strategy_tag, :dunning_message_en,
                         :dunning_message_hi, :due_at, :next_action, :version,
                         :promised_payment_date, :p2p_reminder_count, :escalation_reason,
-                        CAST(:data_json AS jsonb), :created_at, :updated_at
+                        :diagnosed_category, CAST(:data_json AS jsonb), :created_at, :updated_at
                     )
                     ON CONFLICT (case_id) DO UPDATE SET
                         payment_id = EXCLUDED.payment_id,
@@ -174,6 +175,7 @@ class RelationalCaseStore:
                         promised_payment_date = EXCLUDED.promised_payment_date,
                         p2p_reminder_count = EXCLUDED.p2p_reminder_count,
                         escalation_reason = EXCLUDED.escalation_reason,
+                        diagnosed_category = EXCLUDED.diagnosed_category,
                         data_json = EXCLUDED.data_json,
                         updated_at = EXCLUDED.updated_at;
                     """
@@ -234,6 +236,7 @@ class RelationalCaseStore:
                     "escalation_reason": case.escalation_reason.value
                     if case.escalation_reason
                     else None,
+                    "diagnosed_category": case.diagnosed_category.value,
                     "data_json": data_json,
                     "created_at": now,
                     "updated_at": now,
@@ -392,6 +395,7 @@ class RelationalCaseStore:
         reference_id: str | None = None,
         q: str | None = None,
         model_used: str | None = None,
+        include_json_fallback: bool = False,
     ) -> tuple[str, dict[str, Any]]:
         clauses: list[str] = ["1=1"]
         params: dict[str, Any] = {}
@@ -487,8 +491,15 @@ class RelationalCaseStore:
             clauses.append("reference_id ILIKE :reference_id")
             params["reference_id"] = f"{reference_id}%"
         if q:
+            # data_json excluded by default (uncachable full-blob scan);
+            # include_json_fallback re-adds it for the list_cases() retry.
+            json_fallback_clause = (
+                " OR CAST(data_json AS text) ILIKE :q_like"
+                if include_json_fallback
+                else ""
+            )
             clauses.append(
-                """(
+                f"""(
                     payment_id ILIKE :q_like OR
                     customer_id ILIKE :q_like OR
                     invoice_id ILIKE :q_like OR
@@ -500,8 +511,7 @@ class RelationalCaseStore:
                     contact_phone ILIKE :q_like OR
                     case_id ILIKE :q_like OR
                     error_code ILIKE :q_like OR
-                    error_source ILIKE :q_like OR
-                    CAST(data_json AS text) ILIKE :q_like
+                    error_source ILIKE :q_like{json_fallback_clause}
                 )"""
             )
             params["q_like"] = f"%{q}%"
@@ -617,6 +627,51 @@ class RelationalCaseStore:
 
         with self._lock, get_db_connection() as conn:
             rows = conn.execute(text(query), params).fetchall()
+
+            # Free text outside the 12 fast columns, e.g. failure_event's
+            # error_reason, only matches on this slower fallback.
+            if q and not rows:
+                fallback_where, fallback_params = self._build_case_filter_query(
+                    merchant_id=merchant_id,
+                    states=state_list,
+                    experiment_arms=arm_list,
+                    payment_rails=payment_rails,
+                    error_codes=error_codes,
+                    error_sources=error_sources,
+                    amount_min_paise=amount_min_paise,
+                    amount_max_paise=amount_max_paise,
+                    created_after=created_after,
+                    created_before=created_before,
+                    occurred_after=occurred_after,
+                    occurred_before=occurred_before,
+                    attempts_min=attempts_min,
+                    attempts_max=attempts_max,
+                    recovered=recovered,
+                    opted_out=opted_out,
+                    has_escalation=has_escalation,
+                    escalation_reason=escalation_reason,
+                    customer_id=customer_id,
+                    payment_id=payment_id,
+                    invoice_id=invoice_id,
+                    subscription_id=subscription_id,
+                    campaign_id=campaign_id,
+                    user_ref=user_ref,
+                    reference_id=reference_id,
+                    q=q,
+                    model_used=model_used,
+                    include_json_fallback=True,
+                )
+                fallback_params["limit"] = limit
+                fallback_params["offset"] = offset
+                fallback_query = f"""
+                    SELECT data_json
+                    FROM cases
+                    WHERE {fallback_where}
+                    ORDER BY {col} {order}
+                    LIMIT :limit OFFSET :offset;
+                """  # noqa: S608
+                rows = conn.execute(text(fallback_query), fallback_params).fetchall()
+
             cases: list[RecoveryCase] = []
             for row in rows:
                 if row[0]:
@@ -823,6 +878,286 @@ class RelationalCaseStore:
             "live_executions": int(row["live_count"] or 0),
             "simulated_executions": int(row["simulated_count"] or 0),
             "simulated_cost_paise": int(row["simulated_cost_paise"] or 0),
+        }
+
+    def get_analytics_aggregates(self) -> dict[str, Any]:
+        # Plain columns only: extracting from data_json re-parses its
+        # embedded JSONB per row and dominated this query's cost.
+        totals_query = """
+            SELECT
+                COUNT(*) AS total_cases,
+                COALESCE(SUM(amount_paise), 0) AS total_at_risk_paise,
+                COALESCE(SUM(recovered_amount_paise), 0)
+                    AS recovered_amount_paise,
+                COALESCE(SUM(net_recovered_value_paise), 0)
+                    AS net_recovered_paise,
+                COALESCE(SUM(discount_paise_granted), 0)
+                    AS total_discounts_paise,
+                COUNT(*) FILTER (WHERE state = 'RECOVERED') AS recovered_count,
+                COUNT(*) FILTER (
+                    WHERE state IN (
+                        'IN_DUNNING', 'RETRY_SCHEDULED', 'OUTREACH_PENDING',
+                        'ANALYSIS_QUEUED'
+                    )
+                ) AS active_count,
+                COUNT(*) FILTER (
+                    WHERE state = 'ESCALATED' AND escalation_reason = 'HUMAN_JUDGMENT'
+                ) AS escalated_count,
+                COUNT(*) FILTER (WHERE experiment_arm = 'TREATMENT') AS treatment_total,
+                COUNT(*) FILTER (
+                    WHERE experiment_arm = 'TREATMENT' AND state = 'RECOVERED'
+                ) AS treatment_recovered,
+                COUNT(*) FILTER (
+                    WHERE experiment_arm = 'HOLDOUT_CONTROL'
+                ) AS holdout_total,
+                COUNT(*) FILTER (
+                    WHERE experiment_arm = 'HOLDOUT_CONTROL' AND state = 'RECOVERED'
+                ) AS holdout_recovered,
+                COUNT(*) FILTER (
+                    WHERE experiment_arm = 'TREATMENT' AND state IN (
+                        'RECOVERED', 'ESCALATED', 'ABANDONED', 'WRITTEN_OFF'
+                    )
+                ) AS treatment_settled_count
+            FROM cases;
+        """
+
+        category_query = """
+            SELECT
+                COALESCE(diagnosed_category, 'UNCLASSIFIED') AS category,
+                COUNT(*) AS count
+            FROM cases
+            GROUP BY category
+            ORDER BY count DESC;
+        """
+
+        rail_query = """
+            SELECT
+                COALESCE(payment_rail, 'UNKNOWN') AS rail,
+                COUNT(*) AS total_cases,
+                COUNT(*) FILTER (WHERE state = 'RECOVERED') AS recovered_cases,
+                COALESCE(SUM(amount_paise), 0) AS total_at_risk_paise,
+                COUNT(*) FILTER (
+                    WHERE state IN (
+                        'IN_DUNNING', 'RETRY_SCHEDULED', 'OUTREACH_PENDING',
+                        'ANALYSIS_QUEUED', 'P2P_WAITING', 'P2P_PROMISED'
+                    )
+                ) AS open_cases,
+                COALESCE(
+                    SUM(amount_paise) FILTER (
+                        WHERE state IN (
+                            'IN_DUNNING', 'RETRY_SCHEDULED', 'OUTREACH_PENDING',
+                            'ANALYSIS_QUEUED', 'P2P_WAITING', 'P2P_PROMISED'
+                        )
+                    ),
+                    0
+                ) AS open_at_risk_paise,
+                COALESCE(
+                    SUM(recovered_amount_paise)
+                        FILTER (WHERE state = 'RECOVERED'),
+                    0
+                ) AS recovered_paise
+            FROM cases
+            GROUP BY rail;
+        """
+
+        daily_query = """
+            SELECT
+                to_char(created_at, 'YYYY-MM-DD') AS bucket,
+                COUNT(*) AS total,
+                COUNT(*) FILTER (WHERE state = 'RECOVERED') AS recovered,
+                COUNT(*) FILTER (
+                    WHERE state = 'ESCALATED' AND escalation_reason = 'HUMAN_JUDGMENT'
+                ) AS escalated,
+                COUNT(*) FILTER (
+                    WHERE state NOT IN ('RECOVERED')
+                    AND NOT (state = 'ESCALATED' AND escalation_reason = 'HUMAN_JUDGMENT')
+                ) AS failed,
+                COALESCE(SUM(amount_paise), 0) AS at_risk_paise,
+                COALESCE(
+                    SUM(recovered_amount_paise)
+                        FILTER (WHERE state = 'RECOVERED'),
+                    0
+                ) AS recovered_paise,
+                COALESCE(
+                    SUM(net_recovered_value_paise)
+                        FILTER (WHERE state = 'RECOVERED'),
+                    0
+                ) AS nrv_paise
+            FROM cases
+            GROUP BY bucket
+            ORDER BY bucket;
+        """
+
+        monthly_query = """
+            SELECT
+                to_char(created_at, 'YYYY-MM') AS bucket,
+                COUNT(*) AS total,
+                COUNT(*) FILTER (WHERE state = 'RECOVERED') AS recovered,
+                COUNT(*) FILTER (
+                    WHERE state = 'ESCALATED' AND escalation_reason = 'HUMAN_JUDGMENT'
+                ) AS escalated,
+                COUNT(*) FILTER (
+                    WHERE state NOT IN ('RECOVERED')
+                    AND NOT (state = 'ESCALATED' AND escalation_reason = 'HUMAN_JUDGMENT')
+                ) AS failed,
+                COALESCE(SUM(amount_paise), 0) AS at_risk_paise,
+                COALESCE(
+                    SUM(recovered_amount_paise)
+                        FILTER (WHERE state = 'RECOVERED'),
+                    0
+                ) AS recovered_paise,
+                COALESCE(
+                    SUM(net_recovered_value_paise)
+                        FILTER (WHERE state = 'RECOVERED'),
+                    0
+                ) AS nrv_paise
+            FROM cases
+            GROUP BY bucket
+            ORDER BY bucket;
+        """
+
+        campaign_query = """
+            SELECT
+                COALESCE(campaign_id, 'untagged') AS campaign,
+                COUNT(*) AS total,
+                COUNT(*) FILTER (WHERE state = 'RECOVERED') AS recovered,
+                COUNT(*) FILTER (
+                    WHERE state = 'ESCALATED' AND escalation_reason = 'HUMAN_JUDGMENT'
+                ) AS escalated,
+                COALESCE(SUM(amount_paise), 0) AS at_risk_paise,
+                COALESCE(
+                    SUM(recovered_amount_paise)
+                        FILTER (WHERE state = 'RECOVERED'),
+                    0
+                ) AS recovered_paise,
+                COALESCE(
+                    SUM(net_recovered_value_paise)
+                        FILTER (WHERE state = 'RECOVERED'),
+                    0
+                ) AS nrv_paise
+            FROM cases
+            GROUP BY campaign
+            ORDER BY at_risk_paise DESC;
+        """
+
+        channel_query = """
+            SELECT
+                a.decision_inputs -> 'plan' ->> 'intervention_type' AS intervention_type,
+                COUNT(*) AS attempts,
+                COUNT(*) FILTER (WHERE c.state = 'RECOVERED') AS successes,
+                COALESCE(SUM(a.cost_incurred_paise), 0) AS cost_paise
+            FROM audit a
+            JOIN cases c ON c.case_id = a.case_id
+            WHERE a.event_name = 'intervention.executed'
+              AND a.decision_inputs -> 'plan' ->> 'intervention_type' IS NOT NULL
+            GROUP BY intervention_type;
+        """
+
+        ttr_query = """
+            SELECT
+                EXTRACT(
+                    EPOCH FROM (c.updated_at - c.created_at)
+                ) AS delta_seconds
+            FROM cases c
+            WHERE c.state = 'RECOVERED';
+        """
+
+        # Six fixed lookback windows ending "now", each a FILTER over the same
+        # scan -- one query instead of the six-way Python filter this replaces.
+        now = datetime.now(UTC)
+        window_query = """
+            SELECT
+                COALESCE(SUM(amount_paise) FILTER (WHERE created_at <= :t48), 0)
+                    AS failed_t48,
+                COALESCE(SUM(amount_paise) FILTER (WHERE created_at <= :t36), 0)
+                    AS failed_t36,
+                COALESCE(SUM(amount_paise) FILTER (WHERE created_at <= :t24), 0)
+                    AS failed_t24,
+                COALESCE(SUM(amount_paise) FILTER (WHERE created_at <= :t12), 0)
+                    AS failed_t12,
+                COALESCE(SUM(amount_paise) FILTER (WHERE created_at <= :t06), 0)
+                    AS failed_t06,
+                COALESCE(SUM(amount_paise) FILTER (WHERE created_at <= :tnow), 0)
+                    AS failed_current,
+                COALESCE(
+                    SUM(recovered_amount_paise)
+                        FILTER (WHERE state = 'RECOVERED' AND updated_at <= :t48),
+                    0
+                ) AS recovered_t48,
+                COALESCE(
+                    SUM(recovered_amount_paise)
+                        FILTER (WHERE state = 'RECOVERED' AND updated_at <= :t36),
+                    0
+                ) AS recovered_t36,
+                COALESCE(
+                    SUM(recovered_amount_paise)
+                        FILTER (WHERE state = 'RECOVERED' AND updated_at <= :t24),
+                    0
+                ) AS recovered_t24,
+                COALESCE(
+                    SUM(recovered_amount_paise)
+                        FILTER (WHERE state = 'RECOVERED' AND updated_at <= :t12),
+                    0
+                ) AS recovered_t12,
+                COALESCE(
+                    SUM(recovered_amount_paise)
+                        FILTER (WHERE state = 'RECOVERED' AND updated_at <= :t06),
+                    0
+                ) AS recovered_t06,
+                COALESCE(
+                    SUM(recovered_amount_paise)
+                        FILTER (WHERE state = 'RECOVERED' AND updated_at <= :tnow),
+                    0
+                ) AS recovered_current
+            FROM cases;
+        """
+        window_params = {
+            "t48": now - timedelta(hours=48),
+            "t36": now - timedelta(hours=36),
+            "t24": now - timedelta(hours=24),
+            "t12": now - timedelta(hours=12),
+            "t06": now - timedelta(hours=6),
+            "tnow": now + timedelta(minutes=1),
+        }
+
+        with self._lock, get_db_connection() as conn:
+            totals = conn.execute(text(totals_query)).mappings().fetchone()
+            categories = conn.execute(text(category_query)).mappings().fetchall()
+            rails = conn.execute(text(rail_query)).mappings().fetchall()
+            daily = conn.execute(text(daily_query)).mappings().fetchall()
+            monthly = conn.execute(text(monthly_query)).mappings().fetchall()
+            campaigns = conn.execute(text(campaign_query)).mappings().fetchall()
+            channels = conn.execute(text(channel_query)).mappings().fetchall()
+            ttr_rows = conn.execute(text(ttr_query)).mappings().fetchall()
+            windows = (
+                conn.execute(text(window_query), window_params).mappings().fetchone()
+            )
+
+        # psycopg returns SUM() as decimal.Decimal, which doesn't mix with
+        # the plain floats used downstream -- normalize to int here once.
+        def _to_int(value: Any) -> int:
+            return int(value) if value is not None else 0
+
+        def _normalize_row(row: RowMapping) -> dict[str, Any]:
+            return {
+                key: _to_int(value) if isinstance(value, Decimal) else value
+                for key, value in dict(row).items()
+            }
+
+        return {
+            "totals": _normalize_row(totals) if totals else {},
+            "categories": [_normalize_row(r) for r in categories],
+            "rails": [_normalize_row(r) for r in rails],
+            "daily": [_normalize_row(r) for r in daily],
+            "monthly": [_normalize_row(r) for r in monthly],
+            "campaigns": [_normalize_row(r) for r in campaigns],
+            "channels": [_normalize_row(r) for r in channels],
+            "ttr_delta_seconds": [
+                float(r["delta_seconds"])
+                for r in ttr_rows
+                if r["delta_seconds"] is not None
+            ],
+            "windows": _normalize_row(windows) if windows else {},
         }
 
     def get_audit_trail_for_case(self, case_id: str) -> list[AuditEntry]:

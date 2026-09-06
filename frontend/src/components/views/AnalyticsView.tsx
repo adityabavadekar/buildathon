@@ -168,49 +168,6 @@ export function AnalyticsView({ analytics, loading }: AnalyticsViewProps) {
         </div>
       </div>
 
-      <Card className="border-accent/30 bg-accent-subtle/10">
-        <CardHeader className="pb-3">
-          <div className="flex items-center gap-2">
-            <TrendingUp className="h-4 w-4 text-accent" />
-            <CardTitle className="text-base">
-              <GlossaryTerm termKey="HOLDOUT_ARM" showIcon={false}>
-                Treatment vs holdout
-              </GlossaryTerm>
-            </CardTitle>
-          </div>
-          <CardDescription>
-            The engine recovered{' '}
-            <strong className="text-recovered">
-              +{analytics.attributable_lift_pct.toFixed(1)}%
-            </strong>{' '}
-            more than the uncontacted holdout cohort.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <ArmComparisonChart
-            liftPct={analytics.attributable_lift_pct}
-            arms={[
-              {
-                key: 'treatment',
-                label: 'Treatment cohort',
-                ratePct: analytics.treatment_recovery_rate_pct,
-                caseCount: analytics.treatment_total,
-                color: 'var(--color-recovered)',
-                sublabel: 'Contacted by the recovery engine',
-              },
-              {
-                key: 'holdout',
-                label: 'Holdout control',
-                ratePct: analytics.holdout_recovery_rate_pct,
-                caseCount: analytics.holdout_total,
-                color: 'var(--color-ink-subtle)',
-                sublabel: 'Deliberately uncontacted counterfactual',
-              },
-            ]}
-          />
-        </CardContent>
-      </Card>
-
       <Card>
         <CardHeader className="pb-3">
           <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
@@ -453,6 +410,49 @@ export function AnalyticsView({ analytics, loading }: AnalyticsViewProps) {
               No persisted pattern alerts are available.
             </p>
           ) : null}
+        </CardContent>
+      </Card>
+
+      <Card className="border-accent/30 bg-accent-subtle/10">
+        <CardHeader className="pb-3">
+          <div className="flex items-center gap-2">
+            <TrendingUp className="h-4 w-4 text-accent" />
+            <CardTitle className="text-base">
+              <GlossaryTerm termKey="HOLDOUT_ARM" showIcon={false}>
+                Treatment vs holdout
+              </GlossaryTerm>
+            </CardTitle>
+          </div>
+          <CardDescription>
+            The engine recovered{' '}
+            <strong className="text-recovered">
+              +{analytics.attributable_lift_pct.toFixed(1)}%
+            </strong>{' '}
+            more than the uncontacted holdout cohort.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <ArmComparisonChart
+            liftPct={analytics.attributable_lift_pct}
+            arms={[
+              {
+                key: 'treatment',
+                label: 'Treatment cohort',
+                ratePct: analytics.treatment_recovery_rate_pct,
+                caseCount: analytics.treatment_total,
+                color: 'var(--color-recovered)',
+                sublabel: 'Contacted by the recovery engine',
+              },
+              {
+                key: 'holdout',
+                label: 'Holdout control',
+                ratePct: analytics.holdout_recovery_rate_pct,
+                caseCount: analytics.holdout_total,
+                color: 'var(--color-ink-subtle)',
+                sublabel: 'Deliberately uncontacted counterfactual',
+              },
+            ]}
+          />
         </CardContent>
       </Card>
     </div>

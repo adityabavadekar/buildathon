@@ -22,6 +22,18 @@ services:
     expose:
       - "5432"
 
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    expose:
+      - "6379"
+
   backend:
     build:
       context: ./backend
@@ -30,12 +42,15 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
       APP_ENV: production
       APP_LOG_JSON: "true"
       APP_LOG_LEVEL: ${APP_LOG_LEVEL:-INFO}
       APP_CORS_ORIGINS: ${APP_CORS_ORIGINS:-["http://localhost:3000"]}
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-fortx}
+      REDIS_URL: redis://redis:6379/0
       APP_OPERATOR_PASSWORD: ${APP_OPERATOR_PASSWORD:?set APP_OPERATOR_PASSWORD in .env}
       # Without a fixed value every restart invalidates all sessions, and two
       # backend replicas would each mint tokens the other rejects.

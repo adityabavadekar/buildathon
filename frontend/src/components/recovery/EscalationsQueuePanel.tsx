@@ -2,13 +2,20 @@
 
 import React, { useEffect, useMemo, useState } from 'react'
 import {
+  AlertTriangle,
   ArrowUpDown,
+  Bot,
   CheckCircle2,
+  Eye,
   HelpCircle,
   Lightbulb,
+  Percent,
+  Phone,
   RefreshCw,
+  Route,
   Search,
   ShieldAlert,
+  Smartphone,
   UserCheck,
   X,
 } from 'lucide-react'
@@ -35,6 +42,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { RailBadge } from '@/components/ui/BrandIcons'
+import { HighlightMoney } from '@/components/ui/HighlightMoney'
 import { SkeletonRow } from '@/components/ui/skeleton'
 import { formatCustomerName } from '@/lib/format'
 
@@ -55,6 +63,37 @@ function formatINR(paise: number): string {
 type SortField =
   'expected_recoverable_value_paise' | 'amount_paise' | 'created_at'
 
+/** Maps recommended_action text to an icon; unmatched text falls back to
+ * the neutral default instead of breaking. */
+function recommendedActionDisplay(action: string): {
+  Icon: React.ComponentType<{ className?: string }>
+  colorClass: string
+} {
+  const lower = action.toLowerCase()
+  if (lower.includes('review')) {
+    return { Icon: Eye, colorClass: 'text-failed' }
+  }
+  if (lower.includes('discount')) {
+    return { Icon: Percent, colorClass: 'text-recovered' }
+  }
+  if (lower.includes('degraded') || lower.includes('alternate rail')) {
+    return { Icon: Route, colorClass: 'text-escalated' }
+  }
+  if (lower.includes('upi')) {
+    return { Icon: Smartphone, colorClass: 'text-accent' }
+  }
+  if (lower.includes('phone') || lower.includes('outreach')) {
+    return { Icon: Phone, colorClass: 'text-accent' }
+  }
+  if (lower.includes('ai recovery plan')) {
+    return { Icon: Bot, colorClass: 'text-accent' }
+  }
+  if (lower.includes('retry')) {
+    return { Icon: RefreshCw, colorClass: 'text-accent' }
+  }
+  return { Icon: Lightbulb, colorClass: 'text-accent' }
+}
+
 export function EscalationsQueuePanel({
   onSelectCase,
   onActionComplete,
@@ -63,6 +102,7 @@ export function EscalationsQueuePanel({
   const [loading, setLoading] = useState<boolean>(true)
   const [approvingId, setApprovingId] = useState<string | null>(null)
   const [approvalSuccess, setApprovalSuccess] = useState<string | null>(null)
+  const [approvalError, setApprovalError] = useState<string | null>(null)
 
   const [searchQuery, setSearchQuery] = useState<string>('')
   const [railFilter, setRailFilter] = useState<string>('all')
@@ -97,6 +137,7 @@ export function EscalationsQueuePanel({
   const handleQuickApprove = async (item: EscalationQueueItem) => {
     try {
       setApprovingId(item.case_id)
+      setApprovalError(null)
       await approveCase(
         item.case_id,
         `Approved recommended operator action: ${item.recommended_action}`,
@@ -110,6 +151,10 @@ export function EscalationsQueuePanel({
       }, 3000)
       void fetchQueue()
       if (onActionComplete) onActionComplete()
+    } catch (err: unknown) {
+      setApprovalError(err instanceof Error ? err.message : 'Approval failed')
+      // Row may be stale (case already resolved elsewhere) -- refresh it.
+      void fetchQueue()
     } finally {
       setApprovingId(null)
     }
@@ -211,6 +256,16 @@ export function EscalationsQueuePanel({
           </div>
         </div>
       </CardHeader>
+
+      {approvalError && (
+        <p className="border-status-failed/40 bg-status-failed/10 flex items-start gap-2 border-b p-3 text-xs text-ink">
+          <AlertTriangle
+            className="mt-0.5 h-3.5 w-3.5 shrink-0"
+            aria-hidden="true"
+          />
+          {approvalError}
+        </p>
+      )}
 
       <CardContent className="p-0">
         {loading ? (
@@ -393,7 +448,7 @@ export function EscalationsQueuePanel({
                           <div className="flex items-start gap-2 text-xs">
                             <HelpCircle className="mt-0.5 h-4 w-4 shrink-0 text-escalated" />
                             <p className="leading-relaxed text-ink">
-                              {item.escalation_reason}
+                              <HighlightMoney text={item.escalation_reason} />
                             </p>
                           </div>
                         </TableCell>
@@ -401,7 +456,17 @@ export function EscalationsQueuePanel({
                         {/* Recommended action - vertical detail */}
                         <TableCell>
                           <div className="flex items-start gap-2 text-xs">
-                            <Lightbulb className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
+                            {(() => {
+                              const { Icon, colorClass } =
+                                recommendedActionDisplay(
+                                  item.recommended_action,
+                                )
+                              return (
+                                <Icon
+                                  className={`mt-0.5 h-4 w-4 shrink-0 ${colorClass}`}
+                                />
+                              )
+                            })()}
                             <div className="space-y-1">
                               <p className="font-semibold text-ink">
                                 {item.recommended_action}

@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import time
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from app.audit.repository import get_case_repository
+from app.core.cache import cached_json_value, flush_all
 from app.core.config import get_settings
 from app.core.enums import RecoveryState
 from app.core.operator import OperatorMode, get_operator_mode
@@ -63,7 +64,9 @@ class SystemStatusResponse(BaseModel):
 @router.post("/reset", summary="Reset Simulation Data")
 async def reset_simulation() -> dict[str, str]:
     """Reset repository and purge test simulation state."""
-    return reset_simulation_data()
+    result = reset_simulation_data()
+    await flush_all()
+    return result
 
 
 @router.post("/resolve-case", summary="Simulate Case Resolution")
@@ -107,18 +110,34 @@ async def simulate_resolve_case(req: ResolveCaseRequest) -> dict[str, Any]:
 )
 async def get_system_status() -> SystemStatusResponse:
     """Retrieve comprehensive system telemetry, gateway health, and active queues."""
-    repo = get_case_repository()
     settings = get_settings()
     uptime = int(time.time() - _PROCESS_START_TIME)
 
-    cases = list(repo.list_cases(limit=10000))
-    total_cases = len(cases)
-    active_queue = sum(
-        1
-        for c in cases
-        if c.state.value in ("IN_DUNNING", "OUTREACH_PENDING", "RETRY_SCHEDULED")
+    async def _compute_queue_counts() -> dict[str, int]:
+        repo = get_case_repository()
+        cases = list(repo.list_cases(limit=10000))
+        return {
+            "total_cases": len(cases),
+            "active_queue": sum(
+                1
+                for c in cases
+                if c.state.value
+                in ("IN_DUNNING", "OUTREACH_PENDING", "RETRY_SCHEDULED")
+            ),
+            "escalated_queue": sum(1 for c in cases if c.state.value == "ESCALATED"),
+        }
+
+    # Only the case-count scan is cached -- live config/mode/provider state
+    # must reflect an operator's change immediately, not after a TTL.
+    queue_counts_raw = await cached_json_value(
+        "system:status:queue_counts:v1",
+        settings.analytics_cache_ttl_seconds,
+        _compute_queue_counts,
     )
-    escalated_queue = sum(1 for c in cases if c.state.value == "ESCALATED")
+    queue_counts = cast("dict[str, int]", queue_counts_raw)
+    total_cases = queue_counts["total_cases"]
+    active_queue = queue_counts["active_queue"]
+    escalated_queue = queue_counts["escalated_queue"]
 
     providers = configured_providers()
     rzp_configured = bool(settings.razorpay_key_id and settings.razorpay_key_secret)

@@ -240,6 +240,22 @@ class Settings(BaseSettings):
         description="Statement execution timeout in milliseconds.",
     )
 
+    # Redis: read-through cache for expensive analytics aggregation only.
+    # Unreachable Redis must never break a request -- the cache layer fails
+    # open to a direct (slower) recompute.
+    redis_url: str = Field(
+        default="redis://127.0.0.1:6379/0",
+        validation_alias="REDIS_URL",
+        description="Redis DSN for the analytics response cache.",
+    )
+    analytics_cache_ttl_seconds: int = Field(
+        default=10,
+        ge=1,
+        validation_alias="APP_ANALYTICS_CACHE_TTL_SECONDS",
+        description="How long a cached analytics summary stays valid "
+        "before the next request recomputes it.",
+    )
+
     @property
     def is_production(self) -> bool:
         return self.env == "production"

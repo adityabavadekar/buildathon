@@ -303,6 +303,7 @@ function Dashboard() {
               {activeSection === 'approvals' && (
                 <ApprovalsView
                   cases={cases}
+                  escalatedCount={escalatedCount}
                   onSelectCase={(c) => {
                     setSelectedCase(c)
                   }}

@@ -76,10 +76,12 @@ def create_app() -> FastAPI:
     # any later audit record can be traced to the originating request.
     app.add_middleware(RequestIDMiddleware)
     origins = settings.cors_origins or ["*"]
+    # Regex wildcard is dev-only: with allow_credentials, it would make the
+    # explicit allowlist pointless in production.
     app.add_middleware(
         CORSMiddleware,
         allow_origins=origins,
-        allow_origin_regex=r"https?://.*",
+        allow_origin_regex=None if settings.is_production else r"https?://.*",
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

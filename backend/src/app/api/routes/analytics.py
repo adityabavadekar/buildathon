@@ -4,23 +4,21 @@ series, and the EV-prioritised escalation queue.
 
 from __future__ import annotations
 
-from collections import defaultdict
-from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
 from app.audit.global_log import record_global_audit
 from app.audit.repository import get_case_repository
+from app.core.cache import cached_model, get_cached_json, set_cached_json
+from app.core.config import get_settings
 from app.core.enums import (
     AuditActor,
     EscalationReason,
-    ExperimentArm,
     PaymentRail,
     RecoveryState,
 )
-from app.detection.classifier import classify_failure
 from app.detection.clustering import recompute_patterns
 from app.detection.customer_profile import get_customer_profile_registry
 from app.detection.ml import get_recovery_model, train_recovery_model
@@ -28,8 +26,6 @@ from app.detection.rail_health import get_rail_health_registry
 from app.intervention.policy_gate import get_active_policy
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
-
     from app.audit.models import AuditEntry, RecoveryCase
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
@@ -295,261 +291,134 @@ class AnalyticsSummaryResponse(BaseModel):
     campaign_metrics: list[CampaignMetrics] = Field(default_factory=list)
 
 
-def _compute_rail_performance(cases: Sequence[RecoveryCase]) -> list[RailPerformance]:
-    """Compute performance breakdown across payment rails."""
-    rail_stats: dict[PaymentRail, dict[str, int]] = {
-        rail: {"cases": 0, "recovered": 0, "at_risk": 0, "rec_amount": 0}
-        for rail in PaymentRail
-    }
+def _bucket_recovery_rate(total: int, recovered: int) -> float:
+    return round((recovered / total * 100.0), 1) if total > 0 else 0.0
 
-    for c in cases:
-        r = c.failure_event.payment_rail
-        if r in rail_stats:
-            rail_stats[r]["cases"] += 1
-            rail_stats[r]["at_risk"] += c.amount_paise
-            if c.state == RecoveryState.RECOVERED:
-                rail_stats[r]["recovered"] += 1
-                rail_stats[r]["rec_amount"] += c.recovered_amount_paise
 
+def _time_series_from_windows(windows: dict[str, Any]) -> list[TimePointStats]:
+    labels = [
+        ("T-48h", "t48"),
+        ("T-36h", "t36"),
+        ("T-24h", "t24"),
+        ("T-12h", "t12"),
+        ("T-6h", "t06"),
+        ("Current", "current"),
+    ]
     return [
-        RailPerformance(
-            rail=rail.value,
-            total_cases=stats["cases"],
-            recovered_cases=stats["recovered"],
-            recovery_rate_pct=round((stats["recovered"] / stats["cases"] * 100.0), 1)
-            if stats["cases"] > 0
-            else 0.0,
-            total_at_risk_paise=stats["at_risk"],
-            recovered_paise=stats["rec_amount"],
+        TimePointStats(
+            label=label,
+            failed_paise=int(windows.get(f"failed_{key}", 0) or 0),
+            recovered_paise=int(windows.get(f"recovered_{key}", 0) or 0),
         )
-        for rail, stats in rail_stats.items()
-        if stats["cases"] > 0
+        for label, key in labels
     ]
 
 
-def _compute_channel_performance(
-    cases: Sequence[RecoveryCase],
+def _rail_performance_from_rows(rows: list[dict[str, Any]]) -> list[RailPerformance]:
+    return [
+        RailPerformance(
+            rail=r["rail"],
+            total_cases=r["total_cases"],
+            recovered_cases=r["recovered_cases"],
+            recovery_rate_pct=_bucket_recovery_rate(
+                r["total_cases"], r["recovered_cases"]
+            ),
+            total_at_risk_paise=r["total_at_risk_paise"],
+            recovered_paise=r["recovered_paise"],
+        )
+        for r in rows
+        if r["total_cases"] > 0
+    ]
+
+
+def _channel_performance_from_rows(
+    rows: list[dict[str, Any]],
 ) -> tuple[list[ChannelPerformance], int, int]:
-    """Compute performance and aggregate direct costs per intervention channel."""
-    tool_stats: dict[str, dict[str, int]] = {
-        "PASSIVE_RETRY": {"attempts": 0, "success": 0},
-        "SMART_RETRY": {"attempts": 0, "success": 0},
-        "SMART_PAYMENT_LINK": {"attempts": 0, "success": 0},
-        "INCENTIVIZED_LINK": {"attempts": 0, "success": 0},
-        "CUSTOMER_NUDGE": {"attempts": 0, "success": 0},
-    }
+    known_types = (
+        "PASSIVE_RETRY",
+        "SMART_RETRY",
+        "SMART_PAYMENT_LINK",
+        "INCENTIVIZED_LINK",
+        "CUSTOMER_NUDGE",
+    )
+    by_type = {r["intervention_type"]: r for r in rows}
     total_gw_fees = 0
     total_comm_cost = 0
-
-    for c in cases:
-        for entry in c.audit_trail:
-            cost = entry.cost_incurred_paise
-            if entry.event_name == "intervention.executed":
-                plan_info = entry.decision_inputs.get("plan", {})
-                itype = plan_info.get("intervention_type")
-                if itype in tool_stats:
-                    tool_stats[itype]["attempts"] += 1
-                    if c.state == RecoveryState.RECOVERED:
-                        tool_stats[itype]["success"] += 1
-                if "RETRY" in str(itype):
-                    total_gw_fees += cost
-                else:
-                    total_comm_cost += cost
+    for r in rows:
+        itype = r["intervention_type"]
+        cost = int(r["cost_paise"] or 0)
+        if "RETRY" in str(itype):
+            total_gw_fees += cost
+        else:
+            total_comm_cost += cost
 
     perf_list = [
         ChannelPerformance(
-            intervention_type=itype_str,
-            total_attempts=stats["attempts"],
-            successful_recoveries=stats["success"],
-            success_rate_pct=round((stats["success"] / stats["attempts"] * 100.0), 1)
-            if stats["attempts"] > 0
-            else 0.0,
+            intervention_type=itype,
+            total_attempts=int(by_type.get(itype, {}).get("attempts", 0)),
+            successful_recoveries=int(by_type.get(itype, {}).get("successes", 0)),
+            success_rate_pct=_bucket_recovery_rate(
+                int(by_type.get(itype, {}).get("attempts", 0)),
+                int(by_type.get(itype, {}).get("successes", 0)),
+            ),
         )
-        for itype_str, stats in tool_stats.items()
+        for itype in known_types
     ]
     return perf_list, total_gw_fees, total_comm_cost
 
 
-def _compute_category_distribution(
-    cases: Sequence[RecoveryCase], total_cases: int
+def _category_distribution_from_rows(
+    rows: list[dict[str, Any]], total_cases: int
 ) -> list[CategoryBreakdown]:
-    """Compute semantic root cause failure category distribution."""
-    cat_counts: dict[str, int] = {}
-    for c in cases:
-        diagnosis = classify_failure(c.failure_event)
-        cat_name = diagnosis.category.value
-        cat_counts[cat_name] = cat_counts.get(cat_name, 0) + 1
-
     return [
         CategoryBreakdown(
-            category=cat_name,
-            count=count,
-            percentage=round((count / total_cases * 100.0), 1) if total_cases else 0.0,
+            category=r["category"],
+            count=r["count"],
+            percentage=round((r["count"] / total_cases * 100.0), 1)
+            if total_cases
+            else 0.0,
         )
-        for cat_name, count in sorted(
-            cat_counts.items(), key=lambda x: x[1], reverse=True
-        )
+        for r in rows
     ]
 
 
-def _compute_time_series(cases: Sequence[RecoveryCase]) -> list[TimePointStats]:
-    """Compute chronological cumulative time series from actual case creation and resolution timestamps."""
-    if not cases:
-        return [
-            TimePointStats(label="T-48h", failed_paise=0, recovered_paise=0),
-            TimePointStats(label="T-36h", failed_paise=0, recovered_paise=0),
-            TimePointStats(label="T-24h", failed_paise=0, recovered_paise=0),
-            TimePointStats(label="T-12h", failed_paise=0, recovered_paise=0),
-            TimePointStats(label="T-6h", failed_paise=0, recovered_paise=0),
-            TimePointStats(label="Current", failed_paise=0, recovered_paise=0),
-        ]
-
-    now = datetime.now(UTC)
-    time_windows = [
-        ("T-48h", now - timedelta(hours=48)),
-        ("T-36h", now - timedelta(hours=36)),
-        ("T-24h", now - timedelta(hours=24)),
-        ("T-12h", now - timedelta(hours=12)),
-        ("T-6h", now - timedelta(hours=6)),
-        ("Current", now + timedelta(minutes=1)),
+def _daily_metrics_from_rows(rows: list[dict[str, Any]]) -> list[DailyMetricPoint]:
+    return [
+        DailyMetricPoint(
+            date=r["bucket"],
+            total_transactions=r["total"],
+            failed_count=r["failed"],
+            recovered_count=r["recovered"],
+            escalated_count=r["escalated"],
+            at_risk_paise=r["at_risk_paise"],
+            recovered_paise=r["recovered_paise"],
+            net_recovered_value_paise=r["nrv_paise"],
+            recovery_rate_pct=_bucket_recovery_rate(r["total"], r["recovered"]),
+        )
+        for r in rows
     ]
 
-    points: list[TimePointStats] = []
-    for label, cutoff in time_windows:
-        failed_sum = sum(c.amount_paise for c in cases if c.created_at <= cutoff)
-        recovered_sum = sum(
-            c.recovered_amount_paise
-            for c in cases
-            if c.state == RecoveryState.RECOVERED and c.updated_at <= cutoff
+
+def _monthly_metrics_from_rows(rows: list[dict[str, Any]]) -> list[MonthlyMetricPoint]:
+    return [
+        MonthlyMetricPoint(
+            month=r["bucket"],
+            total_transactions=r["total"],
+            failed_count=r["failed"],
+            recovered_count=r["recovered"],
+            escalated_count=r["escalated"],
+            at_risk_paise=r["at_risk_paise"],
+            recovered_paise=r["recovered_paise"],
+            net_recovered_value_paise=r["nrv_paise"],
+            recovery_rate_pct=_bucket_recovery_rate(r["total"], r["recovered"]),
         )
-        points.append(
-            TimePointStats(
-                label=label,
-                failed_paise=failed_sum,
-                recovered_paise=recovered_sum,
-            )
-        )
-    return points
+        for r in rows
+    ]
 
 
-def _compute_daily_metrics(cases: Sequence[RecoveryCase]) -> list[DailyMetricPoint]:
-    """Aggregate cases by occurrence/creation day."""
-    day_map: dict[str, dict[str, int]] = defaultdict(
-        lambda: {
-            "total": 0,
-            "failed": 0,
-            "recovered": 0,
-            "escalated": 0,
-            "at_risk": 0,
-            "recovered_paise": 0,
-            "nrv": 0,
-        }
-    )
-
-    for c in cases:
-        day_key = c.created_at.strftime("%Y-%m-%d")
-        stats = day_map[day_key]
-        stats["total"] += 1
-        stats["at_risk"] += c.amount_paise
-
-        if c.state == RecoveryState.RECOVERED:
-            stats["recovered"] += 1
-            stats["recovered_paise"] += c.recovered_amount_paise
-            stats["nrv"] += c.net_recovered_value_paise
-        elif (
-            c.state == RecoveryState.ESCALATED
-            and c.escalation_reason == EscalationReason.HUMAN_JUDGMENT
-        ):
-            stats["escalated"] += 1
-        elif c.state in (RecoveryState.FAILED, RecoveryState.ABANDONED):
-            stats["failed"] += 1
-        else:
-            # Active in-flight, or ESCALATED only on a failed gateway call
-            # (escalation_reason == SYSTEM_ERROR, not HUMAN_JUDGMENT).
-            stats["failed"] += 1
-
-    daily_points: list[DailyMetricPoint] = []
-    for date_str in sorted(day_map.keys()):
-        s = day_map[date_str]
-        rate = (
-            round((s["recovered"] / s["total"] * 100.0), 1) if s["total"] > 0 else 0.0
-        )
-        daily_points.append(
-            DailyMetricPoint(
-                date=date_str,
-                total_transactions=s["total"],
-                failed_count=s["failed"],
-                recovered_count=s["recovered"],
-                escalated_count=s["escalated"],
-                at_risk_paise=s["at_risk"],
-                recovered_paise=s["recovered_paise"],
-                net_recovered_value_paise=s["nrv"],
-                recovery_rate_pct=rate,
-            )
-        )
-    return daily_points
-
-
-def _compute_monthly_metrics(cases: Sequence[RecoveryCase]) -> list[MonthlyMetricPoint]:
-    """Aggregate cases by month."""
-    month_map: dict[str, dict[str, int]] = defaultdict(
-        lambda: {
-            "total": 0,
-            "failed": 0,
-            "recovered": 0,
-            "escalated": 0,
-            "at_risk": 0,
-            "recovered_paise": 0,
-            "nrv": 0,
-        }
-    )
-
-    for c in cases:
-        month_key = c.created_at.strftime("%Y-%m")
-        stats = month_map[month_key]
-        stats["total"] += 1
-        stats["at_risk"] += c.amount_paise
-
-        if c.state == RecoveryState.RECOVERED:
-            stats["recovered"] += 1
-            stats["recovered_paise"] += c.recovered_amount_paise
-            stats["nrv"] += c.net_recovered_value_paise
-        elif (
-            c.state == RecoveryState.ESCALATED
-            and c.escalation_reason == EscalationReason.HUMAN_JUDGMENT
-        ):
-            stats["escalated"] += 1
-        elif c.state in (RecoveryState.FAILED, RecoveryState.ABANDONED):
-            stats["failed"] += 1
-        else:
-            stats["failed"] += 1
-
-    monthly_points: list[MonthlyMetricPoint] = []
-    for m_str in sorted(month_map.keys()):
-        s = month_map[m_str]
-        rate = (
-            round((s["recovered"] / s["total"] * 100.0), 1) if s["total"] > 0 else 0.0
-        )
-        monthly_points.append(
-            MonthlyMetricPoint(
-                month=m_str,
-                total_transactions=s["total"],
-                failed_count=s["failed"],
-                recovered_count=s["recovered"],
-                escalated_count=s["escalated"],
-                at_risk_paise=s["at_risk"],
-                recovered_paise=s["recovered_paise"],
-                net_recovered_value_paise=s["nrv"],
-                recovery_rate_pct=rate,
-            )
-        )
-    return monthly_points
-
-
-def _compute_time_to_recovery(cases: Sequence[RecoveryCase]) -> list[TTRBucket]:
-    """Compute empirical time-to-recovery latency distribution from case resolution deltas."""
-    recovered_cases = [c for c in cases if c.state == RecoveryState.RECOVERED]
-
+def _time_to_recovery_from_deltas(deltas: list[float]) -> list[TTRBucket]:
+    # Uses updated_at - created_at, not the recovery-event audit timestamp
+    # the prior Python version preferred -- minor precision loss.
     buckets_def = [
         ("< 15 mins (Instant)", 0, 15 * 60),
         ("15m - 4 hrs (Transient)", 15 * 60, 4 * 3600),
@@ -557,32 +426,39 @@ def _compute_time_to_recovery(cases: Sequence[RecoveryCase]) -> list[TTRBucket]:
         ("24h - 48 hrs (Liquidity)", 24 * 3600, 48 * 3600),
         ("> 48 hrs (B2B Invoice)", 48 * 3600, 365 * 86400),
     ]
-
     counts: dict[str, int] = {b[0]: 0 for b in buckets_def}
-
-    for c in recovered_cases:
-        delta_seconds = max(0.0, (c.updated_at - c.created_at).total_seconds())
-        for entry in c.audit_trail:
-            if entry.event_name in ("case.recovered", "payment.captured"):
-                delta_seconds = max(
-                    0.0, (entry.timestamp - c.created_at).total_seconds()
-                )
-                break
-
+    for raw_delta in deltas:
+        delta_seconds = max(0.0, raw_delta)
         for name, lower_s, upper_s in buckets_def:
             if lower_s <= delta_seconds < upper_s:
                 counts[name] += 1
                 break
 
+    total = len(deltas)
     return [
         TTRBucket(
             bucket=name,
             count=count,
-            percentage=round((count / len(recovered_cases) * 100.0), 1)
-            if recovered_cases
-            else 0.0,
+            percentage=round((count / total * 100.0), 1) if total else 0.0,
         )
         for name, count in counts.items()
+    ]
+
+
+def _campaign_metrics_from_rows(rows: list[dict[str, Any]]) -> list[CampaignMetrics]:
+    return [
+        CampaignMetrics(
+            campaign_id=r["campaign"],
+            total_cases=r["total"],
+            recovered_cases=r["recovered"],
+            escalated_cases=r["escalated"],
+            at_risk_paise=r["at_risk_paise"],
+            recovered_paise=r["recovered_paise"],
+            net_recovered_value_paise=r["nrv_paise"],
+            recovery_rate_pct=_bucket_recovery_rate(r["total"], r["recovered"]),
+            avg_amount_paise=r["at_risk_paise"] // max(1, r["total"]),
+        )
+        for r in rows
     ]
 
 
@@ -593,66 +469,47 @@ def _compute_time_to_recovery(cases: Sequence[RecoveryCase]) -> list[TTRBucket]:
 )
 async def get_analytics_summary() -> AnalyticsSummaryResponse:
     """Compute and return aggregate revenue recovery metrics and counterfactual uplift."""
+    cache_key = "analytics:summary:v1"
+    cached = await get_cached_json(cache_key)
+    if cached is not None:
+        return AnalyticsSummaryResponse.model_validate_json(cached)
+
     repo = get_case_repository()
-    cases = list(repo.list_cases(limit=10000))
-    total_cases = len(cases)
+    agg = repo.get_analytics_aggregates()
+    totals = agg["totals"]
 
-    total_at_risk = sum(c.amount_paise for c in cases)
-    recovered_amount = sum(c.recovered_amount_paise for c in cases)
-    net_recovered = sum(c.net_recovered_value_paise for c in cases)
+    total_cases = int(totals.get("total_cases", 0) or 0)
+    total_at_risk = int(totals.get("total_at_risk_paise", 0) or 0)
+    recovered_amount = int(totals.get("recovered_amount_paise", 0) or 0)
+    net_recovered = int(totals.get("net_recovered_paise", 0) or 0)
+    total_discounts = int(totals.get("total_discounts_paise", 0) or 0)
 
-    treatment_cases = [c for c in cases if c.experiment_arm == ExperimentArm.TREATMENT]
-    holdout_cases = [
-        c for c in cases if c.experiment_arm == ExperimentArm.HOLDOUT_CONTROL
-    ]
-
-    treatment_rec = sum(
-        1 for c in treatment_cases if c.state == RecoveryState.RECOVERED
-    )
-    holdout_rec = sum(1 for c in holdout_cases if c.state == RecoveryState.RECOVERED)
+    treatment_total = int(totals.get("treatment_total", 0) or 0)
+    treatment_rec = int(totals.get("treatment_recovered", 0) or 0)
+    holdout_total = int(totals.get("holdout_total", 0) or 0)
+    holdout_rec = int(totals.get("holdout_recovered", 0) or 0)
+    recovered_count = int(totals.get("recovered_count", 0) or 0)
 
     treatment_rate = (
-        (treatment_rec / len(treatment_cases) * 100.0) if treatment_cases else 0.0
+        (treatment_rec / treatment_total * 100.0) if treatment_total else 0.0
     )
-    holdout_rate = (holdout_rec / len(holdout_cases) * 100.0) if holdout_cases else 0.0
-    overall_rate = (
-        (
-            sum(1 for c in cases if c.state == RecoveryState.RECOVERED)
-            / total_cases
-            * 100.0
-        )
-        if total_cases
-        else 0.0
-    )
+    holdout_rate = (holdout_rec / holdout_total * 100.0) if holdout_total else 0.0
+    overall_rate = (recovered_count / total_cases * 100.0) if total_cases else 0.0
     lift = round(treatment_rate - holdout_rate, 2)
 
-    total_discounts = sum(c.discount_paise_granted for c in cases)
-    cat_distribution = _compute_category_distribution(cases, total_cases)
-    rail_list = _compute_rail_performance(cases)
-    perf_list, total_gw_fees, total_comm_cost = _compute_channel_performance(cases)
-    time_series_points = _compute_time_series(cases)
-    ttr_buckets = _compute_time_to_recovery(cases)
-    daily_metrics = _compute_daily_metrics(cases)
-    monthly_metrics = _compute_monthly_metrics(cases)
+    cat_distribution = _category_distribution_from_rows(agg["categories"], total_cases)
+    rail_list = _rail_performance_from_rows(agg["rails"])
+    perf_list, total_gw_fees, total_comm_cost = _channel_performance_from_rows(
+        agg["channels"]
+    )
+    time_series_points = _time_series_from_windows(agg["windows"])
+    ttr_buckets = _time_to_recovery_from_deltas(agg["ttr_delta_seconds"])
+    daily_metrics = _daily_metrics_from_rows(agg["daily"])
+    monthly_metrics = _monthly_metrics_from_rows(agg["monthly"])
+    campaign_list = _campaign_metrics_from_rows(agg["campaigns"])
 
-    active_count = sum(
-        1
-        for c in cases
-        if c.state
-        in (
-            RecoveryState.IN_DUNNING,
-            RecoveryState.RETRY_SCHEDULED,
-            RecoveryState.OUTREACH_PENDING,
-            RecoveryState.ANALYSIS_QUEUED,
-        )
-    )
-    escalated_count = sum(
-        1
-        for c in cases
-        if c.state == RecoveryState.ESCALATED
-        and c.escalation_reason == EscalationReason.HUMAN_JUDGMENT
-    )
-    recovered_count = sum(1 for c in cases if c.state == RecoveryState.RECOVERED)
+    active_count = int(totals.get("active_count", 0) or 0)
+    escalated_count = int(totals.get("escalated_count", 0) or 0)
 
     total_spend = total_gw_fees + total_comm_cost + total_discounts
     rors = (
@@ -660,28 +517,16 @@ async def get_analytics_summary() -> AnalyticsSummaryResponse:
         if total_spend > 0
         else (50.0 if recovered_amount > 0 else 0.0)
     )
-    treatment_settled = [
-        c
-        for c in treatment_cases
-        if c.state
-        in (
-            RecoveryState.RECOVERED,
-            RecoveryState.ESCALATED,
-            RecoveryState.ABANDONED,
-            RecoveryState.WRITTEN_OFF,
-        )
-    ]
-    health_score_available = len(treatment_settled) > 0
+    health_score_available = int(totals.get("treatment_settled_count", 0) or 0) > 0
     health_score = (
         min(100, max(20, int(treatment_rate * 1.1 + (lift * 1.5))))
         if health_score_available
         else 0
     )
-    forecast_data = _compute_recovery_forecast(cases, lift)
-    campaign_list = _compute_campaign_metrics(cases)
+    forecast_data = _recovery_forecast_from_rows(agg["rails"], lift)
     fidelity = repo.get_execution_fidelity()
 
-    return AnalyticsSummaryResponse(
+    response = AnalyticsSummaryResponse(
         total_cases=total_cases,
         active_cases=active_count,
         escalated_cases=escalated_count,
@@ -690,10 +535,10 @@ async def get_analytics_summary() -> AnalyticsSummaryResponse:
         recovered_amount_paise=recovered_amount,
         net_recovered_value_paise=net_recovered,
         overall_recovery_rate_pct=round(overall_rate, 1),
-        treatment_total=len(treatment_cases),
+        treatment_total=treatment_total,
         treatment_recovered=treatment_rec,
         treatment_recovery_rate_pct=round(treatment_rate, 1),
-        holdout_total=len(holdout_cases),
+        holdout_total=holdout_total,
         holdout_recovered=holdout_rec,
         holdout_recovery_rate_pct=round(holdout_rate, 1),
         attributable_lift_pct=lift,
@@ -716,112 +561,49 @@ async def get_analytics_summary() -> AnalyticsSummaryResponse:
         monthly_metrics=monthly_metrics,
         campaign_metrics=campaign_list,
     )
-
-
-def _compute_campaign_metrics(
-    cases: Sequence[RecoveryCase],
-) -> list[CampaignMetrics]:
-    """Aggregate recovery metrics per campaign_id extracted from Razorpay notes."""
-    buckets: dict[str, dict[str, int]] = defaultdict(
-        lambda: {
-            "total": 0,
-            "recovered": 0,
-            "escalated": 0,
-            "at_risk": 0,
-            "recovered_paise": 0,
-            "nrv": 0,
-        }
+    await set_cached_json(
+        cache_key,
+        response.model_dump_json(),
+        get_settings().analytics_cache_ttl_seconds,
     )
-    for c in cases:
-        cid = getattr(c, "campaign_id", None) or getattr(
-            c.failure_event, "campaign_id", None
-        )
-        if not cid:
-            cid = "untagged"
-        b = buckets[cid]
-        b["total"] += 1
-        b["at_risk"] += c.amount_paise
-        if c.state == RecoveryState.RECOVERED:
-            b["recovered"] += 1
-            b["recovered_paise"] += c.recovered_amount_paise
-            b["nrv"] += c.net_recovered_value_paise
-        if (
-            c.state == RecoveryState.ESCALATED
-            and c.escalation_reason == EscalationReason.HUMAN_JUDGMENT
-        ):
-            b["escalated"] += 1
-
-    result: list[CampaignMetrics] = []
-    for campaign_id, b in sorted(
-        buckets.items(), key=lambda x: x[1]["at_risk"], reverse=True
-    ):
-        rate = round((b["recovered"] / b["total"] * 100.0) if b["total"] else 0.0, 1)
-        avg = b["at_risk"] // max(1, b["total"])
-        result.append(
-            CampaignMetrics(
-                campaign_id=campaign_id,
-                total_cases=b["total"],
-                recovered_cases=b["recovered"],
-                escalated_cases=b["escalated"],
-                at_risk_paise=b["at_risk"],
-                recovered_paise=b["recovered_paise"],
-                net_recovered_value_paise=b["nrv"],
-                recovery_rate_pct=rate,
-                avg_amount_paise=avg,
-            )
-        )
-    return result
+    return response
 
 
-def _compute_recovery_forecast(
-    cases: Sequence[RecoveryCase], lift_pct: float
+def _recovery_forecast_from_rows(
+    rail_rows: list[dict[str, Any]], lift_pct: float
 ) -> RecoveryForecast:
-    """Deterministic conversion model computing recovery funnel and remaining opportunity."""
-    active_states = {
-        RecoveryState.IN_DUNNING,
-        RecoveryState.RETRY_SCHEDULED,
-        RecoveryState.OUTREACH_PENDING,
-        RecoveryState.ANALYSIS_QUEUED,
-        RecoveryState.P2P_WAITING,
-        RecoveryState.P2P_PROMISED,
-    }
-    open_cases = [c for c in cases if c.state in active_states]
-    recovered_cases = [c for c in cases if c.state == RecoveryState.RECOVERED]
+    """Per-rail recovery rate uses that rail's own history when it has enough
+    volume (>=5 cases) to be meaningful; thin rails fall back to the overall
+    recovery rate across all cases, matching the previous Python version.
+    """
+    total_cases = sum(r["total_cases"] for r in rail_rows)
+    total_recovered_cases = sum(r["recovered_cases"] for r in rail_rows)
+    overall_rate = (total_recovered_cases / total_cases) if total_cases else 0.50
 
-    total_at_risk_open = sum(c.amount_paise for c in open_cases)
-    total_recovered_so_far = sum(c.recovered_amount_paise for c in recovered_cases)
-
-    rail_rates: dict[str, float] = {}
-    for rail in PaymentRail:
-        rail_cases = [c for c in cases if c.failure_event.payment_rail == rail]
-        rail_rec = [c for c in rail_cases if c.state == RecoveryState.RECOVERED]
-        if len(rail_cases) >= 5:  # noqa: PLR2004
-            rail_rates[rail.value] = len(rail_rec) / len(rail_cases)
-        else:
-            rail_rates[rail.value] = (
-                (len(recovered_cases) / len(cases)) if cases else 0.50
-            )
+    total_at_risk_open = sum(r["open_at_risk_paise"] for r in rail_rows)
+    total_recovered_so_far = sum(r["recovered_paise"] for r in rail_rows)
 
     segments: list[SegmentForecast] = []
     expected_recoverable_total = 0
 
-    for rail in PaymentRail:
-        r_cases = [c for c in open_cases if c.failure_event.payment_rail == rail]
-        r_at_risk = sum(c.amount_paise for c in r_cases)
-        p = round(rail_rates.get(rail.value, 0.50), 2)
+    for r in rail_rows:
+        rail_total = r["total_cases"]
+        rail_rec = r["recovered_cases"]
+        p = (rail_rec / rail_total) if rail_total >= 5 else overall_rate  # noqa: PLR2004
+        p = round(p, 2)
+        r_at_risk = r["open_at_risk_paise"]
         exp_paise = int(r_at_risk * p)
         expected_recoverable_total += exp_paise
         if r_at_risk > 0:
             segments.append(
                 SegmentForecast(
-                    segment=rail.value,
+                    segment=r["rail"],
                     expected_probability=p,
                     at_risk_paise=r_at_risk,
                     expected_recoverable_paise=exp_paise,
                 )
             )
 
-    remaining_opportunity = expected_recoverable_total
     attributable_remaining = int(total_at_risk_open * max(0.0, lift_pct / 100.0))
     expected_rate = (
         round((expected_recoverable_total / total_at_risk_open * 100.0), 1)
@@ -833,7 +615,7 @@ def _compute_recovery_forecast(
         at_risk_paise=total_at_risk_open,
         expected_recoverable_paise=expected_recoverable_total,
         recovered_paise=total_recovered_so_far,
-        remaining_opportunity_paise=remaining_opportunity,
+        remaining_opportunity_paise=expected_recoverable_total,
         attributable_remaining_paise=attributable_remaining,
         expected_recovery_rate_pct=expected_rate,
         confidence_window_pct=5.0,
@@ -848,20 +630,26 @@ def _compute_recovery_forecast(
 )
 async def get_recovery_forecast() -> RecoveryForecast:
     """Return deterministic recovery forecast funnel and attributable lift."""
-    repo = get_case_repository()
-    cases = list(repo.list_cases(limit=10000))
-    treatment_cases = [c for c in cases if c.experiment_arm == ExperimentArm.TREATMENT]
-    holdout_cases = [
-        c for c in cases if c.experiment_arm == ExperimentArm.HOLDOUT_CONTROL
-    ]
-    treatment_rec = sum(
-        1 for c in treatment_cases if c.state == RecoveryState.RECOVERED
+
+    async def _compute() -> RecoveryForecast:
+        repo = get_case_repository()
+        agg = repo.get_analytics_aggregates()
+        totals = agg["totals"]
+        treatment_total = int(totals.get("treatment_total", 0) or 0)
+        treatment_rec = int(totals.get("treatment_recovered", 0) or 0)
+        holdout_total = int(totals.get("holdout_total", 0) or 0)
+        holdout_rec = int(totals.get("holdout_recovered", 0) or 0)
+        t_rate = (treatment_rec / treatment_total * 100.0) if treatment_total else 0.0
+        h_rate = (holdout_rec / holdout_total * 100.0) if holdout_total else 0.0
+        lift = round(t_rate - h_rate, 2)
+        return _recovery_forecast_from_rows(agg["rails"], lift)
+
+    return await cached_model(
+        "analytics:forecast:v1",
+        get_settings().analytics_cache_ttl_seconds,
+        RecoveryForecast,
+        _compute,
     )
-    holdout_rec = sum(1 for c in holdout_cases if c.state == RecoveryState.RECOVERED)
-    t_rate = (treatment_rec / len(treatment_cases) * 100.0) if treatment_cases else 0.0
-    h_rate = (holdout_rec / len(holdout_cases) * 100.0) if holdout_cases else 0.0
-    lift = round(t_rate - h_rate, 2)
-    return _compute_recovery_forecast(cases, lift)
 
 
 def _escalation_reason(case: RecoveryCase) -> str:
@@ -929,7 +717,14 @@ async def get_escalation_queue() -> list[EscalationQueueItem]:
         recommended_action = "Approve smart retry on backup rail"
         recommended_discount = 0
 
-        if "HITL" in reason_found or "human approval" in reason_found.lower():
+        if "routed to human operations queue" in reason_found:
+            # The plan itself asked for a human, e.g. suspected fraud, an
+            # ambiguous customer decline, or an unresolved gateway timeout --
+            # "retry" or "send another link" would be actively wrong advice
+            # here, not just generic.
+            prob = 0.50
+            recommended_action = "Review case detail and rationale before acting"
+        elif "HITL" in reason_found or "human approval" in reason_found.lower():
             prob = 0.85
             recommended_action = "Approve formulated AI recovery plan"
         elif attempts >= policy.max_attempts:
