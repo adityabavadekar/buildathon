@@ -19,7 +19,8 @@
   <a href="#what-it-does">What it Does</a> &bull;
   <a href="#the-dashboard">The Dashboard</a> &bull;
   <a href="#setting-up-integrations">Integrations</a> &bull;
-  <a href="webhook-relay/README.md">Webhook Relay</a>
+  <a href="webhook-relay/README.md">Webhook Relay</a> &bull;
+  <a href="docs/ARCHITECTURE.md">Architecture</a>
 </p>
 
 <p align="center">
