@@ -25,6 +25,7 @@ framing see the [README](../README.md); for working rules see
   - [The LLM agent](#the-llm-agent)
   - [The deterministic rule engine](#the-deterministic-rule-engine)
   - [Audit logs](#audit-logs)
+  - [Customer profiles](#customer-profiles)
   - [Campaigns](#campaigns)
   - [Operator console and autonomy modes](#operator-console-and-autonomy-modes)
   - [Rail health monitoring](#rail-health-monitoring)
@@ -495,6 +496,54 @@ the operator's own actions are audited alongside the agent's.
 Read via `GET /api/cases/{case_id}` for one case's trail, or
 `GET /api/cases/audit/global` for system events.
 
+### Customer profiles
+
+`detection/customer_profile.py` aggregates each customer's payment and dunning
+behaviour into a `CustomerProfile`. This is what lets two identical error codes
+produce different plans, and it is derived entirely from cases this system has
+already seen - no external enrichment, no third-party data.
+
+| Field | Meaning |
+| --- | --- |
+| `customer_id` | Merchant's customer identifier |
+| `total_cases` | Recovery cases seen for this customer |
+| `recovered_cases`, `recovered_rate` | How often this customer ends up paying |
+| `repeat_failure_count` | Repeated failures of the same kind |
+| `avg_payment_delay_hours` | Typical lag between failure and payment |
+| `preferred_rail` | Rail this customer most often succeeds on |
+| `outstanding_paise` | Currently unrecovered value |
+| `risk_tier` | `LOW`, `MEDIUM`, or `HIGH` |
+| `last_activity_at` | Most recent case activity |
+
+**Risk tier is deterministic, not modelled.** `LOW` when `recovered_rate >= 0.70`
+with at least 2 cases; `HIGH` when `<= 0.25` with more than 2 cases; `MEDIUM`
+otherwise, which is also where a customer with too little history lands. A tier
+is a summary of observed behaviour, so it can be explained to a merchant asking
+why their customer was treated a particular way.
+
+**How the classifier uses it.** `_liquidity_result()` weighs three profile values
+against fixed thresholds - `REPEAT_LIQUIDITY_FAILURE_LIMIT` (3),
+`ESTABLISHED_CUSTOMER_CASE_COUNT` (6), and `RELIABLE_RECOVERY_RATE` (0.70):
+
+- 3+ repeat liquidity failures, and *not* both established and reliable: escalate
+  rather than retry. Repeated declines against thin history are a solvency
+  problem, and no retry schedule fixes solvency.
+- 3+ repeat failures, but 6+ cases at a 70%+ recovery rate: still retry with
+  spacing. This customer demonstrably pays, so the decline reads as timing.
+- No history at all: nothing outweighs the decline, so the default path applies.
+
+Every value used is written into `signals_evaluated` on the diagnosis, so the
+audit trail shows the profile figures that produced the decision rather than just
+its conclusion.
+
+**Profiles are never sent to an LLM.** The prompt carries only the nine failure
+fields; the profile is applied afterwards by deterministic code. Two reasons: the
+figures are exact SQL aggregates and a model asked to infer them could only be
+less accurate, and keeping them local means no customer data reaches a
+third-party inference provider on a failed payment.
+
+Exposed at `GET /api/customers/profiles`.
+
 ### Campaigns
 
 Recovery attribution grouped by the campaign that produced the payment. FORTX
@@ -540,13 +589,75 @@ persisted as `pattern_alerts` and served from `GET /api/analytics/patterns`, wit
 
 ### Recovery propensity model
 
-`detection/ml.py` trains a recovery-likelihood model on completed cases,
-persisted in `ml_models` with predictions in `ml_predictions` and accuracy
-telemetry in `model_telemetry`. It informs prioritisation; it does not authorise
-action, and the policy gate applies regardless of its score. Trained through
-`POST /api/analytics/recovery-model/train`; status at
-`GET /api/analytics/recovery-model`, which reports `untrained` honestly rather
-than serving a default-valued model.
+`detection/ml.py` learns which failures are worth pursuing from cases this system
+has already closed. It is implemented from scratch with no ML dependency - the
+backend ships neither scikit-learn nor numpy - because the model is small, the
+training set is one merchant's case history, and a hand-written implementation
+keeps every coefficient inspectable and the whole model serializable to JSONB.
+
+**Three models, combined.**
+
+| Model | Method | Predicts |
+| --- | --- | --- |
+| `LogisticModel` | Gradient descent with a validation split and early stopping | Recovery probability |
+| `NaiveBayesModel` | Gaussian naive Bayes | Recovery probability |
+| `RecoveryTimeModel` | Least squares over recovered cases only | Days to recovery |
+
+The two classifiers are combined as a geometric mean in log space, then blended
+toward the observed base recovery rate:
+
+```
+log_p = (log(logistic_p) + log(nb_p)) / 2
+p     = sigmoid(logit(base_rate) + log_p * 0.5)
+```
+
+The blend toward the prior is the point. Two weak learners agreeing on a thin
+training set can be confidently wrong; anchoring to the measured base rate stops
+a low-data ensemble diverging from what the merchant's history actually shows. A
+propensity score that is overconfident on 40 cases is worse than no score,
+because it would be trusted.
+
+**Features** are 16, all derived from data the system already holds:
+
+- Eight continuous: amount scaled against a 30,000,000 paise ceiling, amount
+  band, attempts count, retry count, outreach count, hour of day, day of week,
+  and whether this customer appears in a prior case. That last one is flagged in
+  the source as among the strongest recovery predictors.
+- One-hot encodings of the diagnosed failure category and the payment rail, both
+  fitted from the categories present in the training corpus rather than the full
+  enum.
+
+During fitting, continuous columns are z-transformed against the training set's
+own mean and standard deviation to keep gradient descent stable. Those statistics
+are training-time only: the persisted `LogisticModel` carries just its weights and
+a per-column `binarized` flag, so inference is a plain dot product over the raw
+feature vector.
+
+**Training** runs through `POST /api/analytics/recovery-model/train` and refuses
+to fit data that cannot support a model: too few cases, or fewer than two label
+classes. A model trained on all-recovered or all-unrecovered cases would report
+perfect accuracy and predict nothing.
+
+Evaluation is 3-fold stratified cross-validation scored by rank AUC, plus a
+holdout pass. Only treatment-arm cases train the model - holdout-arm cases are
+the counterfactual baseline, and training on them would contaminate the
+measurement the benchmark depends on. Randomness is seeded, so a retrain on the
+same corpus reproduces the same model.
+
+**Outputs** per case: recovery probability, probability with a confidence
+interval, a per-intervention score, expected recovery value in paise, and
+expected days to recovery. The forecast endpoint uses these to project remaining
+recoverable value.
+
+**It ranks; it does not decide.** Nothing in the intervention path consults the
+model for authorization. The policy gate applies unchanged regardless of score,
+so a high-propensity case still cannot exceed the attempt cap, the discount
+ceiling, or a contact opt-out. The model changes what gets attention first, not
+what is permitted.
+
+Persisted in `ml_models`, with per-case predictions in `ml_predictions` and
+accuracy telemetry in `model_telemetry`. `GET /api/analytics/recovery-model`
+reports `untrained` honestly rather than serving a default-valued model.
 
 ### Fleet simulator
 
